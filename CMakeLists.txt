@@ -10,7 +10,12 @@ find_package(CommonLibSSE CONFIG REQUIRED)
 
 add_commonlibsse_plugin(${PROJECT_NAME}
   SOURCES
-    src/plugin.cpp) 
+    src/plugin.cpp
+    src/MagicStrings.cpp
+    src/MagicConfig.cpp
+    src/SpellSettingsDB.cpp
+    src/UI_IntegratedMagic.cpp
+    src/MagicInput.cpp) 
 
 target_include_directories(${PROJECT_NAME}
   PRIVATE
@@ -23,7 +28,13 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 
 target_precompile_headers(${PROJECT_NAME}
   PRIVATE
-    src/PCH.h) 
+    src/PCH.h
+    src/MagicStrings.h
+    src/MagicConfigPath.h
+    src/MagicConfig.h
+    src/SpellSettingsDB.h
+    src/UI_IntegratedMagic.h
+    src/MagicInput.h) 
 
 set_source_files_properties(
   src/Detours/detours.cpp
