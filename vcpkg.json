@@ -1,6 +1,13 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "name": "integrated-magic",
-  "dependencies": ["commonlibsse-ng", "simpleini", "nlohmann-json"],
+  "dependencies": [
+    "simpleini",
+    "nlohmann-json",
+    "fmt",
+    "spdlog",
+    "directxtk",
+    "rapidcsv"
+  ],
   "builtin-baseline": "b94ab47c998b93fe72b0f501eaac70f96328019e"
 }

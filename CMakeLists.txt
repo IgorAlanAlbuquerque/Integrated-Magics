@@ -6,7 +6,17 @@ if(DEFINED ENV{SKYRIM_MODS_FOLDER} AND IS_DIRECTORY "$ENV{SKYRIM_MODS_FOLDER}")
     set(OUTPUT_FOLDER "$ENV{SKYRIM_MODS_FOLDER}/${PROJECT_NAME}")
 endif()
 
-find_package(CommonLibSSE CONFIG REQUIRED)
+set(BUILD_TESTS OFF CACHE BOOL "Build unit tests for CommonLibVR." FORCE)
+set(ENABLE_SKYRIM_VR OFF CACHE BOOL "Disable Skyrim VR in CommonLibVR-ng" FORCE)
+
+add_subdirectory(
+    ${CMAKE_CURRENT_SOURCE_DIR}/extern/CommonLibVR-ng
+    ${CMAKE_BINARY_DIR}/_deps/CommonLibVR-ng-build
+)
+
+get_target_property(COMMONLIB_SRC_DIR CommonLibSSE SOURCE_DIR)
+
+include(${COMMONLIB_SRC_DIR}/cmake/CommonLibSSE.cmake)
 
 add_commonlibsse_plugin(${PROJECT_NAME}
   SOURCES
@@ -15,7 +25,17 @@ add_commonlibsse_plugin(${PROJECT_NAME}
     src/MagicConfig.cpp
     src/SpellSettingsDB.cpp
     src/UI_IntegratedMagic.cpp
-    src/MagicInput.cpp) 
+    src/MagicInput.cpp
+    src/MagicSlots.cpp
+    src/MagicSelect.cpp
+    src/MagicHooks.cpp
+    src/Detours/detours.cpp
+    src/Detours/disasm.cpp
+    src/Detours/disolx64.cpp
+    src/Detours/image.cpp
+    src/Detours/modules.cpp
+    src/MagicState.cpp
+    src/MagicAction.cpp) 
 
 target_include_directories(${PROJECT_NAME}
   PRIVATE
@@ -34,7 +54,12 @@ target_precompile_headers(${PROJECT_NAME}
     src/MagicConfig.h
     src/SpellSettingsDB.h
     src/UI_IntegratedMagic.h
-    src/MagicInput.h) 
+    src/MagicInput.h
+    src/MagicSlots.h
+    src/MagicSelect.h
+    src/MagicHooks.h
+    src/MagicState.h
+    src/MagicAction.h) 
 
 set_source_files_properties(
   src/Detours/detours.cpp
