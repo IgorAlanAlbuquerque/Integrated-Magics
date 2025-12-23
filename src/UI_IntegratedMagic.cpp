@@ -111,6 +111,7 @@ namespace {
                         .c_str())) {
                 g_capturingHotkey = true;
                 g_captureSlot = slot;
+                MagicInput::RequestHotkeyCapture();
             }
         } else {
             ImGui::TextDisabled("%s", IntegratedMagic::Strings::Get(
@@ -281,6 +282,7 @@ void __stdcall IntegratedMagic_UI::DrawSettings() {
             IntegratedMagic::SpellSettingsDB::Get().Save();
             IntegratedMagic::SpellSettingsDB::Get().ClearDirty();
         }
+        MagicInput::OnConfigChanged();
 
         g_pending = false;
     }

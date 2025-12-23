@@ -1,0 +1,108 @@
+#include "MagicAction.h"
+
+namespace IntegratedMagic::MagicAction {
+    namespace {
+        inline void SetCasterSpell(RE::ActorMagicCaster* caster, RE::MagicItem* spell, bool select) {
+            if (!caster) {
+                return;
+            }
+
+            caster->SetCurrentSpellImpl(spell);
+
+            if (!select) {
+                return;
+            }
+
+            if (spell) {
+                caster->SelectSpellImpl();
+            } else {
+                caster->DeselectSpellImpl();
+            }
+        }
+
+        inline void SetCasterDual(RE::ActorMagicCaster* caster, bool dual) {
+            if (caster) {
+                caster->SetDualCasting(dual);
+            }
+        }
+    }
+
+    RE::ActorMagicCaster* GetCaster(RE::PlayerCharacter* player, RE::MagicSystem::CastingSource source) {
+        if (!player) {
+            return nullptr;
+        }
+
+        auto* mc = player->GetMagicCaster(source);
+        if (!mc) {
+            return nullptr;
+        }
+
+        return skyrim_cast<RE::ActorMagicCaster*>(mc);
+    }
+
+    void EquipSpellInHand(RE::PlayerCharacter* player, RE::SpellItem* spell, EquipHand hand) {
+        if (!player || !spell) {
+            return;
+        }
+
+        IntegratedMagic::MagicSelect::ScopedSuppressSelection suppress{};
+
+        auto* leftCaster = GetCaster(player, RE::MagicSystem::CastingSource::kLeftHand);
+        auto* rightCaster = GetCaster(player, RE::MagicSystem::CastingSource::kRightHand);
+
+        SetCasterDual(leftCaster, false);
+        SetCasterDual(rightCaster, false);
+
+        switch (hand) {
+            using enum IntegratedMagic::EquipHand;
+
+            case Left:
+                SetCasterSpell(leftCaster, spell, true);
+                break;
+
+            case Right:
+                SetCasterSpell(rightCaster, spell, true);
+                break;
+
+            case Both:
+            default:
+                SetCasterSpell(leftCaster, spell, true);
+                SetCasterSpell(rightCaster, spell, true);
+                SetCasterDual(leftCaster, true);
+                SetCasterDual(rightCaster, true);
+                break;
+        }
+    }
+
+    void ClearHandSpell(RE::PlayerCharacter* player, EquipHand hand) {
+        if (!player) {
+            return;
+        }
+
+        IntegratedMagic::MagicSelect::ScopedSuppressSelection suppress{};
+
+        auto* leftCaster = GetCaster(player, RE::MagicSystem::CastingSource::kLeftHand);
+        auto* rightCaster = GetCaster(player, RE::MagicSystem::CastingSource::kRightHand);
+
+        SetCasterDual(leftCaster, false);
+        SetCasterDual(rightCaster, false);
+
+        switch (hand) {
+            using enum IntegratedMagic::EquipHand;
+
+            case Left:
+                SetCasterSpell(leftCaster, nullptr, true);
+                break;
+
+            case Right:
+                SetCasterSpell(rightCaster, nullptr, true);
+                break;
+
+            case Both:
+            default:
+                SetCasterSpell(leftCaster, nullptr, true);
+                SetCasterSpell(rightCaster, nullptr, true);
+                break;
+        }
+    }
+}

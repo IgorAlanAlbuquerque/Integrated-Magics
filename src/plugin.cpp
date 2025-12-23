@@ -1,4 +1,5 @@
 #include "MagicConfig.h"
+#include "MagicHooks.h"
 #include "MagicInput.h"
 #include "MagicStrings.h"
 #include "PCH.h"
@@ -37,8 +38,9 @@ namespace {
                 IntegratedMagic::GetMagicConfig().Load();
                 IntegratedMagic::SpellSettingsDB::Get().Load();
                 IntegratedMagic_UI::Register();
+                MagicInput::OnConfigChanged();
+                IntegratedMagic::Hooks::Install_Hooks();
                 break;
-
             default:
                 break;
         }

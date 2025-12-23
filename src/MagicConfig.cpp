@@ -38,46 +38,6 @@ namespace {
         const char* v = ini.GetValue(sec, k, nullptr);
         return v ? std::string{v} : std::string{defVal};
     }
-
-    IntegratedMagic::ActivationMode _modeFromStr(const std::string& s) {
-        using enum IntegratedMagic::ActivationMode;
-        if (_stricmp(s.c_str(), "Press") == 0) return Press;
-        if (_stricmp(s.c_str(), "Automatic") == 0) return Automatic;
-        return Hold;
-    }
-
-    const char* _modeToStr(IntegratedMagic::ActivationMode m) {
-        using enum IntegratedMagic::ActivationMode;
-        switch (m) {
-            case Press:
-                return "Press";
-            case Automatic:
-                return "Automatic";
-            case Hold:
-            default:
-                return "Hold";
-        }
-    }
-
-    IntegratedMagic::EquipHand _handFromStr(const std::string& s) {
-        using enum IntegratedMagic::EquipHand;
-        if (_stricmp(s.c_str(), "Left") == 0) return Left;
-        if (_stricmp(s.c_str(), "Both") == 0) return Both;
-        return Right;
-    }
-
-    const char* _handToStr(IntegratedMagic::EquipHand h) {
-        using enum IntegratedMagic::EquipHand;
-        switch (h) {
-            case Left:
-                return "Left";
-            case Both:
-                return "Both";
-            case Right:
-            default:
-                return "Right";
-        }
-    }
 }
 
 namespace IntegratedMagic {
