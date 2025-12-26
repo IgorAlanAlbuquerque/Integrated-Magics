@@ -59,7 +59,8 @@ target_precompile_headers(${PROJECT_NAME}
     src/MagicSelect.h
     src/MagicHooks.h
     src/MagicState.h
-    src/MagicAction.h) 
+    src/MagicAction.h
+    src/MagicEquipSlots.h) 
 
 set_source_files_properties(
   src/Detours/detours.cpp
