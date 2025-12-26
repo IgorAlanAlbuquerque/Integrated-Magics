@@ -63,6 +63,69 @@ namespace {
         return true;
     }
 
+    inline bool IsInputBlockedByMenus() {
+        auto* ui = RE::UI::GetSingleton();
+        if (!ui) {
+            return false;
+        }
+
+        if (ui->GameIsPaused()) {
+            return true;
+        }
+
+        static const RE::BSFixedString inventoryMenu{"InventoryMenu"};
+        static const RE::BSFixedString magicMenu{"MagicMenu"};
+        static const RE::BSFixedString statsMenu{"StatsMenu"};
+        static const RE::BSFixedString mapMenu{"MapMenu"};
+        static const RE::BSFixedString journalMenu{"Journal Menu"};
+        static const RE::BSFixedString favoritesMenu{"FavoritesMenu"};
+        static const RE::BSFixedString containerMenu{"ContainerMenu"};
+        static const RE::BSFixedString barterMenu{"BarterMenu"};
+        static const RE::BSFixedString trainingMenu{"Training Menu"};
+        static const RE::BSFixedString craftingMenu{"Crafting Menu"};
+        static const RE::BSFixedString giftMenu{"GiftMenu"};
+        static const RE::BSFixedString lockpickingMenu{"Lockpicking Menu"};
+        static const RE::BSFixedString sleepWaitMenu{"Sleep/Wait Menu"};
+        static const RE::BSFixedString loadingMenu{"Loading Menu"};
+        static const RE::BSFixedString mainMenu{"Main Menu"};
+        static const RE::BSFixedString console{"Console"};
+
+        if (static const RE::BSFixedString mcm{"Mod Configuration Menu"};
+            ui->IsMenuOpen(inventoryMenu) || ui->IsMenuOpen(magicMenu) || ui->IsMenuOpen(statsMenu) ||
+            ui->IsMenuOpen(mapMenu) || ui->IsMenuOpen(journalMenu) || ui->IsMenuOpen(favoritesMenu) ||
+            ui->IsMenuOpen(containerMenu) || ui->IsMenuOpen(barterMenu) || ui->IsMenuOpen(trainingMenu) ||
+            ui->IsMenuOpen(craftingMenu) || ui->IsMenuOpen(giftMenu) || ui->IsMenuOpen(lockpickingMenu) ||
+            ui->IsMenuOpen(sleepWaitMenu) || ui->IsMenuOpen(loadingMenu) || ui->IsMenuOpen(mainMenu) ||
+            ui->IsMenuOpen(console) || ui->IsMenuOpen(mcm)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    void HandleSlotPressed(int slot) {
+        if (slot < 0 || slot >= kSlots) {
+            return;
+        }
+
+        if (auto const* player = RE::PlayerCharacter::GetSingleton(); !player) {
+            return;
+        }
+
+        const std::uint32_t spellFormID = IntegratedMagic::MagicSlots::GetSlotSpell(slot);
+
+        if (spellFormID == 0) {
+            return;
+        }
+
+        if (const auto ss = IntegratedMagic::SpellSettingsDB::Get().GetOrCreate(spellFormID);
+            ss.mode != IntegratedMagic::ActivationMode::Press) {
+            return;
+        }
+
+        IntegratedMagic::MagicState::Get().TogglePress(slot);
+    }
+
     bool SlotComboDown(int slot) {
         if (slot < 0 || slot >= kSlots) {
             return false;
@@ -175,8 +238,7 @@ namespace {
                 }
 
                 if (wantCapture && btn->IsDown()) {
-                    if (dev == RE::INPUT_DEVICE::kKeyboard && code == 0x01) {
-                    } else {
+                    if (!(dev == RE::INPUT_DEVICE::kKeyboard && code == 0x01)) {
                         int encoded = -1;
                         if (dev == RE::INPUT_DEVICE::kKeyboard) {
                             encoded = code;
@@ -200,6 +262,18 @@ namespace {
             }
 
             RecomputeSlotEdges();
+
+            if (IsInputBlockedByMenus()) {
+                while (MagicInput::ConsumePressedSlot()) {
+                }
+                while (MagicInput::ConsumeReleasedSlot()) {
+                }
+                return RE::BSEventNotifyControl::kContinue;
+            }
+
+            while (auto slot = MagicInput::ConsumePressedSlot()) {
+                HandleSlotPressed(*slot);
+            }
 
             return RE::BSEventNotifyControl::kContinue;
         }
