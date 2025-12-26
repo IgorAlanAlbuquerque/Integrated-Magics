@@ -25,6 +25,20 @@ namespace IntegratedMagic::MagicAction {
                 caster->SetDualCasting(dual);
             }
         }
+
+        static const RE::BGSEquipSlot* GetHandEquipSlot(IntegratedMagic::EquipHand hand) {
+            using enum IntegratedMagic::EquipHand;
+
+            auto* dom = RE::BGSDefaultObjectManager::GetSingleton();
+            if (!dom) {
+                return nullptr;
+            }
+
+            const auto id = (hand == Left) ? RE::DefaultObjectID::kLeftHandEquip : RE::DefaultObjectID::kRightHandEquip;
+
+            auto** pp = dom->GetObject<RE::BGSEquipSlot>(id);
+            return pp ? *pp : nullptr;
+        }
     }
 
     RE::ActorMagicCaster* GetCaster(RE::PlayerCharacter* player, RE::MagicSystem::CastingSource source) {
@@ -47,27 +61,35 @@ namespace IntegratedMagic::MagicAction {
 
         IntegratedMagic::MagicSelect::ScopedSuppressSelection suppress{};
 
+        auto* mgr = RE::ActorEquipManager::GetSingleton();
+        if (!mgr) {
+            return;
+        }
+
         auto* leftCaster = GetCaster(player, RE::MagicSystem::CastingSource::kLeftHand);
         auto* rightCaster = GetCaster(player, RE::MagicSystem::CastingSource::kRightHand);
-
         SetCasterDual(leftCaster, false);
         SetCasterDual(rightCaster, false);
+
+        const auto* leftSlot = GetHandEquipSlot(EquipHand::Left);
+        const auto* rightSlot = GetHandEquipSlot(EquipHand::Right);
 
         switch (hand) {
             using enum IntegratedMagic::EquipHand;
 
             case Left:
-                SetCasterSpell(leftCaster, spell, true);
+                mgr->EquipSpell(player, spell, leftSlot);
                 break;
 
             case Right:
-                SetCasterSpell(rightCaster, spell, true);
+                mgr->EquipSpell(player, spell, rightSlot);
                 break;
 
             case Both:
             default:
-                SetCasterSpell(leftCaster, spell, true);
-                SetCasterSpell(rightCaster, spell, true);
+                mgr->EquipSpell(player, spell, leftSlot);
+                mgr->EquipSpell(player, spell, rightSlot);
+
                 SetCasterDual(leftCaster, true);
                 SetCasterDual(rightCaster, true);
                 break;
