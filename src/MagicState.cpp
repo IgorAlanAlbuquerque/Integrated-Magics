@@ -1,12 +1,46 @@
 #include "MagicState.h"
 
+#include <unordered_set>
+
 #include "MagicAction.h"
+#include "MagicEquipSlots.h"
 #include "MagicSlots.h"
 #include "PCH.h"
 #include "SpellSettingsDB.h"
 
 namespace IntegratedMagic {
     namespace {
+        struct InventoryIndex {
+            std::unordered_map<RE::TESBoundObject*, std::vector<RE::ExtraDataList*>> extrasByBase;
+            std::unordered_set<RE::TESBoundObject*> wornBases;
+        };
+
+        InventoryIndex BuildInventoryIndex(RE::PlayerCharacter* player) {
+            InventoryIndex idx;
+            if (!player) return idx;
+
+            auto inv = player->GetInventory([](RE::TESBoundObject&) { return true; });
+            for (auto const& [obj, data] : inv) {
+                auto* base = obj;
+                auto const* entry = data.second.get();
+                if (!base || !entry || !entry->extraLists) {
+                    continue;
+                }
+
+                auto& vec = idx.extrasByBase[base];
+                for (auto* extra : *entry->extraLists) {
+                    if (!extra) continue;
+
+                    vec.push_back(extra);
+
+                    if (extra->HasType(RE::ExtraDataType::kWorn) || extra->HasType(RE::ExtraDataType::kWornLeft)) {
+                        idx.wornBases.insert(base);
+                    }
+                }
+            }
+            return idx;
+        }
+
         inline RE::PlayerCharacter* GetPlayer() { return RE::PlayerCharacter::GetSingleton(); }
 
         inline RE::TESBoundObject* AsBoundObject(RE::TESForm* f) { return f ? f->As<RE::TESBoundObject>() : nullptr; }
@@ -23,79 +57,23 @@ namespace IntegratedMagic {
             return nullptr;
         }
 
-        RE::ExtraDataList* ResolveLiveExtra(RE::TESBoundObject* base, RE::ExtraDataList* candidate) {
-            if (!base || !candidate) {
-                return nullptr;
+        RE::ExtraDataList* ResolveLiveExtra(const InventoryIndex& idx, RE::TESBoundObject* base,
+                                            RE::ExtraDataList* candidate) {
+            if (!base || !candidate) return nullptr;
+            auto it = idx.extrasByBase.find(base);
+            if (it == idx.extrasByBase.end()) return nullptr;
+
+            for (auto* ex : it->second) {
+                if (ex == candidate) return ex;
             }
-
-            auto* player = GetPlayer();
-            if (!player) {
-                return nullptr;
-            }
-
-            auto inv = player->GetInventory([base](RE::TESBoundObject& obj) { return &obj == base; });
-
-            for (auto const& [obj, data] : inv) {
-                if (obj != base) {
-                    continue;
-                }
-
-                auto const* entry = data.second.get();
-                if (!entry || !entry->extraLists) {
-                    continue;
-                }
-
-                for (auto* extra : *entry->extraLists) {
-                    if (extra == candidate) {
-                        return extra;
-                    }
-                }
-            }
-
             return nullptr;
         }
 
-        RE::ExtraDataList* FindAnyInstanceExtraForBase(RE::TESBoundObject* base) {
-            if (!base) {
-                return nullptr;
-            }
-
-            auto* player = GetPlayer();
-            if (!player) {
-                return nullptr;
-            }
-
-            auto inv = player->GetInventory([base](RE::TESBoundObject& obj) { return &obj == base; });
-
-            for (auto const& [obj, data] : inv) {
-                if (obj != base) {
-                    continue;
-                }
-
-                auto const* entry = data.second.get();
-                if (!entry || !entry->extraLists) {
-                    continue;
-                }
-
-                for (auto* extra : *entry->extraLists) {
-                    if (extra) {
-                        return extra;
-                    }
-                }
-            }
-
-            return nullptr;
-        }
-
-        const RE::BGSEquipSlot* GetHandEquipSlot(bool leftHand) {
-            auto* dom = RE::BGSDefaultObjectManager::GetSingleton();
-            if (!dom) {
-                return nullptr;
-            }
-
-            const auto id = leftHand ? RE::DefaultObjectID::kLeftHandEquip : RE::DefaultObjectID::kRightHandEquip;
-            auto** pp = dom->GetObject<RE::BGSEquipSlot>(id);
-            return pp ? *pp : nullptr;
+        RE::ExtraDataList* FindAnyInstanceExtraForBase(const InventoryIndex& idx, RE::TESBoundObject* base) {
+            if (!base) return nullptr;
+            auto it = idx.extrasByBase.find(base);
+            if (it == idx.extrasByBase.end() || it->second.empty()) return nullptr;
+            return it->second.front();
         }
 
         void CaptureWornSnapshot(std::vector<MagicState::ExtraEquippedItem>& out) {
@@ -149,33 +127,11 @@ namespace IntegratedMagic {
             return removed;
         }
 
-        static bool IsWornNow(RE::TESBoundObject* base) {
-            if (!base) return false;
-
-            auto* player = RE::PlayerCharacter::GetSingleton();
-            if (!player) return false;
-
-            auto inv = player->GetInventory([base](RE::TESBoundObject& obj) { return &obj == base; });
-
-            for (auto const& [obj, data] : inv) {
-                if (obj != base) continue;
-
-                auto const* entry = data.second.get();
-                if (!entry || !entry->extraLists) continue;
-
-                for (auto* extra : *entry->extraLists) {
-                    if (!extra) continue;
-
-                    if (extra->HasType(RE::ExtraDataType::kWorn) || extra->HasType(RE::ExtraDataType::kWornLeft)) {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
+        bool IsWornNow(const InventoryIndex& idx, RE::TESBoundObject* base) {
+            return base && idx.wornBases.contains(base);
         }
 
-        void ReequipPrevExtraEquipped(RE::Actor* actor, RE::ActorEquipManager* mgr,
+        void ReequipPrevExtraEquipped(RE::Actor* actor, RE::ActorEquipManager* mgr, const InventoryIndex& idx,
                                       std::vector<MagicState::ExtraEquippedItem>& items) {
             if (!actor || !mgr) {
                 return;
@@ -186,13 +142,13 @@ namespace IntegratedMagic {
                     continue;
                 }
 
-                if (IsWornNow(it.base)) {
+                if (IsWornNow(idx, it.base)) {
                     continue;
                 }
 
-                RE::ExtraDataList* liveExtra = ResolveLiveExtra(it.base, it.extra);
+                RE::ExtraDataList* liveExtra = ResolveLiveExtra(idx, it.base, it.extra);
                 if (!liveExtra) {
-                    liveExtra = FindAnyInstanceExtraForBase(it.base);
+                    liveExtra = FindAnyInstanceExtraForBase(idx, it.base);
                 }
 
                 const bool isArmor = (it.base->GetFormType() == RE::FormType::Armor);
@@ -201,8 +157,7 @@ namespace IntegratedMagic {
                 const bool force = !isArmor;
                 const bool applyNow = isArmor;
 
-                mgr->EquipObject(actor, it.base,
-                                 /*extra*/ liveExtra, 1, nullptr, queue, force, true, applyNow);
+                mgr->EquipObject(actor, it.base, liveExtra, 1, nullptr, queue, force, true, applyNow);
             }
 
             items.clear();
@@ -249,8 +204,8 @@ namespace IntegratedMagic {
         if (spellFormID == 0) {
             return;
         }
-
-        if (auto const* spell = RE::TESForm::LookupByID<RE::SpellItem>(spellFormID); !spell) {
+        auto* spell = RE::TESForm::LookupByID<RE::SpellItem>(spellFormID);
+        if (!spell) {
             return;
         }
 
@@ -260,10 +215,8 @@ namespace IntegratedMagic {
         std::vector<ExtraEquippedItem> wornBefore;
         CaptureWornSnapshot(wornBefore);
 
-        auto* spell = RE::TESForm::LookupByID<RE::SpellItem>(spellFormID);
-        if (!spell) return;
-
         const auto settings = SpellSettingsDB::Get().GetOrCreate(spellFormID);
+        UpdatePrevExtraEquippedForOverlay([&] { MagicAction::EquipSpellInHand(player, spell, settings.hand); });
 
         std::vector<ExtraEquippedItem> wornAfter;
         CaptureWornSnapshot(wornAfter);
@@ -286,7 +239,8 @@ namespace IntegratedMagic {
         RestoreSnapshot(player);
 
         auto* mgr = RE::ActorEquipManager::GetSingleton();
-        ReequipPrevExtraEquipped(player, mgr, _prevExtraEquipped);
+        auto idx = BuildInventoryIndex(GetPlayer());
+        ReequipPrevExtraEquipped(player, mgr, idx, _prevExtraEquipped);
 
         _active = false;
         _activeSlot = -1;
@@ -341,8 +295,10 @@ namespace IntegratedMagic {
             return;
         }
 
-        const auto* rightSlot = GetHandEquipSlot(false);
-        const auto* leftSlot = GetHandEquipSlot(true);
+        const auto idx = BuildInventoryIndex(player);
+
+        const auto* rightSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(EquipHand::Right);
+        const auto* leftSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(EquipHand::Left);
 
         auto restoreOneHand = [&](bool leftHand, const ObjSnapshot& want, const RE::BGSEquipSlot* slot) {
             auto* curEntry = player->GetEquippedEntryData(leftHand);
@@ -353,9 +309,9 @@ namespace IntegratedMagic {
             if (want.base) {
                 auto* desiredBase = want.base;
 
-                RE::ExtraDataList* desiredExtra = ResolveLiveExtra(desiredBase, want.extra);
+                RE::ExtraDataList* desiredExtra = ResolveLiveExtra(idx, desiredBase, want.extra);
                 if (!desiredExtra && want.extra) {
-                    desiredExtra = FindAnyInstanceExtraForBase(desiredBase);
+                    desiredExtra = FindAnyInstanceExtraForBase(idx, desiredBase);
                 }
 
                 if (curBase == desiredBase && (!desiredExtra || desiredExtra == curExtra)) {
@@ -409,26 +365,33 @@ namespace IntegratedMagic {
     }
 
     void MagicState::UpdatePrevExtraEquippedForOverlay(const std::function<void()>& equipFn) {
-        std::vector<ExtraEquippedItem> before;
-        CaptureWornSnapshot(before);
+        auto* player = GetPlayer();
+        if (!player) {
+            return;
+        }
+
+        auto before = BuildInventoryIndex(player);
 
         equipFn();
 
-        std::vector<ExtraEquippedItem> after;
-        CaptureWornSnapshot(after);
+        auto after = BuildInventoryIndex(player);
 
-        auto removed = DiffWornSnapshot(before, after);
+        for (auto* base : before.wornBases) {
+            if (after.wornBases.contains(base)) {
+                continue;
+            }
 
-        for (auto const& r : removed) {
+            ExtraEquippedItem item{base, nullptr};
+
             bool exists = false;
             for (auto const& e : _prevExtraEquipped) {
-                if (e.base == r.base && e.extra == r.extra) {
+                if (e.base == item.base) {
                     exists = true;
                     break;
                 }
             }
             if (!exists) {
-                _prevExtraEquipped.push_back(r);
+                _prevExtraEquipped.push_back(item);
             }
         }
     }
