@@ -1,5 +1,7 @@
 #include "MagicAction.h"
 
+#include "MagicEquipSlots.h"
+
 namespace IntegratedMagic::MagicAction {
     namespace {
         inline void SetCasterSpell(RE::ActorMagicCaster* caster, RE::MagicItem* spell, bool select) {
@@ -24,20 +26,6 @@ namespace IntegratedMagic::MagicAction {
             if (caster) {
                 caster->SetDualCasting(dual);
             }
-        }
-
-        static const RE::BGSEquipSlot* GetHandEquipSlot(IntegratedMagic::EquipHand hand) {
-            using enum IntegratedMagic::EquipHand;
-
-            auto* dom = RE::BGSDefaultObjectManager::GetSingleton();
-            if (!dom) {
-                return nullptr;
-            }
-
-            const auto id = (hand == Left) ? RE::DefaultObjectID::kLeftHandEquip : RE::DefaultObjectID::kRightHandEquip;
-
-            auto** pp = dom->GetObject<RE::BGSEquipSlot>(id);
-            return pp ? *pp : nullptr;
         }
     }
 
@@ -71,8 +59,8 @@ namespace IntegratedMagic::MagicAction {
         SetCasterDual(leftCaster, false);
         SetCasterDual(rightCaster, false);
 
-        const auto* leftSlot = GetHandEquipSlot(EquipHand::Left);
-        const auto* rightSlot = GetHandEquipSlot(EquipHand::Right);
+        const auto* leftSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(EquipHand::Left);
+        const auto* rightSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(EquipHand::Right);
 
         switch (hand) {
             using enum IntegratedMagic::EquipHand;
@@ -96,6 +84,13 @@ namespace IntegratedMagic::MagicAction {
         }
     }
 
+    static RE::SpellItem* GetEquippedSpellFromCaster(RE::ActorMagicCaster* caster) {
+        if (!caster || !caster->currentSpell) {
+            return nullptr;
+        }
+        return caster->currentSpell->As<RE::SpellItem>();
+    }
+
     void ClearHandSpell(RE::PlayerCharacter* player, EquipHand hand) {
         if (!player) {
             return;
@@ -109,21 +104,25 @@ namespace IntegratedMagic::MagicAction {
         SetCasterDual(leftCaster, false);
         SetCasterDual(rightCaster, false);
 
+        auto deselect = [&](RE::ActorMagicCaster* caster) {
+            auto* curSpell = GetEquippedSpellFromCaster(caster);
+            if (curSpell) {
+                player->DeselectSpell(curSpell);
+            }
+        };
+
         switch (hand) {
             using enum IntegratedMagic::EquipHand;
-
             case Left:
-                SetCasterSpell(leftCaster, nullptr, true);
+                deselect(leftCaster);
                 break;
-
             case Right:
-                SetCasterSpell(rightCaster, nullptr, true);
+                deselect(rightCaster);
                 break;
-
             case Both:
             default:
-                SetCasterSpell(leftCaster, nullptr, true);
-                SetCasterSpell(rightCaster, nullptr, true);
+                deselect(leftCaster);
+                deselect(rightCaster);
                 break;
         }
     }
