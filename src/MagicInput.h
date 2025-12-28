@@ -11,4 +11,5 @@ namespace MagicInput {
     int PollCapturedHotkey();
     std::optional<int> ConsumePressedSlot();
     std::optional<int> ConsumeReleasedSlot();
+    void HandleAnimEvent(const RE::BSAnimationGraphEvent* ev, RE::BSTEventSource<RE::BSAnimationGraphEvent>*);
 }

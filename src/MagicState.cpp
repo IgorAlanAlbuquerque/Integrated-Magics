@@ -1,6 +1,10 @@
 #include "MagicState.h"
 
+#include <mutex>
+#include <queue>
+#include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "MagicAction.h"
 #include "MagicEquipSlots.h"
@@ -9,6 +13,97 @@
 #include "SpellSettingsDB.h"
 
 namespace IntegratedMagic {
+    namespace detail {
+        namespace {
+            constexpr std::uint32_t kRightAttackMouseId = 0;
+            constexpr std::uint32_t kLeftAttackMouseId = 1;
+
+            RE::BSFixedString& RightAttackEvent() {
+                static RE::BSFixedString ev{"Right Attack/Block"};
+                return ev;
+            }
+            RE::BSFixedString& LeftAttackEvent() {
+                static RE::BSFixedString ev{"Left Attack/Block"};
+                return ev;
+            }
+
+            struct SyntheticInputState {
+                std::mutex mutex;
+                std::queue<RE::ButtonEvent*> pending;
+            };
+
+            SyntheticInputState& GetSynth() {
+                static SyntheticInputState s;  // NOSONAR
+                return s;
+            }
+
+            RE::ButtonEvent* MakeAttackButtonEvent(bool leftHand, float value, float heldSecs) {
+                const auto& ue = leftHand ? LeftAttackEvent() : RightAttackEvent();
+                const auto id = leftHand ? kLeftAttackMouseId : kRightAttackMouseId;
+                return RE::ButtonEvent::Create(RE::INPUT_DEVICE::kMouse, ue, id, value, heldSecs);
+            }
+        }
+
+        void EnqueueSyntheticAttack(RE::ButtonEvent* ev) {
+            if (!ev) {
+                return;
+            }
+
+            auto& st = GetSynth();
+            std::scoped_lock lk(st.mutex);
+            st.pending.push(ev);
+        }
+
+        void DispatchAttack(EquipHand hand, float value, float heldSecs) {
+            using enum EquipHand;
+            if (hand == Left || hand == Both) {
+                EnqueueSyntheticAttack(MakeAttackButtonEvent(true, value, heldSecs));
+            }
+            if (hand == Right || hand == Both) {
+                EnqueueSyntheticAttack(MakeAttackButtonEvent(false, value, heldSecs));
+            }
+        }
+
+        RE::InputEvent* FlushSyntheticInput(RE::InputEvent* head) {
+            auto& st = GetSynth();
+
+            std::queue<RE::ButtonEvent*> local;
+            {
+                std::scoped_lock lk(st.mutex);
+                local.swap(st.pending);
+            }
+
+            if (local.empty()) {
+                return head;
+            }
+
+            RE::InputEvent* synthHead = nullptr;
+            RE::InputEvent* synthTail = nullptr;
+
+            while (!local.empty()) {
+                auto* ev = local.front();
+                local.pop();
+                if (!ev) {
+                    continue;
+                }
+
+                ev->next = nullptr;
+                if (!synthHead) {
+                    synthHead = ev;
+                    synthTail = ev;
+                } else {
+                    synthTail->next = ev;
+                    synthTail = ev;
+                }
+            }
+
+            if (!head) {
+                return synthHead;
+            }
+            synthTail->next = head;
+            return synthHead;
+        }
+    }
     namespace {
         struct InventoryIndex {
             std::unordered_map<RE::TESBoundObject*, std::vector<RE::ExtraDataList*>> extrasByBase;
@@ -76,59 +171,22 @@ namespace IntegratedMagic {
             return it->second.front();
         }
 
-        void CaptureWornSnapshot(std::vector<MagicState::ExtraEquippedItem>& out) {
-            out.clear();
-
-            auto* player = RE::PlayerCharacter::GetSingleton();
-            if (!player) {
-                return;
-            }
-
-            auto inv = player->GetInventory([](RE::TESBoundObject&) { return true; });
-
-            for (auto const& [obj, data] : inv) {
-                auto const* entry = data.second.get();
-                if (!obj || !entry || !entry->extraLists) {
-                    continue;
-                }
-
-                for (auto* extra : *entry->extraLists) {
-                    if (!extra) {
-                        continue;
-                    }
-
-                    const bool worn = extra->HasType(RE::ExtraDataType::kWorn);
-                    const bool wornLeft = extra->HasType(RE::ExtraDataType::kWornLeft);
-
-                    if (worn || wornLeft) {
-                        out.push_back({obj, extra});
-                    }
-                }
-            }
-        }
-
-        std::vector<MagicState::ExtraEquippedItem> DiffWornSnapshot(
-            const std::vector<MagicState::ExtraEquippedItem>& before,
-            const std::vector<MagicState::ExtraEquippedItem>& after) {
-            std::vector<MagicState::ExtraEquippedItem> removed;
-
-            for (auto const& b : before) {
-                bool stillWorn = false;
-                for (auto const& a : after) {
-                    if (a.base == b.base && a.extra == b.extra) {
-                        stillWorn = true;
-                        break;
-                    }
-                }
-                if (!stillWorn) {
-                    removed.push_back(b);
-                }
-            }
-            return removed;
-        }
-
         bool IsWornNow(const InventoryIndex& idx, RE::TESBoundObject* base) {
             return base && idx.wornBases.contains(base);
+        }
+
+        bool IsEquippedInHands(RE::Actor* actor, RE::TESBoundObject* base) {
+            if (!actor || !base) {
+                return false;
+            }
+
+            auto* leftEntry = actor->GetEquippedEntryData(true);
+            auto* rightEntry = actor->GetEquippedEntryData(false);
+
+            auto const* leftObj = leftEntry ? leftEntry->GetObject() : nullptr;
+            auto const* rightObj = rightEntry ? rightEntry->GetObject() : nullptr;
+
+            return leftObj == base || rightObj == base;
         }
 
         void ReequipPrevExtraEquipped(RE::Actor* actor, RE::ActorEquipManager* mgr, const InventoryIndex& idx,
@@ -146,6 +204,10 @@ namespace IntegratedMagic {
                     continue;
                 }
 
+                if (IsEquippedInHands(actor, it.base)) {
+                    continue;
+                }
+
                 RE::ExtraDataList* liveExtra = ResolveLiveExtra(idx, it.base, it.extra);
                 if (!liveExtra) {
                     liveExtra = FindAnyInstanceExtraForBase(idx, it.base);
@@ -153,16 +215,11 @@ namespace IntegratedMagic {
 
                 const bool isArmor = (it.base->GetFormType() == RE::FormType::Armor);
 
-                const bool queue = false;
-                const bool force = !isArmor;
-                const bool applyNow = isArmor;
-
-                mgr->EquipObject(actor, it.base, liveExtra, 1, nullptr, queue, force, true, applyNow);
+                mgr->EquipObject(actor, it.base, liveExtra, 1, nullptr, true, false, true, isArmor);
             }
 
             items.clear();
         }
-
     }
 
     MagicState& MagicState::Get() {
@@ -175,6 +232,10 @@ namespace IntegratedMagic {
     int MagicState::ActiveSlot() const { return _activeSlot; }
 
     void MagicState::TogglePress(int slot) {
+        if (_holdActive) {
+            return;
+        }
+
         if (slot < 0 || slot >= 4) {
             return;
         }
@@ -185,7 +246,7 @@ namespace IntegratedMagic {
         }
 
         if (_activeSlot == slot) {
-            ExitPress();
+            ExitAll();
             return;
         }
 
@@ -196,55 +257,21 @@ namespace IntegratedMagic {
 
     void MagicState::EnterPress(int slot) {
         auto* player = GetPlayer();
-        if (!player) {
-            return;
-        }
+        if (!player) return;
 
-        const std::uint32_t spellFormID = MagicSlots::GetSlotSpell(slot);
-        if (spellFormID == 0) {
-            return;
-        }
-        auto* spell = RE::TESForm::LookupByID<RE::SpellItem>(spellFormID);
-        if (!spell) {
-            return;
-        }
+        const auto spellFormID = MagicSlots::GetSlotSpell(slot);
+        if (spellFormID == 0) return;
+
+        if (auto const* spell = RE::TESForm::LookupByID<RE::SpellItem>(spellFormID); !spell) return;
 
         CaptureSnapshot(player);
 
         _prevExtraEquipped.clear();
-        std::vector<ExtraEquippedItem> wornBefore;
-        CaptureWornSnapshot(wornBefore);
 
-        const auto settings = SpellSettingsDB::Get().GetOrCreate(spellFormID);
-        UpdatePrevExtraEquippedForOverlay([&] { MagicAction::EquipSpellInHand(player, spell, settings.hand); });
-
-        std::vector<ExtraEquippedItem> wornAfter;
-        CaptureWornSnapshot(wornAfter);
-
-        _prevExtraEquipped = DiffWornSnapshot(wornBefore, wornAfter);
+        ApplyPress(slot);
 
         _active = true;
         _activeSlot = slot;
-    }
-
-    void MagicState::ExitPress() {
-        auto* player = GetPlayer();
-        if (!player) {
-            _active = false;
-            _activeSlot = -1;
-            _snap = {};
-            return;
-        }
-
-        RestoreSnapshot(player);
-
-        auto* mgr = RE::ActorEquipManager::GetSingleton();
-        auto idx = BuildInventoryIndex(GetPlayer());
-        ReequipPrevExtraEquipped(player, mgr, idx, _prevExtraEquipped);
-
-        _active = false;
-        _activeSlot = -1;
-        _snap = {};
     }
 
     void MagicState::CaptureSnapshot(RE::PlayerCharacter* player) {
@@ -314,17 +341,17 @@ namespace IntegratedMagic {
                     desiredExtra = FindAnyInstanceExtraForBase(idx, desiredBase);
                 }
 
-                if (curBase == desiredBase && (!desiredExtra || desiredExtra == curExtra)) {
+                if (curBase == desiredBase) {
                     return;
                 }
 
-                mgr->EquipObject(player, desiredBase, desiredExtra, 1, slot, true, true, true, false);
+                mgr->EquipObject(player, desiredBase, desiredExtra, 1, slot, true, false, true, false);
             } else {
                 if (!curBase) {
                     return;
                 }
 
-                mgr->UnequipObject(player, curBase, curExtra, 1, slot, true, true, true, false, nullptr);
+                mgr->UnequipObject(player, curBase, curExtra, 1, slot, true, false, true, false, nullptr);
             }
         };
 
@@ -334,16 +361,18 @@ namespace IntegratedMagic {
         auto* leftSpell = _snap.leftSpell ? _snap.leftSpell->As<RE::SpellItem>() : nullptr;
         auto* rightSpell = _snap.rightSpell ? _snap.rightSpell->As<RE::SpellItem>() : nullptr;
 
-        if (leftSpell) {
-            MagicAction::EquipSpellInHand(player, leftSpell, EquipHand::Left);
-        } else {
+        if (!leftSpell) {
             MagicAction::ClearHandSpell(player, EquipHand::Left);
         }
+        if (!rightSpell) {
+            MagicAction::ClearHandSpell(player, EquipHand::Right);
+        }
 
+        if (leftSpell) {
+            MagicAction::EquipSpellInHand(player, leftSpell, EquipHand::Left);
+        }
         if (rightSpell) {
             MagicAction::EquipSpellInHand(player, rightSpell, EquipHand::Right);
-        } else {
-            MagicAction::ClearHandSpell(player, EquipHand::Right);
         }
     }
 
@@ -393,6 +422,157 @@ namespace IntegratedMagic {
             if (!exists) {
                 _prevExtraEquipped.push_back(item);
             }
+        }
+    }
+
+    void MagicState::HoldDown(int slot) {
+        if (slot < 0 || slot >= 4) {
+            return;
+        }
+
+        if (_holdActive) {
+            return;
+        }
+
+        EnterHold(slot);
+    }
+
+    void MagicState::HoldUp(int slot) {
+        if (!_holdActive) {
+            return;
+        }
+
+        if (slot != _holdSlot) {
+            return;
+        }
+
+        ExitAll();
+    }
+
+    void MagicState::EnterHold(int slot) {
+        auto* player = GetPlayer();
+        if (!player) {
+            return;
+        }
+
+        const std::uint32_t spellFormID = MagicSlots::GetSlotSpell(slot);
+        if (spellFormID == 0) {
+            return;
+        }
+
+        auto* spell = RE::TESForm::LookupByID<RE::SpellItem>(spellFormID);
+        if (!spell) {
+            return;
+        }
+
+        const auto ss = SpellSettingsDB::Get().GetOrCreate(spellFormID);
+
+        if (!_active) {
+            CaptureSnapshot(player);
+            _prevExtraEquipped.clear();
+            _active = true;
+            _activeSlot = slot;
+        }
+
+        _holdActive = true;
+        _holdSlot = slot;
+
+        if (ss.autoAttack) {
+            _waitingAutoAfterEquip = true;
+            _waitingAutoHand = ss.hand;
+
+            _attackEnabled = false;
+        } else {
+            StopAutoAttack();
+            _waitingAutoAfterEquip = false;
+        }
+
+        UpdatePrevExtraEquippedForOverlay([&] { MagicAction::EquipSpellInHand(player, spell, ss.hand); });
+    }
+
+    void MagicState::ExitAll() {
+        auto* player = GetPlayer();
+        if (!player) {
+            return;
+        }
+
+        StopAutoAttack();
+
+        RestoreSnapshot(player);
+
+        auto* mgr = RE::ActorEquipManager::GetSingleton();
+        auto idx = BuildInventoryIndex(player);
+        if (mgr) {
+            ReequipPrevExtraEquipped(player, mgr, idx, _prevExtraEquipped);
+        }
+        _prevExtraEquipped.clear();
+
+        _holdActive = false;
+        _holdSlot = -1;
+
+        _active = false;
+        _activeSlot = -1;
+
+        _snap.valid = false;
+    }
+
+    void MagicState::StartAutoAttack(EquipHand hand) {
+        _autoAttackHeld = true;
+        _autoAttackHand = hand;
+        _autoAttackSecs = 0.0f;
+
+        IntegratedMagic::detail::DispatchAttack(hand, 1.0f, 0.0f);
+    }
+
+    void MagicState::StopAutoAttack() {
+        if (!_autoAttackHeld) {
+            return;
+        }
+
+        const float held = (_autoAttackSecs > 0.0f) ? _autoAttackSecs : 0.1f;
+
+        IntegratedMagic::detail::DispatchAttack(_autoAttackHand, 0.0f, held);
+
+        _autoAttackHeld = false;
+        _autoAttackSecs = 0.0f;
+    }
+
+    void MagicState::PumpAutoAttack(float dt) {
+        if (!_autoAttackHeld) {
+            return;
+        }
+
+        _autoAttackSecs += (dt > 0.0f ? dt : 0.0f);
+
+        IntegratedMagic::detail::DispatchAttack(_autoAttackHand, 1.0f, _autoAttackSecs);
+    }
+
+    void MagicState::RequestAutoAttackStart(EquipHand hand) {
+        _waitingAutoAfterEquip = true;
+        _waitingAutoHand = hand;
+
+        if (_attackEnabled) {
+            TryStartWaitingAutoAttack();
+        }
+    }
+
+    void MagicState::NotifyAttackEnabled() {
+        _attackEnabled = true;
+        TryStartWaitingAutoAttack();
+    }
+
+    void MagicState::TryStartWaitingAutoAttack() {
+        if (!_waitingAutoAfterEquip) {
+            return;
+        }
+        if (!_holdActive) {
+            return;
+        }
+
+        _waitingAutoAfterEquip = false;
+
+        if (!_autoAttackHeld) {
+            StartAutoAttack(_waitingAutoHand);
         }
     }
 }
