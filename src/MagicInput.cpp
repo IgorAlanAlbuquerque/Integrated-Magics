@@ -2,6 +2,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <optional>
 
@@ -104,6 +105,10 @@ namespace {
     }
 
     void HandleSlotPressed(int slot) {
+        if (auto const& st = IntegratedMagic::MagicState::Get(); st.IsHoldActive()) {
+            return;
+        }
+
         if (slot < 0 || slot >= kSlots) {
             return;
         }
@@ -113,17 +118,42 @@ namespace {
         }
 
         const std::uint32_t spellFormID = IntegratedMagic::MagicSlots::GetSlotSpell(slot);
-
         if (spellFormID == 0) {
             return;
         }
 
-        if (const auto ss = IntegratedMagic::SpellSettingsDB::Get().GetOrCreate(spellFormID);
-            ss.mode != IntegratedMagic::ActivationMode::Press) {
+        const auto ss = IntegratedMagic::SpellSettingsDB::Get().GetOrCreate(spellFormID);
+
+        if (ss.mode == IntegratedMagic::ActivationMode::Press) {
+            IntegratedMagic::MagicState::Get().TogglePress(slot);
+            return;
+        }
+
+        if (ss.mode == IntegratedMagic::ActivationMode::Hold) {
+            IntegratedMagic::MagicState::Get().HoldDown(slot);
             return;
         }
 
         IntegratedMagic::MagicState::Get().TogglePress(slot);
+    }
+
+    void HandleSlotReleased(int slot) {
+        if (slot < 0 || slot >= kSlots) {
+            return;
+        }
+
+        const std::uint32_t spellFormID = IntegratedMagic::MagicSlots::GetSlotSpell(slot);
+        if (spellFormID == 0) {
+            return;
+        }
+
+        const auto ss = IntegratedMagic::SpellSettingsDB::Get().GetOrCreate(spellFormID);
+
+        if (ss.mode != IntegratedMagic::ActivationMode::Hold) {
+            return;
+        }
+
+        IntegratedMagic::MagicState::Get().HoldUp(slot);
     }
 
     bool SlotComboDown(int slot) {
@@ -153,6 +183,19 @@ namespace {
                 }
             }
         }
+    }
+    float CalculateDeltaTime() {
+        using clock = std::chrono::steady_clock;
+        static clock::time_point last = clock::now();
+
+        const auto now = clock::now();
+        float dt = std::chrono::duration<float>(now - last).count();
+        last = now;
+
+        if (dt < 0.0f || dt > 0.25f) {
+            dt = 0.0f;
+        }
+        return dt;
     }
 
     std::optional<int> ConsumeBit(std::atomic_uint8_t& maskAtomic) {
@@ -261,19 +304,29 @@ namespace {
                 }
             }
 
+            const float dt = CalculateDeltaTime();
+
             RecomputeSlotEdges();
 
             if (IsInputBlockedByMenus()) {
                 while (MagicInput::ConsumePressedSlot()) {
                 }
-                while (MagicInput::ConsumeReleasedSlot()) {
+                while (auto slot = MagicInput::ConsumeReleasedSlot()) {
+                    HandleSlotReleased(*slot);
                 }
+
                 return RE::BSEventNotifyControl::kContinue;
             }
 
             while (auto slot = MagicInput::ConsumePressedSlot()) {
                 HandleSlotPressed(*slot);
             }
+
+            while (auto slot = MagicInput::ConsumeReleasedSlot()) {
+                HandleSlotReleased(*slot);
+            }
+
+            IntegratedMagic::MagicState::Get().PumpAutoAttack(dt);
 
             return RE::BSEventNotifyControl::kContinue;
         }
@@ -325,3 +378,16 @@ int MagicInput::PollCapturedHotkey() {
 std::optional<int> MagicInput::ConsumePressedSlot() { return ConsumeBit(g_pressedMask); }
 
 std::optional<int> MagicInput::ConsumeReleasedSlot() { return ConsumeBit(g_releasedMask); }
+
+void MagicInput::HandleAnimEvent(const RE::BSAnimationGraphEvent* ev, RE::BSTEventSource<RE::BSAnimationGraphEvent>*) {
+    if (!ev || !ev->holder) return;
+
+    auto* actor = ev->holder->As<RE::Actor>();
+    auto* player = RE::PlayerCharacter::GetSingleton();
+    if (!actor || actor != player) return;
+
+    std::string_view tag{ev->tag.c_str(), ev->tag.size()};
+    if (tag == "EnableBumper"sv) {
+        IntegratedMagic::MagicState::Get().NotifyAttackEnabled();
+    }
+}

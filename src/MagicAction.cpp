@@ -84,6 +84,13 @@ namespace IntegratedMagic::MagicAction {
         }
     }
 
+    static RE::SpellItem* GetEquippedSpellFromCaster(RE::ActorMagicCaster* caster) {
+        if (!caster || !caster->currentSpell) {
+            return nullptr;
+        }
+        return caster->currentSpell->As<RE::SpellItem>();
+    }
+
     void ClearHandSpell(RE::PlayerCharacter* player, EquipHand hand) {
         if (!player) {
             return;
@@ -97,21 +104,25 @@ namespace IntegratedMagic::MagicAction {
         SetCasterDual(leftCaster, false);
         SetCasterDual(rightCaster, false);
 
+        auto deselect = [&](RE::ActorMagicCaster* caster) {
+            auto* curSpell = GetEquippedSpellFromCaster(caster);
+            if (curSpell) {
+                player->DeselectSpell(curSpell);
+            }
+        };
+
         switch (hand) {
             using enum IntegratedMagic::EquipHand;
-
             case Left:
-                SetCasterSpell(leftCaster, nullptr, true);
+                deselect(leftCaster);
                 break;
-
             case Right:
-                SetCasterSpell(rightCaster, nullptr, true);
+                deselect(rightCaster);
                 break;
-
             case Both:
             default:
-                SetCasterSpell(leftCaster, nullptr, true);
-                SetCasterSpell(rightCaster, nullptr, true);
+                deselect(leftCaster);
+                deselect(rightCaster);
                 break;
         }
     }
