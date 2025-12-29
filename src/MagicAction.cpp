@@ -4,28 +4,21 @@
 
 namespace IntegratedMagic::MagicAction {
     namespace {
-        inline void SetCasterSpell(RE::ActorMagicCaster* caster, RE::MagicItem* spell, bool select) {
-            if (!caster) {
-                return;
-            }
-
-            caster->SetCurrentSpellImpl(spell);
-
-            if (!select) {
-                return;
-            }
-
-            if (spell) {
-                caster->SelectSpellImpl();
-            } else {
-                caster->DeselectSpellImpl();
-            }
-        }
-
         inline void SetCasterDual(RE::ActorMagicCaster* caster, bool dual) {
             if (caster) {
                 caster->SetDualCasting(dual);
             }
+        }
+
+        void UnEquipSpell(RE::PlayerCharacter* pc, RE::SpellItem* spell, int hand) {
+            auto aeMan = RE::ActorEquipManager::GetSingleton();
+            if (!aeMan || !pc || !spell) {
+                return;
+            }
+
+            using func_t = void (RE::ActorEquipManager::*)(RE::Actor*, RE::SpellItem*, int);
+            REL::Relocation<func_t> func{RELOCATION_ID(37947, 38903)};
+            return func(aeMan, pc, spell, hand);
         }
     }
 
@@ -48,7 +41,6 @@ namespace IntegratedMagic::MagicAction {
         }
 
         IntegratedMagic::MagicSelect::ScopedSuppressSelection suppress{};
-
         auto* mgr = RE::ActorEquipManager::GetSingleton();
         if (!mgr) {
             return;
@@ -56,6 +48,7 @@ namespace IntegratedMagic::MagicAction {
 
         auto* leftCaster = GetCaster(player, RE::MagicSystem::CastingSource::kLeftHand);
         auto* rightCaster = GetCaster(player, RE::MagicSystem::CastingSource::kRightHand);
+
         SetCasterDual(leftCaster, false);
         SetCasterDual(rightCaster, false);
 
@@ -64,20 +57,16 @@ namespace IntegratedMagic::MagicAction {
 
         switch (hand) {
             using enum IntegratedMagic::EquipHand;
-
             case Left:
                 mgr->EquipSpell(player, spell, leftSlot);
                 break;
-
             case Right:
                 mgr->EquipSpell(player, spell, rightSlot);
                 break;
-
             case Both:
             default:
                 mgr->EquipSpell(player, spell, leftSlot);
                 mgr->EquipSpell(player, spell, rightSlot);
-
                 SetCasterDual(leftCaster, true);
                 SetCasterDual(rightCaster, true);
                 break;
@@ -85,14 +74,22 @@ namespace IntegratedMagic::MagicAction {
     }
 
     static RE::SpellItem* GetEquippedSpellFromCaster(RE::ActorMagicCaster* caster) {
-        if (!caster || !caster->currentSpell) {
+        if (!caster) {
             return nullptr;
         }
-        return caster->currentSpell->As<RE::SpellItem>();
+        if (!caster->currentSpell) {
+            return nullptr;
+        }
+        auto* sp = caster->currentSpell->As<RE::SpellItem>();
+
+        return sp;
     }
 
-    void ClearHandSpell(RE::PlayerCharacter* player, EquipHand hand) {
+    void ClearHandSpell(RE::PlayerCharacter* player, RE::SpellItem* spell, EquipHand hand) {
         if (!player) {
+            return;
+        }
+        if (!spell) {
             return;
         }
 
@@ -104,26 +101,32 @@ namespace IntegratedMagic::MagicAction {
         SetCasterDual(leftCaster, false);
         SetCasterDual(rightCaster, false);
 
-        auto deselect = [&](RE::ActorMagicCaster* caster) {
-            auto* curSpell = GetEquippedSpellFromCaster(caster);
-            if (curSpell) {
-                player->DeselectSpell(curSpell);
-            }
-        };
-
         switch (hand) {
             using enum IntegratedMagic::EquipHand;
             case Left:
-                deselect(leftCaster);
+                UnEquipSpell(player, spell, 0);
                 break;
             case Right:
-                deselect(rightCaster);
+                UnEquipSpell(player, spell, 1);
                 break;
-            case Both:
             default:
-                deselect(leftCaster);
-                deselect(rightCaster);
                 break;
         }
+    }
+
+    void ClearHandSpell(RE::PlayerCharacter* player, EquipHand hand) {
+        if (!player) {
+            return;
+        }
+
+        auto* caster = (hand == EquipHand::Left) ? GetCaster(player, RE::MagicSystem::CastingSource::kLeftHand)
+                                                 : GetCaster(player, RE::MagicSystem::CastingSource::kRightHand);
+
+        auto* cur = GetEquippedSpellFromCaster(caster);
+        if (!cur) {
+            return;
+        }
+
+        ClearHandSpell(player, cur, hand);
     }
 }

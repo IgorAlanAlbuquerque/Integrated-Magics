@@ -220,6 +220,44 @@ namespace IntegratedMagic {
 
             items.clear();
         }
+
+        float GetPlayerMagicka(RE::PlayerCharacter* player) {
+            if (!player) {
+                return 0.0f;
+            }
+
+            if (auto const* avo = player->AsActorValueOwner(); avo) {
+                return avo->GetActorValue(RE::ActorValue::kMagicka);
+            }
+
+            return 0.0f;
+        }
+
+        float GetSpellMagickaCost(RE::PlayerCharacter* player, RE::SpellItem* spell, IntegratedMagic::EquipHand hand) {
+            if (!player || !spell) {
+                return 0.0f;
+            }
+
+            float cost = spell->CalculateMagickaCost(player);
+
+            if (hand == EquipHand::Both) {
+                cost *= 2.8f;
+            }
+
+            return cost;
+        }
+
+        bool HasEnoughMagickaForSpell(RE::PlayerCharacter* player, RE::SpellItem* spell,
+                                      IntegratedMagic::EquipHand hand) {
+            const float mag = GetPlayerMagicka(player);
+            const float cost = GetSpellMagickaCost(player, spell, hand);
+
+            if (cost <= 0.0f) {
+                return true;
+            }
+            const bool ok = (mag + 1e-2f) >= cost;
+            return ok;
+        }
     }
 
     MagicState& MagicState::Get() {
@@ -232,7 +270,7 @@ namespace IntegratedMagic {
     int MagicState::ActiveSlot() const { return _activeSlot; }
 
     void MagicState::TogglePress(int slot) {
-        if (_holdActive) {
+        if (_holdActive || _autoActive) {
             return;
         }
 
@@ -327,6 +365,25 @@ namespace IntegratedMagic {
         const auto* rightSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(EquipHand::Right);
         const auto* leftSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(EquipHand::Left);
 
+        auto* leftSpell = _snap.leftSpell ? _snap.leftSpell->As<RE::SpellItem>() : nullptr;
+        auto* rightSpell = _snap.rightSpell ? _snap.rightSpell->As<RE::SpellItem>() : nullptr;
+
+        if (!leftSpell) {
+            if (_modeSpellLeft) {
+                MagicAction::ClearHandSpell(player, _modeSpellLeft, EquipHand::Left);
+            } else {
+                MagicAction::ClearHandSpell(player, EquipHand::Left);
+            }
+        }
+
+        if (!rightSpell) {
+            if (_modeSpellRight) {
+                MagicAction::ClearHandSpell(player, _modeSpellRight, EquipHand::Right);
+            } else {
+                MagicAction::ClearHandSpell(player, EquipHand::Right);
+            }
+        }
+
         auto restoreOneHand = [&](bool leftHand, const ObjSnapshot& want, const RE::BGSEquipSlot* slot) {
             auto* curEntry = player->GetEquippedEntryData(leftHand);
             auto* curObj = curEntry ? curEntry->GetObject() : nullptr;
@@ -358,16 +415,6 @@ namespace IntegratedMagic {
         restoreOneHand(false, _snap.rightObj, rightSlot);
         restoreOneHand(true, _snap.leftObj, leftSlot);
 
-        auto* leftSpell = _snap.leftSpell ? _snap.leftSpell->As<RE::SpellItem>() : nullptr;
-        auto* rightSpell = _snap.rightSpell ? _snap.rightSpell->As<RE::SpellItem>() : nullptr;
-
-        if (!leftSpell) {
-            MagicAction::ClearHandSpell(player, EquipHand::Left);
-        }
-        if (!rightSpell) {
-            MagicAction::ClearHandSpell(player, EquipHand::Right);
-        }
-
         if (leftSpell) {
             MagicAction::EquipSpellInHand(player, leftSpell, EquipHand::Left);
         }
@@ -387,6 +434,22 @@ namespace IntegratedMagic {
         if (!spell) return false;
 
         const auto settings = SpellSettingsDB::Get().GetOrCreate(spellFormID);
+
+        _modeSpellLeft = nullptr;
+        _modeSpellRight = nullptr;
+
+        switch (settings.hand) {
+            case EquipHand::Left:
+                _modeSpellLeft = spell;
+                break;
+            case EquipHand::Right:
+                _modeSpellRight = spell;
+                break;
+            case EquipHand::Both:
+                _modeSpellLeft = spell;
+                _modeSpellRight = spell;
+                break;
+        }
 
         UpdatePrevExtraEquippedForOverlay([&] { MagicAction::EquipSpellInHand(player, spell, settings.hand); });
 
@@ -430,7 +493,7 @@ namespace IntegratedMagic {
             return;
         }
 
-        if (_holdActive) {
+        if (_holdActive || _autoActive) {
             return;
         }
 
@@ -474,6 +537,22 @@ namespace IntegratedMagic {
             _activeSlot = slot;
         }
 
+        _modeSpellLeft = nullptr;
+        _modeSpellRight = nullptr;
+
+        switch (ss.hand) {
+            case EquipHand::Left:
+                _modeSpellLeft = spell;
+                break;
+            case EquipHand::Right:
+                _modeSpellRight = spell;
+                break;
+            case EquipHand::Both:
+                _modeSpellLeft = spell;
+                _modeSpellRight = spell;
+                break;
+        }
+
         _holdActive = true;
         _holdSlot = slot;
 
@@ -505,15 +584,36 @@ namespace IntegratedMagic {
         if (mgr) {
             ReequipPrevExtraEquipped(player, mgr, idx, _prevExtraEquipped);
         }
-        _prevExtraEquipped.clear();
 
         _holdActive = false;
         _holdSlot = -1;
 
+        _autoActive = false;
+        _autoSlot = -1;
+        _autoHand = EquipHand::Right;
+        _autoWaitingChargeComplete = false;
+
         _active = false;
         _activeSlot = -1;
 
+        _waitingAutoAfterEquip = false;
+        _waitingAutoHand = EquipHand::Right;
+        _attackEnabled = false;
+
+        _autoAttackHeld = false;
+        _autoAttackHand = EquipHand::Right;
+        _autoAttackSecs = 0.0f;
+        _autoChargeComplete = false;
+        _modeSpellLeft = nullptr;
+        _modeSpellRight = nullptr;
+
         _snap.valid = false;
+    }
+
+    void MagicState::AutoExit() {
+        if (_autoChargeComplete) {
+            ExitAll();
+        }
     }
 
     void MagicState::StartAutoAttack(EquipHand hand) {
@@ -557,6 +657,7 @@ namespace IntegratedMagic {
     }
 
     void MagicState::NotifyAttackEnabled() {
+        if (!(_holdActive || _autoActive)) return;
         _attackEnabled = true;
         TryStartWaitingAutoAttack();
     }
@@ -565,14 +666,160 @@ namespace IntegratedMagic {
         if (!_waitingAutoAfterEquip) {
             return;
         }
-        if (!_holdActive) {
+        if (!(_holdActive || _autoActive)) {
             return;
         }
 
         _waitingAutoAfterEquip = false;
-
         if (!_autoAttackHeld) {
             StartAutoAttack(_waitingAutoHand);
+        }
+    }
+
+    void MagicState::EnterAutomatic(int slot) {
+        if (slot < 0 || slot >= 4) {
+            return;
+        }
+
+        if (_holdActive || _autoActive) {
+            return;
+        }
+
+        auto* player = GetPlayer();
+        if (!player) {
+            return;
+        }
+
+        const std::uint32_t spellFormID = MagicSlots::GetSlotSpell(slot);
+
+        if (spellFormID == 0) {
+            return;
+        }
+
+        auto* spell = RE::TESForm::LookupByID<RE::SpellItem>(spellFormID);
+        if (!spell) {
+            return;
+        }
+
+        const auto ss = SpellSettingsDB::Get().GetOrCreate(spellFormID);
+
+        if (!HasEnoughMagickaForSpell(player, spell, ss.hand)) return;
+
+        if (!_active) {
+            CaptureSnapshot(player);
+            _prevExtraEquipped.clear();
+            _active = true;
+            _activeSlot = slot;
+        }
+
+        _modeSpellLeft = nullptr;
+        _modeSpellRight = nullptr;
+
+        switch (ss.hand) {
+            case EquipHand::Left:
+                _modeSpellLeft = spell;
+                break;
+            case EquipHand::Right:
+                _modeSpellRight = spell;
+                break;
+            case EquipHand::Both:
+                _modeSpellLeft = spell;
+                _modeSpellRight = spell;
+                break;
+        }
+
+        _autoActive = true;
+        _autoSlot = slot;
+        _autoHand = ss.hand;
+        _autoWaitingChargeComplete = true;
+
+        _attackEnabled = false;
+        RequestAutoAttackStart(ss.hand);
+
+        UpdatePrevExtraEquippedForOverlay([&] { MagicAction::EquipSpellInHand(player, spell, ss.hand); });
+    }
+
+    void MagicState::ToggleAutomatic(int slot) {
+        if (_holdActive || _autoActive) {
+            return;
+        }
+
+        if (slot < 0 || slot >= 4) {
+            return;
+        }
+
+        EnterAutomatic(slot);
+    }
+
+    void MagicState::PumpAutomatic() {
+        if (!_autoActive || !_autoWaitingChargeComplete) {
+            return;
+        }
+
+        auto* player = GetPlayer();
+        if (!player) {
+            ExitAll();
+            return;
+        }
+
+        const std::uint32_t spellFormID = MagicSlots::GetSlotSpell(_autoSlot);
+        if (spellFormID == 0) {
+            StopAutoAttack();
+            ExitAll();
+            return;
+        }
+
+        auto const* spell = RE::TESForm::LookupByID<RE::SpellItem>(spellFormID);
+        if (!spell) {
+            StopAutoAttack();
+            ExitAll();
+            return;
+        }
+
+        auto* leftCaster = MagicAction::GetCaster(player, RE::MagicSystem::CastingSource::kLeftHand);
+        auto* rightCaster = MagicAction::GetCaster(player, RE::MagicSystem::CastingSource::kRightHand);
+
+        const float charge = spell->GetChargeTime();
+
+        auto charged = [&](RE::ActorMagicCaster* caster) {
+            if (!caster) {
+                return false;
+            }
+
+            if (charge <= 0.0f) {
+                return true;
+            }
+
+            const auto st = caster->state.get();
+
+            if (st == RE::MagicCaster::State::kReady) {
+                return true;
+            }
+            if (st == RE::MagicCaster::State::kCharging) {
+                return caster->castingTimer + 1e-3f >= charge;
+            }
+
+            return false;
+        };
+
+        bool done = false;
+        switch (_autoHand) {
+            case EquipHand::Left:
+                done = charged(leftCaster);
+                break;
+            case EquipHand::Right:
+                done = charged(rightCaster);
+                break;
+            case EquipHand::Both:
+            default:
+                done = charged(leftCaster) && charged(rightCaster);
+                break;
+        }
+
+        if (done) {
+            _autoWaitingChargeComplete = false;
+            StopAutoAttack();
+            _autoChargeComplete = true;
         }
     }
 }

@@ -105,7 +105,7 @@ namespace {
     }
 
     void HandleSlotPressed(int slot) {
-        if (auto const& st = IntegratedMagic::MagicState::Get(); st.IsHoldActive()) {
+        if (auto const& st = IntegratedMagic::MagicState::Get(); st.IsHoldActive() || st.IsAutomaticActive()) {
             return;
         }
 
@@ -134,7 +134,10 @@ namespace {
             return;
         }
 
-        IntegratedMagic::MagicState::Get().TogglePress(slot);
+        if (ss.mode == IntegratedMagic::ActivationMode::Automatic) {
+            IntegratedMagic::MagicState::Get().ToggleAutomatic(slot);
+            return;
+        }
     }
 
     void HandleSlotReleased(int slot) {
@@ -147,9 +150,8 @@ namespace {
             return;
         }
 
-        const auto ss = IntegratedMagic::SpellSettingsDB::Get().GetOrCreate(spellFormID);
-
-        if (ss.mode != IntegratedMagic::ActivationMode::Hold) {
+        if (const auto ss = IntegratedMagic::SpellSettingsDB::Get().GetOrCreate(spellFormID);
+            ss.mode != IntegratedMagic::ActivationMode::Hold) {
             return;
         }
 
@@ -327,6 +329,7 @@ namespace {
             }
 
             IntegratedMagic::MagicState::Get().PumpAutoAttack(dt);
+            IntegratedMagic::MagicState::Get().PumpAutomatic();
 
             return RE::BSEventNotifyControl::kContinue;
         }
@@ -383,11 +386,13 @@ void MagicInput::HandleAnimEvent(const RE::BSAnimationGraphEvent* ev, RE::BSTEve
     if (!ev || !ev->holder) return;
 
     auto* actor = ev->holder->As<RE::Actor>();
-    auto* player = RE::PlayerCharacter::GetSingleton();
-    if (!actor || actor != player) return;
+    if (auto const* player = RE::PlayerCharacter::GetSingleton(); !actor || actor != player) return;
 
     std::string_view tag{ev->tag.c_str(), ev->tag.size()};
     if (tag == "EnableBumper"sv) {
         IntegratedMagic::MagicState::Get().NotifyAttackEnabled();
+    }
+    if (tag == "CastStop"sv) {
+        IntegratedMagic::MagicState::Get().AutoExit();
     }
 }
