@@ -35,7 +35,9 @@ add_commonlibsse_plugin(${PROJECT_NAME}
     src/Detours/image.cpp
     src/Detours/modules.cpp
     src/MagicState.cpp
-    src/MagicAction.cpp) 
+    src/MagicAction.cpp
+    src/SaveSpellDB.cpp
+) 
 
 target_include_directories(${PROJECT_NAME}
   PRIVATE
@@ -60,7 +62,9 @@ target_precompile_headers(${PROJECT_NAME}
     src/MagicHooks.h
     src/MagicState.h
     src/MagicAction.h
-    src/MagicEquipSlots.h) 
+    src/MagicEquipSlots.h
+    src/SaveSpellDB.h
+) 
 
 set_source_files_properties(
   src/Detours/detours.cpp

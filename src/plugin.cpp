@@ -3,6 +3,7 @@
 #include "MagicInput.h"
 #include "MagicStrings.h"
 #include "PCH.h"
+#include "SaveSpellDB.h"
 #include "SpellSettingsDB.h"
 #include "UI_IntegratedMagic.h"
 
@@ -14,6 +15,64 @@
 #endif
 
 namespace {
+    static std::string g_pendingEssPath;  // NOSONAR
+    static std::string g_currentEssPath;  // NOSONAR
+    static bool g_dbLoaded = false;       // NOSONAR
+
+    void EnsureSaveSpellDBLoaded() {
+        if (!g_dbLoaded) {
+            IntegratedMagic::SaveSpellDB::Get().LoadFromDisk();
+            g_dbLoaded = true;
+        }
+    }
+
+    IntegratedMagic::SaveSpellSlots ReadSlotsFromConfig() {
+        auto const& cfg = IntegratedMagic::GetMagicConfig();
+
+        IntegratedMagic::SaveSpellSlots s{};
+
+        s.slotSpellFormID[0] = cfg.slotSpellFormID1.load(std::memory_order_relaxed);
+        s.slotSpellFormID[1] = cfg.slotSpellFormID2.load(std::memory_order_relaxed);
+        s.slotSpellFormID[2] = cfg.slotSpellFormID3.load(std::memory_order_relaxed);
+        s.slotSpellFormID[3] = cfg.slotSpellFormID4.load(std::memory_order_relaxed);
+        return s;
+    }
+
+    void ApplySlotsToConfig(const IntegratedMagic::SaveSpellSlots& s) {
+        auto& cfg = IntegratedMagic::GetMagicConfig();
+
+        cfg.slotSpellFormID1.store(s.slotSpellFormID[0], std::memory_order_relaxed);
+        cfg.slotSpellFormID2.store(s.slotSpellFormID[1], std::memory_order_relaxed);
+        cfg.slotSpellFormID3.store(s.slotSpellFormID[2], std::memory_order_relaxed);
+        cfg.slotSpellFormID4.store(s.slotSpellFormID[3], std::memory_order_relaxed);
+    }
+
+    static std::string ExtractKey(std::string s) {
+        auto pos = s.find_last_of("\\/");
+        if (pos != std::string::npos) s = s.substr(pos + 1);
+
+        if (s.size() >= 4) {
+            auto tail = s.substr(s.size() - 4);
+            for (auto& c : tail) c = (char)std::tolower((unsigned char)c);
+            if (tail == ".ess") s.resize(s.size() - 4);
+        }
+
+        return s;
+    }
+
+    std::string GetSaveKeyFromMsg(const SKSE::MessagingInterface::Message* msg) {
+        if (!msg || !msg->data || msg->dataLen <= 0) return {};
+
+        auto* p = reinterpret_cast<const char*>(msg->data);
+
+        std::size_t n = 0;
+        while (n < (std::size_t)msg->dataLen && p[n] != '\0') ++n;
+
+        std::string raw(p, n);
+        std::string key = ExtractKey(std::move(raw));
+        return IntegratedMagic::SaveSpellDB::NormalizeKey(std::move(key));
+    }
+
     void InitializeLogger() {
         if (auto path = SKSE::log::log_directory()) {
             *path /= "IntegratedMagic.log";
@@ -30,10 +89,15 @@ namespace {
         if (!message) return;
 
         switch (message->type) {
-            case SKSE::MessagingInterface::kInputLoaded:
+            case SKSE::MessagingInterface::kPreLoadGame: {
+                g_pendingEssPath = GetSaveKeyFromMsg(message);
+                break;
+            }
+            case SKSE::MessagingInterface::kInputLoaded: {
                 MagicInput::RegisterInputHandler();
                 break;
-            case SKSE::MessagingInterface::kDataLoaded:
+            }
+            case SKSE::MessagingInterface::kDataLoaded: {
                 IntegratedMagic::Strings::Load();
                 IntegratedMagic::GetMagicConfig().Load();
                 IntegratedMagic::SpellSettingsDB::Get().Load();
@@ -41,6 +105,52 @@ namespace {
                 MagicInput::OnConfigChanged();
                 IntegratedMagic::Hooks::Install_Hooks();
                 break;
+            }
+            case SKSE::MessagingInterface::kPostLoadGame: {
+                bool ok = true;
+                if (message->data && message->dataLen == sizeof(bool)) {
+                    ok = (reinterpret_cast<std::uintptr_t>(message->data) != 0);  // NOSONAR
+                }
+
+                if (ok && !g_pendingEssPath.empty()) {
+                    EnsureSaveSpellDBLoaded();
+                    g_currentEssPath = g_pendingEssPath;
+
+                    IntegratedMagic::SaveSpellSlots slots{};
+                    if (IntegratedMagic::SaveSpellDB::Get().TryGet(g_currentEssPath, slots)) {
+                        ApplySlotsToConfig(slots);
+                    } else {
+                        ApplySlotsToConfig(IntegratedMagic::SaveSpellSlots{});
+                    }
+                }
+
+                g_pendingEssPath.clear();
+                break;
+            }
+            case SKSE::MessagingInterface::kSaveGame: {
+                std::string key = GetSaveKeyFromMsg(message);
+                if (key.empty()) {
+                    key = g_currentEssPath;
+                }
+
+                if (!key.empty()) {
+                    EnsureSaveSpellDBLoaded();
+                    IntegratedMagic::SaveSpellDB::Get().Upsert(key, ReadSlotsFromConfig());
+                    IntegratedMagic::SaveSpellDB::Get().SaveToDisk();
+                }
+                break;
+            }
+
+            case SKSE::MessagingInterface::kDeleteGame: {
+                const std::string key = g_currentEssPath;
+
+                if (!key.empty()) {
+                    EnsureSaveSpellDBLoaded();
+                    IntegratedMagic::SaveSpellDB::Get().Upsert(key, ReadSlotsFromConfig());
+                    IntegratedMagic::SaveSpellDB::Get().SaveToDisk();
+                }
+                break;
+            }
             default:
                 break;
         }
