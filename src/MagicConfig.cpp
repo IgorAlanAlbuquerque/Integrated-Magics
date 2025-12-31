@@ -54,16 +54,12 @@ namespace IntegratedMagic {
             return;
         }
 
-        holdThresholdSeconds.store(_getFloat(ini, "General", "HoldThresholdSeconds", 0.20f), std::memory_order_relaxed);
-
         Magic1Input.KeyboardScanCode1.store(_getInt(ini, "Magic1", "KeyboardScanCode1", -1), std::memory_order_relaxed);
         Magic1Input.KeyboardScanCode2.store(_getInt(ini, "Magic1", "KeyboardScanCode2", -1), std::memory_order_relaxed);
         Magic1Input.KeyboardScanCode3.store(_getInt(ini, "Magic1", "KeyboardScanCode3", -1), std::memory_order_relaxed);
         Magic1Input.GamepadButton1.store(_getInt(ini, "Magic1", "GamepadButton1", -1), std::memory_order_relaxed);
         Magic1Input.GamepadButton2.store(_getInt(ini, "Magic1", "GamepadButton2", -1), std::memory_order_relaxed);
         Magic1Input.GamepadButton3.store(_getInt(ini, "Magic1", "GamepadButton3", -1), std::memory_order_relaxed);
-        slotSpellFormID1.store(static_cast<std::uint32_t>(_getInt(ini, "Magic1", "SpellFormID", 0)),
-                               std::memory_order_relaxed);
 
         Magic2Input.KeyboardScanCode1.store(_getInt(ini, "Magic2", "KeyboardScanCode1", -1), std::memory_order_relaxed);
         Magic2Input.KeyboardScanCode2.store(_getInt(ini, "Magic2", "KeyboardScanCode2", -1), std::memory_order_relaxed);
@@ -71,8 +67,6 @@ namespace IntegratedMagic {
         Magic2Input.GamepadButton1.store(_getInt(ini, "Magic2", "GamepadButton1", -1), std::memory_order_relaxed);
         Magic2Input.GamepadButton2.store(_getInt(ini, "Magic2", "GamepadButton2", -1), std::memory_order_relaxed);
         Magic2Input.GamepadButton3.store(_getInt(ini, "Magic2", "GamepadButton3", -1), std::memory_order_relaxed);
-        slotSpellFormID2.store(static_cast<std::uint32_t>(_getInt(ini, "Magic2", "SpellFormID", 0)),
-                               std::memory_order_relaxed);
 
         Magic3Input.KeyboardScanCode1.store(_getInt(ini, "Magic3", "KeyboardScanCode1", -1), std::memory_order_relaxed);
         Magic3Input.KeyboardScanCode2.store(_getInt(ini, "Magic3", "KeyboardScanCode2", -1), std::memory_order_relaxed);
@@ -80,8 +74,6 @@ namespace IntegratedMagic {
         Magic3Input.GamepadButton1.store(_getInt(ini, "Magic3", "GamepadButton1", -1), std::memory_order_relaxed);
         Magic3Input.GamepadButton2.store(_getInt(ini, "Magic3", "GamepadButton2", -1), std::memory_order_relaxed);
         Magic3Input.GamepadButton3.store(_getInt(ini, "Magic3", "GamepadButton3", -1), std::memory_order_relaxed);
-        slotSpellFormID3.store(static_cast<std::uint32_t>(_getInt(ini, "Magic3", "SpellFormID", 0)),
-                               std::memory_order_relaxed);
 
         Magic4Input.KeyboardScanCode1.store(_getInt(ini, "Magic4", "KeyboardScanCode1", -1), std::memory_order_relaxed);
         Magic4Input.KeyboardScanCode2.store(_getInt(ini, "Magic4", "KeyboardScanCode2", -1), std::memory_order_relaxed);
@@ -89,8 +81,6 @@ namespace IntegratedMagic {
         Magic4Input.GamepadButton1.store(_getInt(ini, "Magic4", "GamepadButton1", -1), std::memory_order_relaxed);
         Magic4Input.GamepadButton2.store(_getInt(ini, "Magic4", "GamepadButton2", -1), std::memory_order_relaxed);
         Magic4Input.GamepadButton3.store(_getInt(ini, "Magic4", "GamepadButton3", -1), std::memory_order_relaxed);
-        slotSpellFormID4.store(static_cast<std::uint32_t>(_getInt(ini, "Magic4", "SpellFormID", 0)),
-                               std::memory_order_relaxed);
 
         skipEquipAnimationPatch = _getBool(ini, "Patches", "SkipEquipAnimationPatch", false);
     }
@@ -101,16 +91,12 @@ namespace IntegratedMagic {
         const auto path = IniPath();
         ini.LoadFile(path.string().c_str());
 
-        ini.SetDoubleValue("General", "HoldThresholdSeconds",
-                           static_cast<double>(holdThresholdSeconds.load(std::memory_order_relaxed)));
-
         ini.SetLongValue("Magic1", "KeyboardScanCode1", Magic1Input.KeyboardScanCode1.load(std::memory_order_relaxed));
         ini.SetLongValue("Magic1", "KeyboardScanCode2", Magic1Input.KeyboardScanCode2.load(std::memory_order_relaxed));
         ini.SetLongValue("Magic1", "KeyboardScanCode3", Magic1Input.KeyboardScanCode3.load(std::memory_order_relaxed));
         ini.SetLongValue("Magic1", "GamepadButton1", Magic1Input.GamepadButton1.load(std::memory_order_relaxed));
         ini.SetLongValue("Magic1", "GamepadButton2", Magic1Input.GamepadButton2.load(std::memory_order_relaxed));
         ini.SetLongValue("Magic1", "GamepadButton3", Magic1Input.GamepadButton3.load(std::memory_order_relaxed));
-        ini.SetLongValue("Magic1", "SpellFormID", static_cast<long>(slotSpellFormID1.load(std::memory_order_relaxed)));
 
         ini.SetLongValue("Magic2", "KeyboardScanCode1", Magic2Input.KeyboardScanCode1.load(std::memory_order_relaxed));
         ini.SetLongValue("Magic2", "KeyboardScanCode2", Magic2Input.KeyboardScanCode2.load(std::memory_order_relaxed));
@@ -118,7 +104,6 @@ namespace IntegratedMagic {
         ini.SetLongValue("Magic2", "GamepadButton1", Magic2Input.GamepadButton1.load(std::memory_order_relaxed));
         ini.SetLongValue("Magic2", "GamepadButton2", Magic2Input.GamepadButton2.load(std::memory_order_relaxed));
         ini.SetLongValue("Magic2", "GamepadButton3", Magic2Input.GamepadButton3.load(std::memory_order_relaxed));
-        ini.SetLongValue("Magic2", "SpellFormID", static_cast<long>(slotSpellFormID2.load(std::memory_order_relaxed)));
 
         ini.SetLongValue("Magic3", "KeyboardScanCode1", Magic3Input.KeyboardScanCode1.load(std::memory_order_relaxed));
         ini.SetLongValue("Magic3", "KeyboardScanCode2", Magic3Input.KeyboardScanCode2.load(std::memory_order_relaxed));
@@ -126,7 +111,6 @@ namespace IntegratedMagic {
         ini.SetLongValue("Magic3", "GamepadButton1", Magic3Input.GamepadButton1.load(std::memory_order_relaxed));
         ini.SetLongValue("Magic3", "GamepadButton2", Magic3Input.GamepadButton2.load(std::memory_order_relaxed));
         ini.SetLongValue("Magic3", "GamepadButton3", Magic3Input.GamepadButton3.load(std::memory_order_relaxed));
-        ini.SetLongValue("Magic3", "SpellFormID", static_cast<long>(slotSpellFormID3.load(std::memory_order_relaxed)));
 
         ini.SetLongValue("Magic4", "KeyboardScanCode1", Magic4Input.KeyboardScanCode1.load(std::memory_order_relaxed));
         ini.SetLongValue("Magic4", "KeyboardScanCode2", Magic4Input.KeyboardScanCode2.load(std::memory_order_relaxed));
@@ -134,7 +118,6 @@ namespace IntegratedMagic {
         ini.SetLongValue("Magic4", "GamepadButton1", Magic4Input.GamepadButton1.load(std::memory_order_relaxed));
         ini.SetLongValue("Magic4", "GamepadButton2", Magic4Input.GamepadButton2.load(std::memory_order_relaxed));
         ini.SetLongValue("Magic4", "GamepadButton3", Magic4Input.GamepadButton3.load(std::memory_order_relaxed));
-        ini.SetLongValue("Magic4", "SpellFormID", static_cast<long>(slotSpellFormID4.load(std::memory_order_relaxed)));
 
         ini.SetBoolValue("Patches", "SkipEquipAnimationPatch", skipEquipAnimationPatch);
 

@@ -15,8 +15,6 @@ namespace IntegratedMagic {
     };
 
     struct MagicConfig {
-        std::atomic<float> holdThresholdSeconds{0.20f};
-
         std::atomic<std::uint32_t> slotSpellFormID1{0};
         std::atomic<std::uint32_t> slotSpellFormID2{0};
         std::atomic<std::uint32_t> slotSpellFormID3{0};
