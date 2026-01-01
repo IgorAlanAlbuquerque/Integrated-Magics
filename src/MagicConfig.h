@@ -26,6 +26,7 @@ namespace IntegratedMagic {
         InputConfig Magic4Input;
 
         bool skipEquipAnimationPatch = false;
+        bool requireExclusiveHotkeyPatch = false;
 
         void Load();
         void Save() const;

@@ -83,6 +83,7 @@ namespace IntegratedMagic {
         Magic4Input.GamepadButton3.store(_getInt(ini, "Magic4", "GamepadButton3", -1), std::memory_order_relaxed);
 
         skipEquipAnimationPatch = _getBool(ini, "Patches", "SkipEquipAnimationPatch", false);
+        requireExclusiveHotkeyPatch = _getBool(ini, "Patches", "RequireExclusiveHotkeyPatch", false);
     }
 
     void MagicConfig::Save() const {
@@ -120,6 +121,7 @@ namespace IntegratedMagic {
         ini.SetLongValue("Magic4", "GamepadButton3", Magic4Input.GamepadButton3.load(std::memory_order_relaxed));
 
         ini.SetBoolValue("Patches", "SkipEquipAnimationPatch", skipEquipAnimationPatch);
+        ini.SetBoolValue("Patches", "RequireExclusiveHotkeyPatch", requireExclusiveHotkeyPatch);
 
         std::error_code ec;
         std::filesystem::create_directories(path.parent_path(), ec);

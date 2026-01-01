@@ -3,8 +3,10 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <ranges>
 
 #include "MagicConfig.h"
 #include "PCH.h"
@@ -15,7 +17,19 @@
 
 namespace {
     constexpr int kSlots = 4;
-    constexpr int kMaxCode = 256;
+    constexpr int kMaxCode = 355;
+    constexpr float kExclusiveConfirmDelaySec = 0.10f;
+    constexpr int kDIK_W = 0x11;
+    constexpr int kDIK_A = 0x1E;
+    constexpr int kDIK_S = 0x1F;
+    constexpr int kDIK_D = 0x20;
+
+    constexpr int kDIK_Up = 0xC8;
+    constexpr int kDIK_Left = 0xCB;
+    constexpr int kDIK_Right = 0xCD;
+    constexpr int kDIK_Down = 0xD0;
+
+    enum class PendingSrc : std::uint8_t { None = 0, Kb = 1, Gp = 2 };
 
     struct SlotHotkeys {
         std::array<int, 3> kb{-1, -1, -1};
@@ -32,15 +46,41 @@ namespace {
         return st;
     }
 
-    std::array<SlotHotkeys, kSlots> g_cache{};
+    std::array<SlotHotkeys, kSlots> g_cache{};               // NOSONAR
+    std::array<std::atomic_bool, kMaxCode> g_kbDown{};       // NOSONAR
+    std::array<std::atomic_bool, kMaxCode> g_gpDown{};       // NOSONAR
+    std::array<std::atomic_bool, kSlots> g_slotDown{};       // NOSONAR
+    std::atomic<std::byte> g_pressedMask{std::byte{0}};      // NOSONAR
+    std::atomic<std::byte> g_releasedMask{std::byte{0}};     // NOSONAR
+    std::array<bool, kSlots> g_prevRawKbDown{};              // NOSONAR
+    std::array<bool, kSlots> g_prevRawGpDown{};              // NOSONAR
+    std::array<float, kSlots> g_exclusivePendingTimer{};     // NOSONAR
+    std::array<PendingSrc, kSlots> g_exclusivePendingSrc{};  // NOSONAR
 
-    std::array<std::atomic_bool, kMaxCode> g_kbDown{};
-    std::array<std::atomic_bool, kMaxCode> g_gpDown{};
+    inline void ClearExclusivePending(std::size_t s) {
+        g_exclusivePendingSrc[s] = PendingSrc::None;
+        g_exclusivePendingTimer[s] = 0.0f;
+    }
 
-    std::array<std::atomic_bool, kSlots> g_slotDown{};
+    inline bool IsAllowedExtra_Keyboard_MoveOrCamera(int code) {
+        switch (code) {
+            case kDIK_W:
+            case kDIK_A:
+            case kDIK_S:
+            case kDIK_D:
+            case kDIK_Up:
+            case kDIK_Down:
+            case kDIK_Left:
+            case kDIK_Right:
+                return true;
+            default:
+                return false;
+        }
+    }
 
-    std::atomic_uint8_t g_pressedMask{0};
-    std::atomic_uint8_t g_releasedMask{0};
+    inline bool IsAllowedExtra_Gamepad_MoveOrCamera(int) { return false; }
+
+    inline bool HasExclusivePending(std::size_t s) { return g_exclusivePendingSrc[s] != PendingSrc::None; }
 
     bool AnyEnabled(const std::array<int, 3>& a) { return (a[0] != -1) || (a[1] != -1) || (a[2] != -1); }
 
@@ -50,17 +90,44 @@ namespace {
             return false;
         }
 
-        for (int code : combo) {
+        const bool ok = std::ranges::all_of(combo, [&](int code) {
             if (code == -1) {
-                continue;
+                return true;
             }
+
             if (code < 0 || code >= kMaxCode) {
                 return false;
             }
-            if (!down[static_cast<std::size_t>(code)].load(std::memory_order_relaxed)) {
-                return false;
-            }
+
+            return down[static_cast<std::size_t>(code)].load(std::memory_order_relaxed);
+        });
+
+        return ok;
+    }
+
+    inline bool ComboContains(const std::array<int, 3>& combo, int code) {
+        return std::ranges::find(combo, code) != combo.end();
+    }
+
+    template <class DownArr, class AllowedFn>
+    bool ComboExclusiveNow(const std::array<int, 3>& combo, const DownArr& down, AllowedFn isAllowedExtra) {
+        if (!AnyEnabled(combo)) {
+            return false;
         }
+
+        for (int code = 0; code < kMaxCode; ++code) {
+            if (!down[static_cast<std::size_t>(code)].load(std::memory_order_relaxed)) {
+                continue;
+            }
+            if (ComboContains(combo, code)) {
+                continue;
+            }
+            if (isAllowedExtra(code)) {
+                continue;
+            }
+            return false;
+        }
+
         return true;
     }
 
@@ -102,6 +169,27 @@ namespace {
         }
 
         return false;
+    }
+
+    inline void AtomicFetchOrByte(std::atomic<std::byte>& a, std::byte bits,
+                                  std::memory_order order = std::memory_order_relaxed) {
+        std::byte cur = a.load(order);
+        while (!a.compare_exchange_weak(cur, (cur | bits), order, order)) {
+            // cur é atualizado com o valor atual automaticamente quando falha
+        }
+    }
+
+    void ResetExclusiveState() {
+        for (int slot = 0; slot < kSlots; ++slot) {
+            const auto s = static_cast<std::size_t>(slot);
+            g_prevRawKbDown[s] = false;
+            g_prevRawGpDown[s] = false;
+            ClearExclusivePending(s);
+            g_slotDown[s].store(false, std::memory_order_relaxed);
+        }
+
+        g_pressedMask.store(std::byte{0}, std::memory_order_relaxed);
+        g_releasedMask.store(std::byte{0}, std::memory_order_relaxed);
     }
 
     void HandleSlotPressed(int slot) {
@@ -169,23 +257,102 @@ namespace {
         return kb || gp;
     }
 
-    void RecomputeSlotEdges() {
-        for (int slot = 0; slot < kSlots; ++slot) {
-            const bool now = SlotComboDown(slot);
-            const bool prev = g_slotDown[static_cast<std::size_t>(slot)].load(std::memory_order_relaxed);
+    bool ComputeAcceptedExclusive(int slot, const SlotHotkeys& hk, bool prevAccepted, bool kbNow, bool gpNow,
+                                  bool rawNow, float dt) {
+        const auto s = static_cast<std::size_t>(slot);
 
-            if (now != prev) {
-                g_slotDown[static_cast<std::size_t>(slot)].store(now, std::memory_order_relaxed);
+        const bool kbPrev = g_prevRawKbDown[s];
+        const bool gpPrev = g_prevRawGpDown[s];
 
-                const auto bit = static_cast<uint8_t>(1u << slot);
-                if (now) {
-                    g_pressedMask.fetch_or(bit, std::memory_order_relaxed);
-                } else {
-                    g_releasedMask.fetch_or(bit, std::memory_order_relaxed);
-                }
+        const bool kbPressedEdge = kbNow && !kbPrev;
+        const bool gpPressedEdge = gpNow && !gpPrev;
+
+        g_prevRawKbDown[s] = kbNow;
+        g_prevRawGpDown[s] = gpNow;
+
+        if (prevAccepted) {
+            ClearExclusivePending(s);
+            return rawNow;
+        }
+
+        if (HasExclusivePending(s)) {
+            const auto src = g_exclusivePendingSrc[s];
+
+            const bool stillDown = (src == PendingSrc::Kb) ? kbNow : gpNow;
+
+            if (const bool stillExclusive =
+                    (src == PendingSrc::Kb) ? ComboExclusiveNow(hk.kb, g_kbDown, IsAllowedExtra_Keyboard_MoveOrCamera)
+                                            : ComboExclusiveNow(hk.gp, g_gpDown, IsAllowedExtra_Gamepad_MoveOrCamera);
+                !stillExclusive) {
+                ClearExclusivePending(s);
+                return false;
             }
+
+            if (!stillDown) {
+                ClearExclusivePending(s);
+                return true;
+            }
+
+            g_exclusivePendingTimer[s] -= dt;
+            if (g_exclusivePendingTimer[s] <= 0.0f) {
+                ClearExclusivePending(s);
+                return true;
+            }
+
+            return false;
+        }
+
+        if (kbPressedEdge && ComboExclusiveNow(hk.kb, g_kbDown, IsAllowedExtra_Keyboard_MoveOrCamera)) {
+            g_exclusivePendingSrc[s] = PendingSrc::Kb;
+            g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;
+            return false;
+        }
+
+        if (gpPressedEdge && ComboExclusiveNow(hk.gp, g_gpDown, IsAllowedExtra_Gamepad_MoveOrCamera)) {
+            g_exclusivePendingSrc[s] = PendingSrc::Gp;
+            g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;
+            return false;
+        }
+
+        return false;
+    }
+
+    void RecomputeSlotEdges(float dt) {
+        auto const& cfg = IntegratedMagic::GetMagicConfig();
+
+        for (int slot = 0; slot < kSlots; ++slot) {
+            const auto& hk = g_cache[static_cast<std::size_t>(slot)];
+
+            const bool kbNow = ComboDown(hk.kb, g_kbDown);
+            const bool gpNow = ComboDown(hk.gp, g_gpDown);
+            const bool rawNow = kbNow || gpNow;
+
+            const auto s = static_cast<std::size_t>(slot);
+            const bool prevAccepted = g_slotDown[s].load(std::memory_order_relaxed);
+
+            bool acceptedNow = false;
+
+            if (cfg.requireExclusiveHotkeyPatch) {
+                acceptedNow = ComputeAcceptedExclusive(slot, hk, prevAccepted, kbNow, gpNow, rawNow, dt);
+            } else {
+                g_prevRawKbDown[s] = kbNow;
+                g_prevRawGpDown[s] = gpNow;
+                ClearExclusivePending(s);
+
+                acceptedNow = rawNow;
+            }
+
+            if (acceptedNow == prevAccepted) {
+                continue;
+            }
+
+            g_slotDown[s].store(acceptedNow, std::memory_order_relaxed);
+
+            const auto bit = std::byte{static_cast<unsigned char>(1u << slot)};
+            AtomicFetchOrByte(acceptedNow ? g_pressedMask : g_releasedMask, bit);
         }
     }
+
     float CalculateDeltaTime() {
         using clock = std::chrono::steady_clock;
         static clock::time_point last = clock::now();
@@ -200,16 +367,17 @@ namespace {
         return dt;
     }
 
-    std::optional<int> ConsumeBit(std::atomic_uint8_t& maskAtomic) {
+    std::optional<int> ConsumeBit(std::atomic<std::byte>& maskAtomic) {
         while (true) {
-            uint8_t mask = maskAtomic.load(std::memory_order_relaxed);
-            if (mask == 0) {
+            std::byte mask = maskAtomic.load(std::memory_order_relaxed);
+            if (mask == std::byte{0}) {
                 return std::nullopt;
             }
 
             int idx = -1;
             for (int i = 0; i < kSlots; ++i) {
-                if (mask & static_cast<uint8_t>(1u << i)) {
+                const auto bit = std::byte{static_cast<unsigned char>(1u << i)};
+                if (std::to_integer<unsigned>(mask & bit) != 0u) {
                     idx = i;
                     break;
                 }
@@ -219,11 +387,30 @@ namespace {
                 return std::nullopt;
             }
 
-            const auto desired = static_cast<uint8_t>(mask & ~static_cast<uint8_t>(1u << idx));
+            const auto bit = std::byte{static_cast<unsigned char>(1u << idx)};
+            const std::byte desired = (mask & ~bit);
             if (maskAtomic.compare_exchange_weak(mask, desired, std::memory_order_relaxed)) {
                 return idx;
             }
         }
+    }
+
+    void ClearDownStateCaches() {
+        for (int i = 0; i < kMaxCode; ++i) {
+            g_kbDown[static_cast<std::size_t>(i)].store(false, std::memory_order_relaxed);
+            g_gpDown[static_cast<std::size_t>(i)].store(false, std::memory_order_relaxed);
+        }
+
+        for (int slot = 0; slot < kSlots; ++slot) {
+            const auto s = static_cast<std::size_t>(slot);
+            g_slotDown[s].store(false, std::memory_order_relaxed);
+            g_prevRawKbDown[s] = false;
+            g_prevRawGpDown[s] = false;
+            ClearExclusivePending(s);
+        }
+
+        g_pressedMask.store(std::byte{0}, std::memory_order_relaxed);
+        g_releasedMask.store(std::byte{0}, std::memory_order_relaxed);
     }
 
     void LoadHotkeyCache_FromConfig() {
@@ -264,15 +451,11 @@ namespace {
             }
 
             auto& cap = GetCaptureState();
-            const bool wantCapture = cap.captureRequested.load(std::memory_order_relaxed);
+            bool wantCapture = cap.captureRequested.load(std::memory_order_relaxed);
 
             for (auto e = *a_events; e; e = e->next) {
                 const auto* btn = e->AsButtonEvent();
-                if (!btn) {
-                    continue;
-                }
-
-                if (!btn->IsDown() && !btn->IsUp()) {
+                if (!btn || (!btn->IsDown() && !btn->IsUp())) {
                     continue;
                 }
 
@@ -282,56 +465,93 @@ namespace {
                     continue;
                 }
 
-                if (wantCapture && btn->IsDown()) {
-                    if (!(dev == RE::INPUT_DEVICE::kKeyboard && code == 0x01)) {
-                        int encoded = -1;
-                        if (dev == RE::INPUT_DEVICE::kKeyboard) {
-                            encoded = code;
-                        } else if (dev == RE::INPUT_DEVICE::kGamepad) {
-                            encoded = -(code + 1);
-                        }
+                (void)TryHandleCapture(btn, cap, wantCapture);
 
-                        if (encoded != -1) {
-                            cap.capturedEncoded.store(encoded, std::memory_order_relaxed);
-                            cap.captureRequested.store(false, std::memory_order_relaxed);
-                        }
-                    }
-                }
-
-                const bool downNow = btn->IsDown();
-                if (dev == RE::INPUT_DEVICE::kKeyboard) {
-                    g_kbDown[static_cast<std::size_t>(code)].store(downNow, std::memory_order_relaxed);
-                } else if (dev == RE::INPUT_DEVICE::kGamepad) {
-                    g_gpDown[static_cast<std::size_t>(code)].store(downNow, std::memory_order_relaxed);
-                }
+                UpdateDownState(dev, code, btn->IsDown());
             }
 
             const float dt = CalculateDeltaTime();
 
-            RecomputeSlotEdges();
+            RecomputeSlotEdges(dt);
 
-            if (IsInputBlockedByMenus()) {
-                while (MagicInput::ConsumePressedSlot()) {
-                }
-                while (auto slot = MagicInput::ConsumeReleasedSlot()) {
-                    HandleSlotReleased(*slot);
-                }
+            const bool blocked = IsInputBlockedByMenus();
+            ConsumeAndHandleSlots(blocked);
 
-                return RE::BSEventNotifyControl::kContinue;
+            if (!blocked) {
+                IntegratedMagic::MagicState::Get().PumpAutoAttack(dt);
+                IntegratedMagic::MagicState::Get().PumpAutomatic();
             }
 
-            while (auto slot = MagicInput::ConsumePressedSlot()) {
+            return RE::BSEventNotifyControl::kContinue;
+        }
+
+    private:
+        bool TryHandleCapture(const RE::ButtonEvent* btn, CaptureState& cap, bool& wantCapture) const {
+            if (!wantCapture || !btn->IsDown()) {
+                return false;
+            }
+
+            const auto dev = btn->GetDevice();
+            const auto code = static_cast<int>(btn->idCode);
+
+            if (dev == RE::INPUT_DEVICE::kKeyboard && code == 0x01) {
+                return false;
+            }
+
+            int encoded = -1;
+            if (dev == RE::INPUT_DEVICE::kKeyboard) {
+                encoded = code;
+            } else if (dev == RE::INPUT_DEVICE::kGamepad) {
+                encoded = -(code + 1);
+            }
+
+            if (encoded == -1) {
+                return false;
+            }
+
+            cap.capturedEncoded.store(encoded, std::memory_order_relaxed);
+            cap.captureRequested.store(false, std::memory_order_relaxed);
+
+            wantCapture = false;
+            return true;
+        }
+
+        void UpdateDownState(RE::INPUT_DEVICE dev, int code, bool downNow) const {
+            if (dev == RE::INPUT_DEVICE::kKeyboard) {
+                g_kbDown[static_cast<std::size_t>(code)].store(downNow, std::memory_order_relaxed);
+            } else if (dev == RE::INPUT_DEVICE::kGamepad) {
+                g_gpDown[static_cast<std::size_t>(code)].store(downNow, std::memory_order_relaxed);
+            }
+        }
+
+        void DrainWhenBlocked() const {
+            for (auto slot = MagicInput::ConsumePressedSlot(); slot.has_value();
+                 slot = MagicInput::ConsumePressedSlot()) {
+                // Just use to clean the cache
+            }
+
+            for (auto slot = MagicInput::ConsumeReleasedSlot(); slot.has_value();
+                 slot = MagicInput::ConsumeReleasedSlot()) {
+                HandleSlotReleased(*slot);
+            }
+        }
+
+        void ConsumeAndHandleSlots(bool blocked) const {
+            if (blocked) {
+                ClearDownStateCaches();
+                DrainWhenBlocked();
+                return;
+            }
+
+            for (auto slot = MagicInput::ConsumePressedSlot(); slot.has_value();
+                 slot = MagicInput::ConsumePressedSlot()) {
                 HandleSlotPressed(*slot);
             }
 
-            while (auto slot = MagicInput::ConsumeReleasedSlot()) {
+            for (auto slot = MagicInput::ConsumeReleasedSlot(); slot.has_value();
+                 slot = MagicInput::ConsumeReleasedSlot()) {
                 HandleSlotReleased(*slot);
             }
-
-            IntegratedMagic::MagicState::Get().PumpAutoAttack(dt);
-            IntegratedMagic::MagicState::Get().PumpAutomatic();
-
-            return RE::BSEventNotifyControl::kContinue;
         }
     };
 }
@@ -346,7 +566,7 @@ void MagicInput::RegisterInputHandler() {
 
 void MagicInput::OnConfigChanged() {
     LoadHotkeyCache_FromConfig();
-    RecomputeSlotEdges();
+    ResetExclusiveState();
 }
 
 std::optional<int> MagicInput::GetDownSlotForSelection() {
