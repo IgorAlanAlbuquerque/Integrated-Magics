@@ -221,11 +221,23 @@ namespace {
     }
 
     void DrawPatchesTab(IntegratedMagic::MagicConfig& cfg, bool& dirty) {
-        bool v = cfg.skipEquipAnimationPatch;
-        if (ImGui::Checkbox(
-                IntegratedMagic::Strings::Get("Item_SkipEquipAnim", "Skip equip animation (global)").c_str(), &v)) {
-            cfg.skipEquipAnimationPatch = v;
-            dirty = true;
+        {
+            bool v = cfg.skipEquipAnimationPatch;
+            if (ImGui::Checkbox(IntegratedMagic::Strings::Get("Item_SkipEquipAnim", "Skip equip animation").c_str(),
+                                &v)) {
+                cfg.skipEquipAnimationPatch = v;
+                dirty = true;
+            }
+        }
+
+        {
+            bool v = cfg.requireExclusiveHotkeyPatch;
+            if (ImGui::Checkbox(
+                    IntegratedMagic::Strings::Get("Item_RequireExclusiveHotkey", "Require exclusive hotkey").c_str(),
+                    &v)) {
+                cfg.requireExclusiveHotkeyPatch = v;
+                dirty = true;
+            }
         }
     }
 }

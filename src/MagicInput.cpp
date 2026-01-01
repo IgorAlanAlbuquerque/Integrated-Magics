@@ -17,7 +17,7 @@
 
 namespace {
     constexpr int kSlots = 4;
-    constexpr int kMaxCode = 256;
+    constexpr int kMaxCode = 355;
 
     struct SlotHotkeys {
         std::array<int, 3> kb{-1, -1, -1};
@@ -40,6 +40,8 @@ namespace {
     std::array<std::atomic_bool, kSlots> g_slotDown{};    // NOSONAR
     std::atomic<std::byte> g_pressedMask{std::byte{0}};   // NOSONAR
     std::atomic<std::byte> g_releasedMask{std::byte{0}};  // NOSONAR
+    std::array<bool, kSlots> g_prevRawKbDown{};           // NOSONAR
+    std::array<bool, kSlots> g_prevRawGpDown{};           // NOSONAR
 
     bool AnyEnabled(const std::array<int, 3>& a) { return (a[0] != -1) || (a[1] != -1) || (a[2] != -1); }
 
@@ -62,6 +64,29 @@ namespace {
         });
 
         return ok;
+    }
+
+    inline bool ComboContains(const std::array<int, 3>& combo, int code) {
+        return std::ranges::find(combo, code) != combo.end();
+    }
+
+    template <class DownArr>
+    bool ComboExclusiveNow(const std::array<int, 3>& combo, const DownArr& down) {
+        if (!AnyEnabled(combo)) {
+            return false;
+        }
+
+        for (int code = 0; code < kMaxCode; ++code) {
+            if (!down[static_cast<std::size_t>(code)].load(std::memory_order_relaxed)) {
+                continue;
+            }
+            if (ComboContains(combo, code)) {
+                continue;
+            }
+            return false;
+        }
+
+        return true;
     }
 
     inline bool IsInputBlockedByMenus() {
@@ -177,22 +202,63 @@ namespace {
         return kb || gp;
     }
 
-    void RecomputeSlotEdges() {
-        for (int slot = 0; slot < kSlots; ++slot) {
-            const bool now = SlotComboDown(slot);
-            const bool prev = g_slotDown[static_cast<std::size_t>(slot)].load(std::memory_order_relaxed);
+    bool ComputeAcceptedExclusive(int slot, const SlotHotkeys& hk, bool prevAccepted, bool kbNow, bool gpNow,
+                                  bool rawNow) {
+        const auto s = static_cast<std::size_t>(slot);
 
-            if (now != prev) {
-                g_slotDown[static_cast<std::size_t>(slot)].store(now, std::memory_order_relaxed);
+        const bool kbPrev = g_prevRawKbDown[s];
+        const bool gpPrev = g_prevRawGpDown[s];
 
-                const auto bit = std::byte{static_cast<unsigned char>(1u << slot)};
+        const bool kbPressedEdge = kbNow && !kbPrev;
+        const bool gpPressedEdge = gpNow && !gpPrev;
 
-                if (now) {
-                    AtomicFetchOrByte(g_pressedMask, bit);
-                } else {
-                    AtomicFetchOrByte(g_releasedMask, bit);
-                }
+        g_prevRawKbDown[s] = kbNow;
+        g_prevRawGpDown[s] = gpNow;
+
+        if (!prevAccepted) {
+            if (kbPressedEdge && ComboExclusiveNow(hk.kb, g_kbDown)) {
+                return true;
             }
+            if (gpPressedEdge && ComboExclusiveNow(hk.gp, g_gpDown)) {
+                return true;
+            }
+            return false;
+        }
+
+        return rawNow;
+    }
+
+    void RecomputeSlotEdges() {
+        auto const& cfg = IntegratedMagic::GetMagicConfig();
+
+        for (int slot = 0; slot < kSlots; ++slot) {
+            const auto& hk = g_cache[static_cast<std::size_t>(slot)];
+
+            const bool kbNow = ComboDown(hk.kb, g_kbDown);
+            const bool gpNow = ComboDown(hk.gp, g_gpDown);
+            const bool rawNow = kbNow || gpNow;
+
+            const auto s = static_cast<std::size_t>(slot);
+            const bool prevAccepted = g_slotDown[s].load(std::memory_order_relaxed);
+
+            bool acceptedNow = false;
+
+            if (cfg.requireExclusiveHotkeyPatch) {
+                acceptedNow = ComputeAcceptedExclusive(slot, hk, prevAccepted, kbNow, gpNow, rawNow);
+            } else {
+                g_prevRawKbDown[s] = kbNow;
+                g_prevRawGpDown[s] = gpNow;
+                acceptedNow = rawNow;
+            }
+
+            if (acceptedNow == prevAccepted) {
+                continue;
+            }
+
+            g_slotDown[s].store(acceptedNow, std::memory_order_relaxed);
+
+            const auto bit = std::byte{static_cast<unsigned char>(1u << slot)};
+            AtomicFetchOrByte(acceptedNow ? g_pressedMask : g_releasedMask, bit);
         }
     }
 
