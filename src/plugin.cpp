@@ -72,6 +72,22 @@ namespace {
         return IntegratedMagic::SaveSpellDB::NormalizeKey(std::move(key));
     }
 
+    bool ReadPostLoadOk(const SKSE::MessagingInterface::Message* message) {
+        if (!message) {
+            return true;
+        }
+
+        if (const auto raw = reinterpret_cast<std::uintptr_t>(message->data); raw == 0u || raw == 1u) {
+            return raw != 0u;
+        }
+
+        if (message->data && message->dataLen == sizeof(bool)) {
+            return *reinterpret_cast<const bool*>(message->data);  // NOSONAR
+        }
+
+        return message->data != nullptr;
+    }
+
     void InitializeLogger() {
         if (auto path = SKSE::log::log_directory()) {
             *path /= "IntegratedMagic.log";
@@ -106,14 +122,7 @@ namespace {
                 break;
             }
             case SKSE::MessagingInterface::kPostLoadGame: {
-                bool ok = true;
-                if (message->data && message->dataLen == sizeof(bool)) {
-                    ok = *reinterpret_cast<const bool*>(message->data);  // NOSONAR
-                } else {
-                    ok = reinterpret_cast<std::uintptr_t>(message->data) != 0;
-                }
-
-                if (ok && !g_pendingEssPath.empty()) {
+                if (const bool ok = ReadPostLoadOk(message); ok && !g_pendingEssPath.empty()) {
                     EnsureSaveSpellDBLoaded();
                     g_currentEssPath = g_pendingEssPath;
 

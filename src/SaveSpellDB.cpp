@@ -70,6 +70,8 @@ namespace IntegratedMagic {
                 spdlog::error("[IMAGIC][SaveSpellDB] Out of range for key='{}': {}", it.key(), e.what());
             } catch (const nlohmann::json::exception& e) {
                 spdlog::error("[IMAGIC][SaveSpellDB] JSON exception for key='{}': {}", it.key(), e.what());
+            } catch (const std::exception& e) {  // NOSONAR
+                spdlog::error("[IMAGIC][SaveSpellDB] Std exception while reading entry: {}", e.what());
             }
         }
     }
@@ -96,6 +98,7 @@ namespace IntegratedMagic {
     }
 
     void SaveSpellDB::Upsert(std::string_view saveKey, const SaveSpellSlots& slots) {
+        std::scoped_lock lk(_mtx);
         auto key = NormalizeKey(std::string(saveKey));
         _bySave.insert_or_assign(std::move(key), slots);
     }

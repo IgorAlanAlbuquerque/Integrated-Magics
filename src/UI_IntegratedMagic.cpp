@@ -46,64 +46,92 @@ namespace {
         return cfg.slotSpellFormID4;
     }
 
-    void DrawInputConfig(IntegratedMagic::MagicConfig& cfg, int slot, bool& dirty) {
-        auto& icfg = SlotInput(cfg, slot);
+    inline int ModeToIndex(IntegratedMagic::ActivationMode m) {
+        using enum IntegratedMagic::ActivationMode;
+        switch (m) {
+            case Hold:
+                return 0;
+            case Press:
+                return 1;
+            case Automatic:
+                return 2;
+        }
+        return 2;
+    }
 
-        ImGui::PushID(slot);
+    inline IntegratedMagic::ActivationMode IndexToMode(int idx) {
+        using enum IntegratedMagic::ActivationMode;
+        switch (idx) {
+            case 0:
+                return Hold;
+            case 1:
+                return Press;
+            default:
+                return Automatic;
+        }
+    }
+
+    inline int HandToIndex(IntegratedMagic::EquipHand h) {
+        using enum IntegratedMagic::EquipHand;
+        switch (h) {
+            case Left:
+                return 0;
+            case Right:
+                return 1;
+            case Both:
+                return 2;
+        }
+        return 2;
+    }
+
+    inline IntegratedMagic::EquipHand IndexToHand(int idx) {
+        using enum IntegratedMagic::EquipHand;
+        switch (idx) {
+            case 0:
+                return Left;
+            case 1:
+                return Right;
+            default:
+                return Both;
+        }
+    }
+
+    inline int ClampMinusOne(int v) { return (v < -1) ? -1 : v; }
+
+    inline void DrawAtomicIntInput(const std::string& label, std::atomic<int>& atom, bool& dirty,
+                                   float width = 150.0f) {
+        int v = atom.load(std::memory_order_relaxed);
+
+        ImGui::SetNextItemWidth(width);
+        if (ImGui::InputInt(label.c_str(), &v)) {
+            v = ClampMinusOne(v);
+            atom.store(v, std::memory_order_relaxed);
+            dirty = true;
+        }
+    }
+
+    inline void DrawKeyboardKeysUI(IntegratedMagic::MagicConfig& cfg, int slot, bool& dirty) {
+        auto& icfg = SlotInput(cfg, slot);
 
         ImGui::TextUnformatted(IntegratedMagic::Strings::Get("Item_KeyboardKey", "Keyboard keys (scan codes)").c_str());
 
-        int k1 = icfg.KeyboardScanCode1.load(std::memory_order_relaxed);
-        int k2 = icfg.KeyboardScanCode2.load(std::memory_order_relaxed);
-        int k3 = icfg.KeyboardScanCode3.load(std::memory_order_relaxed);
+        DrawAtomicIntInput(IntegratedMagic::Strings::Get("Item_Key1", "Key 1"), icfg.KeyboardScanCode1, dirty);
+        DrawAtomicIntInput(IntegratedMagic::Strings::Get("Item_Key2", "Key 2"), icfg.KeyboardScanCode2, dirty);
+        DrawAtomicIntInput(IntegratedMagic::Strings::Get("Item_Key3", "Key 3"), icfg.KeyboardScanCode3, dirty);
+    }
 
-        ImGui::SetNextItemWidth(150.0f);
-        if (ImGui::InputInt(IntegratedMagic::Strings::Get("Item_Key1", "Key 1").c_str(), &k1)) {
-            if (k1 < -1) k1 = -1;
-            icfg.KeyboardScanCode1.store(k1, std::memory_order_relaxed);
-            dirty = true;
-        }
-        ImGui::SetNextItemWidth(150.0f);
-        if (ImGui::InputInt(IntegratedMagic::Strings::Get("Item_Key2", "Key 2").c_str(), &k2)) {
-            if (k2 < -1) k2 = -1;
-            icfg.KeyboardScanCode2.store(k2, std::memory_order_relaxed);
-            dirty = true;
-        }
-        ImGui::SetNextItemWidth(150.0f);
-        if (ImGui::InputInt(IntegratedMagic::Strings::Get("Item_Key3", "Key 3").c_str(), &k3)) {
-            if (k3 < -1) k3 = -1;
-            icfg.KeyboardScanCode3.store(k3, std::memory_order_relaxed);
-            dirty = true;
-        }
-
-        ImGui::Spacing();
+    inline void DrawGamepadButtonsUI(IntegratedMagic::MagicConfig& cfg, int slot, bool& dirty) {
+        auto& icfg = SlotInput(cfg, slot);
 
         ImGui::TextUnformatted(IntegratedMagic::Strings::Get("Item_GamepadButton", "Gamepad buttons").c_str());
 
-        int g1 = icfg.GamepadButton1.load(std::memory_order_relaxed);
-        int g2 = icfg.GamepadButton2.load(std::memory_order_relaxed);
-        int g3 = icfg.GamepadButton3.load(std::memory_order_relaxed);
+        DrawAtomicIntInput(IntegratedMagic::Strings::Get("Item_Btn1", "Btn 1"), icfg.GamepadButton1, dirty);
+        DrawAtomicIntInput(IntegratedMagic::Strings::Get("Item_Btn2", "Btn 2"), icfg.GamepadButton2, dirty);
+        DrawAtomicIntInput(IntegratedMagic::Strings::Get("Item_Btn3", "Btn 3"), icfg.GamepadButton3, dirty);
+    }
 
-        ImGui::SetNextItemWidth(150.0f);
-        if (ImGui::InputInt(IntegratedMagic::Strings::Get("Item_Btn1", "Btn 1").c_str(), &g1)) {
-            if (g1 < -1) g1 = -1;
-            icfg.GamepadButton1.store(g1, std::memory_order_relaxed);
-            dirty = true;
-        }
-        ImGui::SetNextItemWidth(150.0f);
-        if (ImGui::InputInt(IntegratedMagic::Strings::Get("Item_Btn2", "Btn 2").c_str(), &g2)) {
-            if (g2 < -1) g2 = -1;
-            icfg.GamepadButton2.store(g2, std::memory_order_relaxed);
-            dirty = true;
-        }
-        ImGui::SetNextItemWidth(150.0f);
-        if (ImGui::InputInt(IntegratedMagic::Strings::Get("Item_Btn3", "Btn 3").c_str(), &g3)) {
-            if (g3 < -1) g3 = -1;
-            icfg.GamepadButton3.store(g3, std::memory_order_relaxed);
-            dirty = true;
-        }
-
-        ImGui::Spacing();
+    inline void DrawCaptureHotkeyUI(IntegratedMagic::MagicConfig& cfg, int slot, bool& dirty) {
+        auto& icfg = SlotInput(cfg, slot);
 
         if (!g_capturingHotkey || g_captureSlot != slot) {
             if (ImGui::Button(
@@ -113,30 +141,45 @@ namespace {
                 g_captureSlot = slot;
                 MagicInput::RequestHotkeyCapture();
             }
-        } else {
-            ImGui::TextDisabled("%s", IntegratedMagic::Strings::Get(
-                                          "Item_CaptureHotkey_Waiting",
-                                          "Press ESC to close the menu then press a keyboard key or gamepad button...")
-                                          .c_str());
-
-            const int encoded = MagicInput::PollCapturedHotkey();
-            if (encoded != -1) {
-                if (encoded >= 0) {
-                    icfg.KeyboardScanCode1.store(encoded, std::memory_order_relaxed);
-                    icfg.KeyboardScanCode2.store(-1, std::memory_order_relaxed);
-                    icfg.KeyboardScanCode3.store(-1, std::memory_order_relaxed);
-                } else {
-                    const int btn = -(encoded + 1);
-                    icfg.GamepadButton1.store(btn, std::memory_order_relaxed);
-                    icfg.GamepadButton2.store(-1, std::memory_order_relaxed);
-                    icfg.GamepadButton3.store(-1, std::memory_order_relaxed);
-                }
-
-                dirty = true;
-                g_capturingHotkey = false;
-                g_captureSlot = -1;
-            }
+            return;
         }
+
+        ImGui::TextDisabled("%s", IntegratedMagic::Strings::Get(
+                                      "Item_CaptureHotkey_Waiting",
+                                      "Press ESC to close the menu then press a keyboard key or gamepad button...")
+                                      .c_str());
+
+        const int encoded = MagicInput::PollCapturedHotkey();
+        if (encoded == -1) {
+            return;
+        }
+
+        if (encoded >= 0) {
+            icfg.KeyboardScanCode1.store(encoded, std::memory_order_relaxed);
+            icfg.KeyboardScanCode2.store(-1, std::memory_order_relaxed);
+            icfg.KeyboardScanCode3.store(-1, std::memory_order_relaxed);
+        } else {
+            const int btn = -(encoded + 1);
+            icfg.GamepadButton1.store(btn, std::memory_order_relaxed);
+            icfg.GamepadButton2.store(-1, std::memory_order_relaxed);
+            icfg.GamepadButton3.store(-1, std::memory_order_relaxed);
+        }
+
+        dirty = true;
+        g_capturingHotkey = false;
+        g_captureSlot = -1;
+    }
+
+    void DrawInputConfig(IntegratedMagic::MagicConfig& cfg, int slot, bool& dirty) {
+        ImGui::PushID(slot);
+
+        DrawKeyboardKeysUI(cfg, slot, dirty);
+        ImGui::Spacing();
+
+        DrawGamepadButtonsUI(cfg, slot, dirty);
+        ImGui::Spacing();
+
+        DrawCaptureHotkeyUI(cfg, slot, dirty);
 
         ImGui::PopID();
     }
@@ -174,16 +217,14 @@ namespace {
         const auto mHold = IntegratedMagic::Strings::Get("Item_Mode_Hold", "Hold");
         const auto mPress = IntegratedMagic::Strings::Get("Item_Mode_Press", "Press");
         const auto mAuto = IntegratedMagic::Strings::Get("Item_Mode_Automatic", "Automatic");
-        const char* modes[] = {mHold.c_str(), mPress.c_str(), mAuto.c_str()};
+        const std::array<const char*, 3> modes{mHold.c_str(), mPress.c_str(), mAuto.c_str()};
 
-        int modeIdx = (s.mode == IntegratedMagic::ActivationMode::Hold)    ? 0
-                      : (s.mode == IntegratedMagic::ActivationMode::Press) ? 1
-                                                                           : 2;
+        int modeIdx = ModeToIndex(s.mode);
 
         ImGui::SetNextItemWidth(220.0f);
-        if (ImGui::Combo(IntegratedMagic::Strings::Get("Item_Mode", "Activation mode").c_str(), &modeIdx, modes, 3)) {
-            using enum IntegratedMagic::ActivationMode;
-            s.mode = (modeIdx == 0) ? Hold : (modeIdx == 1) ? Press : Automatic;
+        if (ImGui::Combo(IntegratedMagic::Strings::Get("Item_Mode", "Activation mode").c_str(), &modeIdx, modes.data(),
+                         static_cast<int>(modes.size()))) {
+            s.mode = IndexToMode(modeIdx);
             IntegratedMagic::SpellSettingsDB::Get().Set(formID, s);
             dirty = true;
         }
@@ -191,16 +232,14 @@ namespace {
         const auto hLeft = IntegratedMagic::Strings::Get("Item_Hand_Left", "Left");
         const auto hRight = IntegratedMagic::Strings::Get("Item_Hand_Right", "Right");
         const auto hBoth = IntegratedMagic::Strings::Get("Item_Hand_Both", "Both");
-        const char* hands[] = {hLeft.c_str(), hRight.c_str(), hBoth.c_str()};
+        const std::array<const char*, 3> hands{hLeft.c_str(), hRight.c_str(), hBoth.c_str()};
 
-        int handIdx = (s.hand == IntegratedMagic::EquipHand::Left)    ? 0
-                      : (s.hand == IntegratedMagic::EquipHand::Right) ? 1
-                                                                      : 2;
+        int handIdx = HandToIndex(s.hand);
 
         ImGui::SetNextItemWidth(220.0f);
-        if (ImGui::Combo(IntegratedMagic::Strings::Get("Item_Hand", "Equip hand").c_str(), &handIdx, hands, 3)) {
-            using enum IntegratedMagic::EquipHand;
-            s.hand = (handIdx == 0) ? Left : (handIdx == 1) ? Right : Both;
+        if (ImGui::Combo(IntegratedMagic::Strings::Get("Item_Hand", "Equip hand").c_str(), &handIdx, hands.data(),
+                         static_cast<int>(hands.size()))) {
+            s.hand = IndexToHand(handIdx);
             IntegratedMagic::SpellSettingsDB::Get().Set(formID, s);
             dirty = true;
         }

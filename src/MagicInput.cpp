@@ -18,6 +18,18 @@
 namespace {
     constexpr int kSlots = 4;
     constexpr int kMaxCode = 355;
+    constexpr float kExclusiveConfirmDelaySec = 0.10f;
+    constexpr int kDIK_W = 0x11;
+    constexpr int kDIK_A = 0x1E;
+    constexpr int kDIK_S = 0x1F;
+    constexpr int kDIK_D = 0x20;
+
+    constexpr int kDIK_Up = 0xC8;
+    constexpr int kDIK_Left = 0xCB;
+    constexpr int kDIK_Right = 0xCD;
+    constexpr int kDIK_Down = 0xD0;
+
+    enum class PendingSrc : std::uint8_t { None = 0, Kb = 1, Gp = 2 };
 
     struct SlotHotkeys {
         std::array<int, 3> kb{-1, -1, -1};
@@ -34,14 +46,41 @@ namespace {
         return st;
     }
 
-    std::array<SlotHotkeys, kSlots> g_cache{};            // NOSONAR
-    std::array<std::atomic_bool, kMaxCode> g_kbDown{};    // NOSONAR
-    std::array<std::atomic_bool, kMaxCode> g_gpDown{};    // NOSONAR
-    std::array<std::atomic_bool, kSlots> g_slotDown{};    // NOSONAR
-    std::atomic<std::byte> g_pressedMask{std::byte{0}};   // NOSONAR
-    std::atomic<std::byte> g_releasedMask{std::byte{0}};  // NOSONAR
-    std::array<bool, kSlots> g_prevRawKbDown{};           // NOSONAR
-    std::array<bool, kSlots> g_prevRawGpDown{};           // NOSONAR
+    std::array<SlotHotkeys, kSlots> g_cache{};               // NOSONAR
+    std::array<std::atomic_bool, kMaxCode> g_kbDown{};       // NOSONAR
+    std::array<std::atomic_bool, kMaxCode> g_gpDown{};       // NOSONAR
+    std::array<std::atomic_bool, kSlots> g_slotDown{};       // NOSONAR
+    std::atomic<std::byte> g_pressedMask{std::byte{0}};      // NOSONAR
+    std::atomic<std::byte> g_releasedMask{std::byte{0}};     // NOSONAR
+    std::array<bool, kSlots> g_prevRawKbDown{};              // NOSONAR
+    std::array<bool, kSlots> g_prevRawGpDown{};              // NOSONAR
+    std::array<float, kSlots> g_exclusivePendingTimer{};     // NOSONAR
+    std::array<PendingSrc, kSlots> g_exclusivePendingSrc{};  // NOSONAR
+
+    inline void ClearExclusivePending(std::size_t s) {
+        g_exclusivePendingSrc[s] = PendingSrc::None;
+        g_exclusivePendingTimer[s] = 0.0f;
+    }
+
+    inline bool IsAllowedExtra_Keyboard_MoveOrCamera(int code) {
+        switch (code) {
+            case kDIK_W:
+            case kDIK_A:
+            case kDIK_S:
+            case kDIK_D:
+            case kDIK_Up:
+            case kDIK_Down:
+            case kDIK_Left:
+            case kDIK_Right:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    inline bool IsAllowedExtra_Gamepad_MoveOrCamera(int) { return false; }
+
+    inline bool HasExclusivePending(std::size_t s) { return g_exclusivePendingSrc[s] != PendingSrc::None; }
 
     bool AnyEnabled(const std::array<int, 3>& a) { return (a[0] != -1) || (a[1] != -1) || (a[2] != -1); }
 
@@ -70,8 +109,8 @@ namespace {
         return std::ranges::find(combo, code) != combo.end();
     }
 
-    template <class DownArr>
-    bool ComboExclusiveNow(const std::array<int, 3>& combo, const DownArr& down) {
+    template <class DownArr, class AllowedFn>
+    bool ComboExclusiveNow(const std::array<int, 3>& combo, const DownArr& down, AllowedFn isAllowedExtra) {
         if (!AnyEnabled(combo)) {
             return false;
         }
@@ -81,6 +120,9 @@ namespace {
                 continue;
             }
             if (ComboContains(combo, code)) {
+                continue;
+            }
+            if (isAllowedExtra(code)) {
                 continue;
             }
             return false;
@@ -135,6 +177,19 @@ namespace {
         while (!a.compare_exchange_weak(cur, (cur | bits), order, order)) {
             // cur é atualizado com o valor atual automaticamente quando falha
         }
+    }
+
+    void ResetExclusiveState() {
+        for (int slot = 0; slot < kSlots; ++slot) {
+            const auto s = static_cast<std::size_t>(slot);
+            g_prevRawKbDown[s] = false;
+            g_prevRawGpDown[s] = false;
+            ClearExclusivePending(s);
+            g_slotDown[s].store(false, std::memory_order_relaxed);
+        }
+
+        g_pressedMask.store(std::byte{0}, std::memory_order_relaxed);
+        g_releasedMask.store(std::byte{0}, std::memory_order_relaxed);
     }
 
     void HandleSlotPressed(int slot) {
@@ -203,7 +258,7 @@ namespace {
     }
 
     bool ComputeAcceptedExclusive(int slot, const SlotHotkeys& hk, bool prevAccepted, bool kbNow, bool gpNow,
-                                  bool rawNow) {
+                                  bool rawNow, float dt) {
         const auto s = static_cast<std::size_t>(slot);
 
         const bool kbPrev = g_prevRawKbDown[s];
@@ -215,20 +270,54 @@ namespace {
         g_prevRawKbDown[s] = kbNow;
         g_prevRawGpDown[s] = gpNow;
 
-        if (!prevAccepted) {
-            if (kbPressedEdge && ComboExclusiveNow(hk.kb, g_kbDown)) {
+        if (prevAccepted) {
+            ClearExclusivePending(s);
+            return rawNow;
+        }
+
+        if (HasExclusivePending(s)) {
+            const auto src = g_exclusivePendingSrc[s];
+
+            const bool stillDown = (src == PendingSrc::Kb) ? kbNow : gpNow;
+
+            if (const bool stillExclusive =
+                    (src == PendingSrc::Kb) ? ComboExclusiveNow(hk.kb, g_kbDown, IsAllowedExtra_Keyboard_MoveOrCamera)
+                                            : ComboExclusiveNow(hk.gp, g_gpDown, IsAllowedExtra_Gamepad_MoveOrCamera);
+                !stillExclusive) {
+                ClearExclusivePending(s);
+                return false;
+            }
+
+            if (!stillDown) {
+                ClearExclusivePending(s);
                 return true;
             }
-            if (gpPressedEdge && ComboExclusiveNow(hk.gp, g_gpDown)) {
+
+            g_exclusivePendingTimer[s] -= dt;
+            if (g_exclusivePendingTimer[s] <= 0.0f) {
+                ClearExclusivePending(s);
                 return true;
             }
+
             return false;
         }
 
-        return rawNow;
+        if (kbPressedEdge && ComboExclusiveNow(hk.kb, g_kbDown, IsAllowedExtra_Keyboard_MoveOrCamera)) {
+            g_exclusivePendingSrc[s] = PendingSrc::Kb;
+            g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;
+            return false;
+        }
+
+        if (gpPressedEdge && ComboExclusiveNow(hk.gp, g_gpDown, IsAllowedExtra_Gamepad_MoveOrCamera)) {
+            g_exclusivePendingSrc[s] = PendingSrc::Gp;
+            g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;
+            return false;
+        }
+
+        return false;
     }
 
-    void RecomputeSlotEdges() {
+    void RecomputeSlotEdges(float dt) {
         auto const& cfg = IntegratedMagic::GetMagicConfig();
 
         for (int slot = 0; slot < kSlots; ++slot) {
@@ -244,10 +333,12 @@ namespace {
             bool acceptedNow = false;
 
             if (cfg.requireExclusiveHotkeyPatch) {
-                acceptedNow = ComputeAcceptedExclusive(slot, hk, prevAccepted, kbNow, gpNow, rawNow);
+                acceptedNow = ComputeAcceptedExclusive(slot, hk, prevAccepted, kbNow, gpNow, rawNow, dt);
             } else {
                 g_prevRawKbDown[s] = kbNow;
                 g_prevRawGpDown[s] = gpNow;
+                ClearExclusivePending(s);
+
                 acceptedNow = rawNow;
             }
 
@@ -302,6 +393,24 @@ namespace {
                 return idx;
             }
         }
+    }
+
+    void ClearDownStateCaches() {
+        for (int i = 0; i < kMaxCode; ++i) {
+            g_kbDown[static_cast<std::size_t>(i)].store(false, std::memory_order_relaxed);
+            g_gpDown[static_cast<std::size_t>(i)].store(false, std::memory_order_relaxed);
+        }
+
+        for (int slot = 0; slot < kSlots; ++slot) {
+            const auto s = static_cast<std::size_t>(slot);
+            g_slotDown[s].store(false, std::memory_order_relaxed);
+            g_prevRawKbDown[s] = false;
+            g_prevRawGpDown[s] = false;
+            ClearExclusivePending(s);
+        }
+
+        g_pressedMask.store(std::byte{0}, std::memory_order_relaxed);
+        g_releasedMask.store(std::byte{0}, std::memory_order_relaxed);
     }
 
     void LoadHotkeyCache_FromConfig() {
@@ -363,7 +472,7 @@ namespace {
 
             const float dt = CalculateDeltaTime();
 
-            RecomputeSlotEdges();
+            RecomputeSlotEdges(dt);
 
             const bool blocked = IsInputBlockedByMenus();
             ConsumeAndHandleSlots(blocked);
@@ -429,6 +538,7 @@ namespace {
 
         void ConsumeAndHandleSlots(bool blocked) const {
             if (blocked) {
+                ClearDownStateCaches();
                 DrainWhenBlocked();
                 return;
             }
@@ -456,7 +566,7 @@ void MagicInput::RegisterInputHandler() {
 
 void MagicInput::OnConfigChanged() {
     LoadHotkeyCache_FromConfig();
-    RecomputeSlotEdges();
+    ResetExclusiveState();
 }
 
 std::optional<int> MagicInput::GetDownSlotForSelection() {
