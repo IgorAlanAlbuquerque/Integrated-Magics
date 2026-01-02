@@ -1,9 +1,5 @@
 #include "MagicState.h"
 
-#include <mutex>
-#include <queue>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "MagicAction.h"
@@ -14,34 +10,15 @@
 
 namespace IntegratedMagic {
     namespace detail {
-        namespace {
-            constexpr std::uint32_t kRightAttackMouseId = 0;
-            constexpr std::uint32_t kLeftAttackMouseId = 1;
+        SyntheticInputState& GetSynth() {
+            static SyntheticInputState s;  // NOSONAR
+            return s;
+        }
 
-            RE::BSFixedString& RightAttackEvent() {
-                static RE::BSFixedString ev{"Right Attack/Block"};
-                return ev;
-            }
-            RE::BSFixedString& LeftAttackEvent() {
-                static RE::BSFixedString ev{"Left Attack/Block"};
-                return ev;
-            }
-
-            struct SyntheticInputState {
-                std::mutex mutex;
-                std::queue<RE::ButtonEvent*> pending;
-            };
-
-            SyntheticInputState& GetSynth() {
-                static SyntheticInputState s;  // NOSONAR
-                return s;
-            }
-
-            RE::ButtonEvent* MakeAttackButtonEvent(bool leftHand, float value, float heldSecs) {
-                const auto& ue = leftHand ? LeftAttackEvent() : RightAttackEvent();
-                const auto id = leftHand ? kLeftAttackMouseId : kRightAttackMouseId;
-                return RE::ButtonEvent::Create(RE::INPUT_DEVICE::kMouse, ue, id, value, heldSecs);
-            }
+        RE::ButtonEvent* MakeAttackButtonEvent(bool leftHand, float value, float heldSecs) {
+            const auto& ue = leftHand ? LeftAttackEvent() : RightAttackEvent();
+            const auto id = leftHand ? kLeftAttackMouseId : kRightAttackMouseId;
+            return RE::ButtonEvent::Create(RE::INPUT_DEVICE::kMouse, ue, id, value, heldSecs);
         }
 
         void EnqueueSyntheticAttack(RE::ButtonEvent* ev) {
@@ -105,37 +82,6 @@ namespace IntegratedMagic {
         }
     }
     namespace {
-        struct InventoryIndex {
-            std::unordered_map<RE::TESBoundObject*, std::vector<RE::ExtraDataList*>> extrasByBase;
-            std::unordered_set<RE::TESBoundObject*> wornBases;
-        };
-
-        InventoryIndex BuildInventoryIndex(RE::PlayerCharacter* player) {
-            InventoryIndex idx;
-            if (!player) return idx;
-
-            auto inv = player->GetInventory([](RE::TESBoundObject&) { return true; });
-            for (auto const& [obj, data] : inv) {
-                auto* base = obj;
-                auto const* entry = data.second.get();
-                if (!base || !entry || !entry->extraLists) {
-                    continue;
-                }
-
-                auto& vec = idx.extrasByBase[base];
-                for (auto* extra : *entry->extraLists) {
-                    if (!extra) continue;
-
-                    vec.push_back(extra);
-
-                    if (extra->HasType(RE::ExtraDataType::kWorn) || extra->HasType(RE::ExtraDataType::kWornLeft)) {
-                        idx.wornBases.insert(base);
-                    }
-                }
-            }
-            return idx;
-        }
-
         inline RE::PlayerCharacter* GetPlayer() { return RE::PlayerCharacter::GetSingleton(); }
 
         inline RE::TESBoundObject* AsBoundObject(RE::TESForm* f) { return f ? f->As<RE::TESBoundObject>() : nullptr; }
@@ -258,6 +204,83 @@ namespace IntegratedMagic {
             const bool ok = (mag + 1e-2f) >= cost;
             return ok;
         }
+
+        inline RE::SpellItem* AsSpell(RE::TESForm* f) { return f ? f->As<RE::SpellItem>() : nullptr; }
+
+        inline void ClearHandSpellIfNoSnapshot(RE::PlayerCharacter* player, RE::SpellItem* snapSpell,
+                                               RE::SpellItem* modeSpell, EquipHand hand) {
+            if (snapSpell) {
+                return;
+            }
+
+            if (modeSpell) {
+                IntegratedMagic::MagicAction::ClearHandSpell(player, modeSpell, hand);
+            } else {
+                IntegratedMagic::MagicAction::ClearHandSpell(player, hand);
+            }
+        }
+
+        inline void EquipSpellIfPresent(RE::PlayerCharacter* player, RE::SpellItem* spell, EquipHand hand) {
+            if (spell) {
+                IntegratedMagic::MagicAction::EquipSpellInHand(player, spell, hand);
+            }
+        }
+
+        using InventoryIndexT = decltype(BuildInventoryIndex(std::declval<RE::PlayerCharacter*>()));
+
+        inline void RestoreOneHand(RE::PlayerCharacter* player, RE::ActorEquipManager* mgr, const InventoryIndexT& idx,
+                                   bool leftHand, const ObjSnapshot& want, const RE::BGSEquipSlot* slot) {
+            auto* curEntry = player->GetEquippedEntryData(leftHand);
+            auto* curObj = curEntry ? curEntry->GetObject() : nullptr;
+            auto* curBase = curObj ? curObj->As<RE::TESBoundObject>() : nullptr;
+            auto* curExtra = GetPrimaryExtra(curEntry);
+
+            if (want.base) {
+                if (curBase == want.base) {
+                    return;
+                }
+
+                auto* desiredExtra = ResolveLiveExtra(idx, want.base, want.extra);
+                if (!desiredExtra && want.extra) {
+                    desiredExtra = FindAnyInstanceExtraForBase(idx, want.base);
+                }
+
+                mgr->EquipObject(player, want.base, desiredExtra, 1, slot, true, false, true, false);
+                return;
+            }
+
+            if (!curBase) {
+                return;
+            }
+
+            mgr->UnequipObject(player, curBase, curExtra, 1, slot, true, false, true, false, nullptr);
+        }
+    }
+
+    InventoryIndex BuildInventoryIndex(RE::PlayerCharacter* player) {
+        InventoryIndex idx;
+        if (!player) return idx;
+
+        auto inv = player->GetInventory([](RE::TESBoundObject&) { return true; });
+        for (auto const& [obj, data] : inv) {
+            auto* base = obj;
+            auto const* entry = data.second.get();
+            if (!base || !entry || !entry->extraLists) {
+                continue;
+            }
+
+            auto& vec = idx.extrasByBase[base];
+            for (auto* extra : *entry->extraLists) {
+                if (!extra) continue;
+
+                vec.push_back(extra);
+
+                if (extra->HasType(RE::ExtraDataType::kWorn) || extra->HasType(RE::ExtraDataType::kWornLeft)) {
+                    idx.wornBases.insert(base);
+                }
+            }
+        }
+        return idx;
     }
 
     MagicState& MagicState::Get() {
@@ -293,24 +316,7 @@ namespace IntegratedMagic {
         }
     }
 
-    void MagicState::EnterPress(int slot) {
-        auto* player = GetPlayer();
-        if (!player) return;
-
-        const auto spellFormID = MagicSlots::GetSlotSpell(slot);
-        if (spellFormID == 0) return;
-
-        if (auto const* spell = RE::TESForm::LookupByID<RE::SpellItem>(spellFormID); !spell) return;
-
-        CaptureSnapshot(player);
-
-        _prevExtraEquipped.clear();
-
-        ApplyPress(slot);
-
-        _active = true;
-        _activeSlot = slot;
-    }
+    void MagicState::EnterPress(int slot) { (void)ApplyPress(slot); }
 
     void MagicState::CaptureSnapshot(RE::PlayerCharacter* player) {
         _snap = {};
@@ -351,6 +357,7 @@ namespace IntegratedMagic {
     }
 
     void MagicState::RestoreSnapshot(RE::PlayerCharacter* player) {
+        using enum EquipHand;
         if (!player || !_snap.valid) {
             return;
         }
@@ -362,130 +369,36 @@ namespace IntegratedMagic {
 
         const auto idx = BuildInventoryIndex(player);
 
-        const auto* rightSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(EquipHand::Right);
-        const auto* leftSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(EquipHand::Left);
+        const auto* rightSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(Right);
+        const auto* leftSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(Left);
 
-        auto* leftSpell = _snap.leftSpell ? _snap.leftSpell->As<RE::SpellItem>() : nullptr;
-        auto* rightSpell = _snap.rightSpell ? _snap.rightSpell->As<RE::SpellItem>() : nullptr;
+        auto* leftSpell = AsSpell(_snap.leftSpell);
+        auto* rightSpell = AsSpell(_snap.rightSpell);
 
-        if (!leftSpell) {
-            if (_modeSpellLeft) {
-                MagicAction::ClearHandSpell(player, _modeSpellLeft, EquipHand::Left);
-            } else {
-                MagicAction::ClearHandSpell(player, EquipHand::Left);
-            }
-        }
+        ClearHandSpellIfNoSnapshot(player, leftSpell, _modeSpellLeft, Left);
+        ClearHandSpellIfNoSnapshot(player, rightSpell, _modeSpellRight, Right);
 
-        if (!rightSpell) {
-            if (_modeSpellRight) {
-                MagicAction::ClearHandSpell(player, _modeSpellRight, EquipHand::Right);
-            } else {
-                MagicAction::ClearHandSpell(player, EquipHand::Right);
-            }
-        }
+        RestoreOneHand(player, mgr, idx, false, _snap.rightObj, rightSlot);
+        RestoreOneHand(player, mgr, idx, true, _snap.leftObj, leftSlot);
 
-        auto restoreOneHand = [&](bool leftHand, const ObjSnapshot& want, const RE::BGSEquipSlot* slot) {
-            auto* curEntry = player->GetEquippedEntryData(leftHand);
-            auto* curObj = curEntry ? curEntry->GetObject() : nullptr;
-            auto* curBase = curObj ? curObj->As<RE::TESBoundObject>() : nullptr;
-            auto* curExtra = GetPrimaryExtra(curEntry);
-
-            if (want.base) {
-                auto* desiredBase = want.base;
-
-                RE::ExtraDataList* desiredExtra = ResolveLiveExtra(idx, desiredBase, want.extra);
-                if (!desiredExtra && want.extra) {
-                    desiredExtra = FindAnyInstanceExtraForBase(idx, desiredBase);
-                }
-
-                if (curBase == desiredBase) {
-                    return;
-                }
-
-                mgr->EquipObject(player, desiredBase, desiredExtra, 1, slot, true, false, true, false);
-            } else {
-                if (!curBase) {
-                    return;
-                }
-
-                mgr->UnequipObject(player, curBase, curExtra, 1, slot, true, false, true, false, nullptr);
-            }
-        };
-
-        restoreOneHand(false, _snap.rightObj, rightSlot);
-        restoreOneHand(true, _snap.leftObj, leftSlot);
-
-        if (leftSpell) {
-            MagicAction::EquipSpellInHand(player, leftSpell, EquipHand::Left);
-        }
-        if (rightSpell) {
-            MagicAction::EquipSpellInHand(player, rightSpell, EquipHand::Right);
-        }
+        EquipSpellIfPresent(player, leftSpell, Left);
+        EquipSpellIfPresent(player, rightSpell, Right);
     }
 
     bool MagicState::ApplyPress(int slot) {
-        auto* player = GetPlayer();
-        if (!player) return false;
+        RE::PlayerCharacter* player = nullptr;
+        RE::SpellItem* spell = nullptr;
+        SpellSettings ss{};
 
-        const auto spellFormID = MagicSlots::GetSlotSpell(slot);
-        if (spellFormID == 0) return false;
-
-        auto* spell = RE::TESForm::LookupByID<RE::SpellItem>(spellFormID);
-        if (!spell) return false;
-
-        const auto settings = SpellSettingsDB::Get().GetOrCreate(spellFormID);
-
-        _modeSpellLeft = nullptr;
-        _modeSpellRight = nullptr;
-
-        switch (settings.hand) {
-            case EquipHand::Left:
-                _modeSpellLeft = spell;
-                break;
-            case EquipHand::Right:
-                _modeSpellRight = spell;
-                break;
-            case EquipHand::Both:
-                _modeSpellLeft = spell;
-                _modeSpellRight = spell;
-                break;
+        if (!PrepareSlotSpell(slot, false, player, spell, ss)) {
+            return false;
         }
 
-        UpdatePrevExtraEquippedForOverlay([&] { MagicAction::EquipSpellInHand(player, spell, settings.hand); });
+        const auto hand = ss.hand;
+        UpdatePrevExtraEquippedForOverlay(
+            [player, spell, hand] { MagicAction::EquipSpellInHand(player, spell, hand); });
 
         return true;
-    }
-
-    void MagicState::UpdatePrevExtraEquippedForOverlay(const std::function<void()>& equipFn) {
-        auto* player = GetPlayer();
-        if (!player) {
-            return;
-        }
-
-        auto before = BuildInventoryIndex(player);
-
-        equipFn();
-
-        auto after = BuildInventoryIndex(player);
-
-        for (auto* base : before.wornBases) {
-            if (after.wornBases.contains(base)) {
-                continue;
-            }
-
-            ExtraEquippedItem item{base, nullptr};
-
-            bool exists = false;
-            for (auto const& e : _prevExtraEquipped) {
-                if (e.base == item.base) {
-                    exists = true;
-                    break;
-                }
-            }
-            if (!exists) {
-                _prevExtraEquipped.push_back(item);
-            }
-        }
     }
 
     void MagicState::HoldDown(int slot) {
@@ -513,44 +426,12 @@ namespace IntegratedMagic {
     }
 
     void MagicState::EnterHold(int slot) {
-        auto* player = GetPlayer();
-        if (!player) {
+        RE::PlayerCharacter* player = nullptr;
+        RE::SpellItem* spell = nullptr;
+        SpellSettings ss{};
+
+        if (!PrepareSlotSpell(slot, false, player, spell, ss)) {
             return;
-        }
-
-        const std::uint32_t spellFormID = MagicSlots::GetSlotSpell(slot);
-        if (spellFormID == 0) {
-            return;
-        }
-
-        auto* spell = RE::TESForm::LookupByID<RE::SpellItem>(spellFormID);
-        if (!spell) {
-            return;
-        }
-
-        const auto ss = SpellSettingsDB::Get().GetOrCreate(spellFormID);
-
-        if (!_active) {
-            CaptureSnapshot(player);
-            _prevExtraEquipped.clear();
-            _active = true;
-            _activeSlot = slot;
-        }
-
-        _modeSpellLeft = nullptr;
-        _modeSpellRight = nullptr;
-
-        switch (ss.hand) {
-            case EquipHand::Left:
-                _modeSpellLeft = spell;
-                break;
-            case EquipHand::Right:
-                _modeSpellRight = spell;
-                break;
-            case EquipHand::Both:
-                _modeSpellLeft = spell;
-                _modeSpellRight = spell;
-                break;
         }
 
         _holdActive = true;
@@ -566,7 +447,9 @@ namespace IntegratedMagic {
             _waitingAutoAfterEquip = false;
         }
 
-        UpdatePrevExtraEquippedForOverlay([&] { MagicAction::EquipSpellInHand(player, spell, ss.hand); });
+        const auto hand = ss.hand;
+        UpdatePrevExtraEquippedForOverlay(
+            [player, spell, hand] { MagicAction::EquipSpellInHand(player, spell, hand); });
     }
 
     void MagicState::ExitAll() {
@@ -685,47 +568,12 @@ namespace IntegratedMagic {
             return;
         }
 
-        auto* player = GetPlayer();
-        if (!player) {
+        RE::PlayerCharacter* player = nullptr;
+        RE::SpellItem* spell = nullptr;
+        SpellSettings ss{};
+
+        if (!PrepareSlotSpell(slot, true, player, spell, ss)) {
             return;
-        }
-
-        const std::uint32_t spellFormID = MagicSlots::GetSlotSpell(slot);
-
-        if (spellFormID == 0) {
-            return;
-        }
-
-        auto* spell = RE::TESForm::LookupByID<RE::SpellItem>(spellFormID);
-        if (!spell) {
-            return;
-        }
-
-        const auto ss = SpellSettingsDB::Get().GetOrCreate(spellFormID);
-
-        if (!HasEnoughMagickaForSpell(player, spell, ss.hand)) return;
-
-        if (!_active) {
-            CaptureSnapshot(player);
-            _prevExtraEquipped.clear();
-            _active = true;
-            _activeSlot = slot;
-        }
-
-        _modeSpellLeft = nullptr;
-        _modeSpellRight = nullptr;
-
-        switch (ss.hand) {
-            case EquipHand::Left:
-                _modeSpellLeft = spell;
-                break;
-            case EquipHand::Right:
-                _modeSpellRight = spell;
-                break;
-            case EquipHand::Both:
-                _modeSpellLeft = spell;
-                _modeSpellRight = spell;
-                break;
         }
 
         _autoActive = true;
@@ -736,7 +584,9 @@ namespace IntegratedMagic {
         _attackEnabled = false;
         RequestAutoAttackStart(ss.hand);
 
-        UpdatePrevExtraEquippedForOverlay([&] { MagicAction::EquipSpellInHand(player, spell, ss.hand); });
+        const auto hand = ss.hand;
+        UpdatePrevExtraEquippedForOverlay(
+            [player, spell, hand] { MagicAction::EquipSpellInHand(player, spell, hand); });
     }
 
     void MagicState::ToggleAutomatic(int slot) {
@@ -821,5 +671,71 @@ namespace IntegratedMagic {
             StopAutoAttack();
             _autoChargeComplete = true;
         }
+    }
+
+    void MagicState::SetModeSpellsFromHand(EquipHand hand, RE::SpellItem* spell) {
+        _modeSpellLeft = nullptr;
+        _modeSpellRight = nullptr;
+
+        if (!spell) {
+            return;
+        }
+
+        switch (hand) {
+            using enum EquipHand;
+            case Left:
+                _modeSpellLeft = spell;
+                break;
+            case Right:
+                _modeSpellRight = spell;
+                break;
+            case Both:
+                _modeSpellLeft = spell;
+                _modeSpellRight = spell;
+                break;
+            default:
+                break;
+        }
+    }
+
+    void MagicState::EnsureActiveWithSnapshot(RE::PlayerCharacter* player, int slot) {
+        if (_active) {
+            return;
+        }
+
+        CaptureSnapshot(player);
+        _prevExtraEquipped.clear();
+
+        _active = true;
+        _activeSlot = slot;
+    }
+
+    bool MagicState::PrepareSlotSpell(int slot, bool checkMagicka, RE::PlayerCharacter*& player, RE::SpellItem*& spell,
+                                      SpellSettings& outSettings) {
+        player = GetPlayer();
+        if (!player) {
+            return false;
+        }
+
+        const std::uint32_t spellFormID = MagicSlots::GetSlotSpell(slot);
+        if (spellFormID == 0) {
+            return false;
+        }
+
+        spell = RE::TESForm::LookupByID<RE::SpellItem>(spellFormID);
+        if (!spell) {
+            return false;
+        }
+
+        outSettings = SpellSettingsDB::Get().GetOrCreate(spellFormID);
+
+        if (checkMagicka && !HasEnoughMagickaForSpell(player, spell, outSettings.hand)) {
+            return false;
+        }
+
+        EnsureActiveWithSnapshot(player, slot);
+        SetModeSpellsFromHand(outSettings.hand, spell);
+
+        return true;
     }
 }

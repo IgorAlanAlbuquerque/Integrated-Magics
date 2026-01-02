@@ -47,9 +47,8 @@ namespace {
         cfg.slotSpellFormID4.store(s.slotSpellFormID[3], std::memory_order_relaxed);
     }
 
-    static std::string ExtractKey(std::string s) {
-        auto pos = s.find_last_of("\\/");
-        if (pos != std::string::npos) s = s.substr(pos + 1);
+    std::string ExtractKey(std::string s) {
+        if (auto pos = s.find_last_of("\\/"); pos != std::string::npos) s = s.substr(pos + 1);
 
         if (s.size() >= 4) {
             auto tail = s.substr(s.size() - 4);
@@ -71,6 +70,22 @@ namespace {
         std::string raw(p, n);
         std::string key = ExtractKey(std::move(raw));
         return IntegratedMagic::SaveSpellDB::NormalizeKey(std::move(key));
+    }
+
+    bool ReadPostLoadOk(const SKSE::MessagingInterface::Message* message) {
+        if (!message) {
+            return true;
+        }
+
+        if (const auto raw = reinterpret_cast<std::uintptr_t>(message->data); raw == 0u || raw == 1u) {
+            return raw != 0u;
+        }
+
+        if (message->data && message->dataLen == sizeof(bool)) {
+            return *reinterpret_cast<const bool*>(message->data);  // NOSONAR
+        }
+
+        return message->data != nullptr;
     }
 
     void InitializeLogger() {
@@ -107,12 +122,7 @@ namespace {
                 break;
             }
             case SKSE::MessagingInterface::kPostLoadGame: {
-                bool ok = true;
-                if (message->data && message->dataLen == sizeof(bool)) {
-                    ok = (reinterpret_cast<std::uintptr_t>(message->data) != 0);  // NOSONAR
-                }
-
-                if (ok && !g_pendingEssPath.empty()) {
+                if (const bool ok = ReadPostLoadOk(message); ok && !g_pendingEssPath.empty()) {
                     EnsureSaveSpellDBLoaded();
                     g_currentEssPath = g_pendingEssPath;
 
@@ -142,12 +152,17 @@ namespace {
             }
 
             case SKSE::MessagingInterface::kDeleteGame: {
-                const std::string key = g_currentEssPath;
-
+                std::string key = GetSaveKeyFromMsg(message);
+                if (key.empty()) {
+                    key = g_currentEssPath;
+                }
                 if (!key.empty()) {
                     EnsureSaveSpellDBLoaded();
-                    IntegratedMagic::SaveSpellDB::Get().Upsert(key, ReadSlotsFromConfig());
+                    IntegratedMagic::SaveSpellDB::Get().Erase(key);
                     IntegratedMagic::SaveSpellDB::Get().SaveToDisk();
+                    if (key == g_currentEssPath) {
+                        g_currentEssPath.clear();
+                    }
                 }
                 break;
             }

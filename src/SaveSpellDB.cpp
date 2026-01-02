@@ -53,26 +53,25 @@ namespace IntegratedMagic {
 
                 const auto& arr = it.value();
 
-                if (!arr.is_array()) {
-                    continue;
-                }
-                if (arr.size() != 4) {
+                if (!arr.is_array() || arr.size() != 4) {
                     continue;
                 }
 
                 SaveSpellSlots slots{};
-
                 for (std::size_t i = 0; i < 4; ++i) {
-                    slots.slotSpellFormID[i] = arr[i].get<std::uint32_t>();
+                    slots.slotSpellFormID[i] = arr.at(i).get<std::uint32_t>();
                 }
 
-                _bySave[key] = slots;
+                _bySave.insert_or_assign(key, slots);
 
-            } catch (const std::exception& e) {
-                spdlog::error("[IMAGIC][SaveSpellDB] Exception while reading entry: {}", e.what());
-
-            } catch (...) {
-                spdlog::error("[IMAGIC][SaveSpellDB] Unknown exception while reading entry");
+            } catch (const nlohmann::json::type_error& e) {
+                spdlog::error("[IMAGIC][SaveSpellDB] Type error for key='{}': {}", it.key(), e.what());
+            } catch (const nlohmann::json::out_of_range& e) {
+                spdlog::error("[IMAGIC][SaveSpellDB] Out of range for key='{}': {}", it.key(), e.what());
+            } catch (const nlohmann::json::exception& e) {
+                spdlog::error("[IMAGIC][SaveSpellDB] JSON exception for key='{}': {}", it.key(), e.what());
+            } catch (const std::exception& e) {  // NOSONAR
+                spdlog::error("[IMAGIC][SaveSpellDB] Std exception while reading entry: {}", e.what());
             }
         }
     }
@@ -98,14 +97,16 @@ namespace IntegratedMagic {
         out << j.dump(2);
     }
 
-    void SaveSpellDB::Upsert(const std::string& saveKey, const SaveSpellSlots& slots) {
+    void SaveSpellDB::Upsert(std::string_view saveKey, const SaveSpellSlots& slots) {
         std::scoped_lock lk(_mtx);
-        _bySave[NormalizeKey(saveKey)] = slots;
+        auto key = NormalizeKey(std::string(saveKey));
+        _bySave.insert_or_assign(std::move(key), slots);
     }
 
-    bool SaveSpellDB::TryGet(const std::string& saveKey, SaveSpellSlots& out) const {
+    bool SaveSpellDB::TryGet(std::string_view saveKey, SaveSpellSlots& out) const {
         std::scoped_lock lk(_mtx);
-        auto it = _bySave.find(NormalizeKey(saveKey));
+        auto key = NormalizeKey(std::string(saveKey));
+        auto it = _bySave.find(key);
         if (it == _bySave.end()) {
             return false;
         }
@@ -113,8 +114,9 @@ namespace IntegratedMagic {
         return true;
     }
 
-    void SaveSpellDB::Erase(const std::string& saveKey) {
+    void SaveSpellDB::Erase(std::string_view saveKey) {
         std::scoped_lock lk(_mtx);
-        _bySave.erase(NormalizeKey(saveKey));
+        auto key = NormalizeKey(std::string(saveKey));
+        _bySave.erase(key);
     }
 }
