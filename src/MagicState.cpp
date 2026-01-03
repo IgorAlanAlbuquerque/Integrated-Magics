@@ -84,16 +84,27 @@ namespace IntegratedMagic {
     namespace {
         inline RE::PlayerCharacter* GetPlayer() { return RE::PlayerCharacter::GetSingleton(); }
 
-        inline RE::TESBoundObject* AsBoundObject(RE::TESForm* f) { return f ? f->As<RE::TESBoundObject>() : nullptr; }
-
-        RE::ExtraDataList* GetPrimaryExtra(RE::InventoryEntryData* entry) {
+        RE::ExtraDataList* GetWornExtraForHand(RE::InventoryEntryData* entry, bool leftHand) {
             if (!entry || !entry->extraLists) {
                 return nullptr;
             }
+
+            const auto wantType = leftHand ? RE::ExtraDataType::kWornLeft : RE::ExtraDataType::kWorn;
+
             for (auto* x : *entry->extraLists) {
-                if (x) {
+                if (x && x->HasType(wantType)) {
                     return x;
                 }
+            }
+
+            for (auto* x : *entry->extraLists) {
+                if (x && (x->HasType(RE::ExtraDataType::kWorn) || x->HasType(RE::ExtraDataType::kWornLeft))) {
+                    return x;
+                }
+            }
+
+            for (auto* x : *entry->extraLists) {
+                if (x) return x;
             }
             return nullptr;
         }
@@ -233,7 +244,7 @@ namespace IntegratedMagic {
             auto* curEntry = player->GetEquippedEntryData(leftHand);
             auto* curObj = curEntry ? curEntry->GetObject() : nullptr;
             auto* curBase = curObj ? curObj->As<RE::TESBoundObject>() : nullptr;
-            auto* curExtra = GetPrimaryExtra(curEntry);
+            auto* curExtra = GetWornExtraForHand(curEntry, leftHand);
 
             if (want.base) {
                 if (curBase == want.base) {
@@ -241,11 +252,19 @@ namespace IntegratedMagic {
                 }
 
                 auto* desiredExtra = ResolveLiveExtra(idx, want.base, want.extra);
-                if (!desiredExtra && want.extra) {
+
+                if (!desiredExtra) {
                     desiredExtra = FindAnyInstanceExtraForBase(idx, want.base);
                 }
 
-                mgr->EquipObject(player, want.base, desiredExtra, 1, slot, true, false, true, false);
+                const bool queue = (desiredExtra == nullptr);
+
+                mgr->EquipObject(player, want.base, desiredExtra, 1, slot,
+                                 /*queue*/ queue,
+                                 /*force*/ false,
+                                 /*sounds*/ true,
+                                 /*applyNow*/ false);
+
                 return;
             }
 
@@ -253,7 +272,11 @@ namespace IntegratedMagic {
                 return;
             }
 
-            mgr->UnequipObject(player, curBase, curExtra, 1, slot, true, false, true, false, nullptr);
+            mgr->UnequipObject(player, curBase, curExtra, 1, slot,
+                               /*queue*/ true,
+                               /*force*/ false,
+                               /*sounds*/ true,
+                               /*applyNow*/ false, nullptr);
         }
     }
 
@@ -287,10 +310,6 @@ namespace IntegratedMagic {
         static MagicState inst;  // NOSONAR
         return inst;
     }
-
-    bool MagicState::IsActive() const { return _active; }
-
-    int MagicState::ActiveSlot() const { return _activeSlot; }
 
     void MagicState::TogglePress(int slot) {
         if (_holdActive || _autoActive) {
@@ -330,7 +349,7 @@ namespace IntegratedMagic {
             if (auto* obj = r->GetObject()) {
                 if (auto* base = obj->As<RE::TESBoundObject>()) {
                     _snap.rightObj.base = base;
-                    _snap.rightObj.extra = GetPrimaryExtra(r);
+                    _snap.rightObj.extra = GetWornExtraForHand(r, false);
                     _snap.rightObj.formID = obj->GetFormID();
                 }
             }
@@ -340,7 +359,7 @@ namespace IntegratedMagic {
             if (auto* obj = l->GetObject()) {
                 if (auto* base = obj->As<RE::TESBoundObject>()) {
                     _snap.leftObj.base = base;
-                    _snap.leftObj.extra = GetPrimaryExtra(l);
+                    _snap.leftObj.extra = GetWornExtraForHand(l, true);
                     _snap.leftObj.formID = obj->GetFormID();
                 }
             }

@@ -179,6 +179,67 @@ namespace {
         }
     }
 
+    void ClearEdgeStateOnly() {
+        for (int slot = 0; slot < kSlots; ++slot) {
+            const auto s = static_cast<std::size_t>(slot);
+            g_slotDown[s].store(false, std::memory_order_relaxed);
+            g_prevRawKbDown[s] = false;
+            g_prevRawGpDown[s] = false;
+            ClearExclusivePending(s);
+        }
+
+        g_pressedMask.store(std::byte{0}, std::memory_order_relaxed);
+        g_releasedMask.store(std::byte{0}, std::memory_order_relaxed);
+    }
+
+    void ClearDownStateCaches_Full() {
+        for (int i = 0; i < kMaxCode; ++i) {
+            g_kbDown[static_cast<std::size_t>(i)].store(false, std::memory_order_relaxed);
+            g_gpDown[static_cast<std::size_t>(i)].store(false, std::memory_order_relaxed);
+        }
+        ClearEdgeStateOnly();
+    }
+
+    void ClearLikelyStuckKeysAfterMenuClose() {
+        std::array<bool, kMaxCode> keepKb{};
+        std::array<bool, kMaxCode> keepGp{};
+
+        for (int slot = 0; slot < kSlots; ++slot) {
+            const auto& hk = g_cache[static_cast<std::size_t>(slot)];
+
+            for (int code : hk.kb) {
+                if (code >= 0 && code < kMaxCode) {
+                    if (g_kbDown[static_cast<std::size_t>(code)].load(std::memory_order_relaxed)) {
+                        keepKb[static_cast<std::size_t>(code)] = true;
+                    }
+                }
+            }
+
+            for (int code : hk.gp) {
+                if (code >= 0 && code < kMaxCode) {
+                    if (g_gpDown[static_cast<std::size_t>(code)].load(std::memory_order_relaxed)) {
+                        keepGp[static_cast<std::size_t>(code)] = true;
+                    }
+                }
+            }
+        }
+
+        for (int i = 0; i < kMaxCode; ++i) {
+            const auto idx = static_cast<std::size_t>(i);
+            if (!keepKb[idx]) {
+                g_kbDown[idx].store(false, std::memory_order_relaxed);
+            }
+            if (!keepGp[idx]) {
+                g_gpDown[idx].store(false, std::memory_order_relaxed);
+            }
+        }
+
+        constexpr int kDIK_Escape = 0x01;
+        g_kbDown[static_cast<std::size_t>(kDIK_Escape)].store(false, std::memory_order_relaxed);
+
+        ClearEdgeStateOnly();
+    }
+
     void ResetExclusiveState() {
         for (int slot = 0; slot < kSlots; ++slot) {
             const auto s = static_cast<std::size_t>(slot);
@@ -471,10 +532,20 @@ namespace {
             }
 
             const float dt = CalculateDeltaTime();
+            static bool s_prevBlocked = false;
+            const bool blocked = IsInputBlockedByMenus();
+
+            if (s_prevBlocked && !blocked) {
+                ClearLikelyStuckKeysAfterMenuClose();
+            }
+            s_prevBlocked = blocked;
+
+            if (blocked) {
+                DrainWhenBlocked();
+                return RE::BSEventNotifyControl::kContinue;
+            }
 
             RecomputeSlotEdges(dt);
-
-            const bool blocked = IsInputBlockedByMenus();
             ConsumeAndHandleSlots(blocked);
 
             if (!blocked) {
@@ -538,7 +609,6 @@ namespace {
 
         void ConsumeAndHandleSlots(bool blocked) const {
             if (blocked) {
-                ClearDownStateCaches();
                 DrainWhenBlocked();
                 return;
             }
