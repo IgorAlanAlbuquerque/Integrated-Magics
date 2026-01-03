@@ -62,8 +62,6 @@ namespace IntegratedMagic {
 
         void TogglePress(int slot);
         void ToggleAutomatic(int slot);
-        bool IsActive() const;
-        int ActiveSlot() const;
         void HoldDown(int slot);
         void HoldUp(int slot);
         bool IsHoldActive() const { return _holdActive; }
