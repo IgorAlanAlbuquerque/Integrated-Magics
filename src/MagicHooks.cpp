@@ -18,7 +18,7 @@ namespace IntegratedMagic::Hooks {
                               const RE::BGSEquipSlot* slot) {
                 auto const* player = RE::PlayerCharacter::GetSingleton();
                 if (const bool isPlayer = (player && actor == player); isPlayer) {
-                    IntegratedMagic::MagicSelect::TrySelectSpellFromEquip(actor, spell);
+                    IntegratedMagic::MagicSelect::TrySelectSpellFromEquip(spell);
                 }
 
                 func(mgr, actor, spell, slot);
@@ -30,19 +30,12 @@ namespace IntegratedMagic::Hooks {
             }
         };
 
-        inline std::atomic_bool g_swallowNextSelect{false};  // NOSONAR
-
         struct SelectSpellImplHook {
             using Fn = void (*)(RE::ActorMagicCaster*);
             static inline Fn _orig{nullptr};
 
             static void thunk(RE::ActorMagicCaster* caster) {
                 if (!caster) {
-                    return;
-                }
-
-                if (g_swallowNextSelect.exchange(false)) {
-                    _orig(caster);
                     return;
                 }
 
@@ -61,12 +54,9 @@ namespace IntegratedMagic::Hooks {
 
                 _orig(caster);
                 RE::MagicItem* afterItem = rd.selectedSpells[src];
-                auto* afterSpell = afterItem ? afterItem->As<RE::SpellItem>() : nullptr;
 
-                if (afterSpell && IntegratedMagic::MagicSelect::TrySelectSpellFromEquip(actor, afterSpell)) {
-                    rd.selectedSpells[src] = afterItem;
-                    g_swallowNextSelect.store(true);
-                    return;
+                if (auto* afterSpell = afterItem ? afterItem->As<RE::SpellItem>() : nullptr; afterSpell) {
+                    (void)IntegratedMagic::MagicSelect::TrySelectSpellFromEquip(afterSpell);
                 }
             }
 
