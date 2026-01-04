@@ -192,14 +192,6 @@ namespace {
         g_releasedMask.store(std::byte{0}, std::memory_order_relaxed);
     }
 
-    void ClearDownStateCaches_Full() {
-        for (int i = 0; i < kMaxCode; ++i) {
-            g_kbDown[static_cast<std::size_t>(i)].store(false, std::memory_order_relaxed);
-            g_gpDown[static_cast<std::size_t>(i)].store(false, std::memory_order_relaxed);
-        }
-        ClearEdgeStateOnly();
-    }
-
     void ClearLikelyStuckKeysAfterMenuClose() {
         std::array<bool, kMaxCode> keepKb{};
         std::array<bool, kMaxCode> keepGp{};
@@ -456,24 +448,6 @@ namespace {
         }
     }
 
-    void ClearDownStateCaches() {
-        for (int i = 0; i < kMaxCode; ++i) {
-            g_kbDown[static_cast<std::size_t>(i)].store(false, std::memory_order_relaxed);
-            g_gpDown[static_cast<std::size_t>(i)].store(false, std::memory_order_relaxed);
-        }
-
-        for (int slot = 0; slot < kSlots; ++slot) {
-            const auto s = static_cast<std::size_t>(slot);
-            g_slotDown[s].store(false, std::memory_order_relaxed);
-            g_prevRawKbDown[s] = false;
-            g_prevRawGpDown[s] = false;
-            ClearExclusivePending(s);
-        }
-
-        g_pressedMask.store(std::byte{0}, std::memory_order_relaxed);
-        g_releasedMask.store(std::byte{0}, std::memory_order_relaxed);
-    }
-
     void LoadHotkeyCache_FromConfig() {
         auto const& cfg = IntegratedMagic::GetMagicConfig();
 
@@ -532,13 +506,13 @@ namespace {
             }
 
             const float dt = CalculateDeltaTime();
-            static bool s_prevBlocked = false;
+
             const bool blocked = IsInputBlockedByMenus();
 
-            if (s_prevBlocked && !blocked) {
+            if (_prevBlocked && !blocked) {
                 ClearLikelyStuckKeysAfterMenuClose();
             }
-            s_prevBlocked = blocked;
+            _prevBlocked = blocked;
 
             if (blocked) {
                 DrainWhenBlocked();
@@ -557,6 +531,8 @@ namespace {
         }
 
     private:
+        bool _prevBlocked{false};
+
         bool TryHandleCapture(const RE::ButtonEvent* btn, CaptureState& cap, bool& wantCapture) const {
             if (!wantCapture || !btn->IsDown()) {
                 return false;

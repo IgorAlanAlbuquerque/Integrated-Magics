@@ -84,29 +84,35 @@ namespace IntegratedMagic {
     namespace {
         inline RE::PlayerCharacter* GetPlayer() { return RE::PlayerCharacter::GetSingleton(); }
 
-        RE::ExtraDataList* GetWornExtraForHand(RE::InventoryEntryData* entry, bool leftHand) {
+        static RE::ExtraDataList* GetWornExtraForHand(RE::InventoryEntryData* entry, bool leftHand) {
             if (!entry || !entry->extraLists) {
                 return nullptr;
             }
 
-            const auto wantType = leftHand ? RE::ExtraDataType::kWornLeft : RE::ExtraDataType::kWorn;
+            const auto preferred = leftHand ? RE::ExtraDataType::kWornLeft : RE::ExtraDataType::kWorn;
+
+            RE::ExtraDataList* firstNonNull = nullptr;
+            RE::ExtraDataList* anyWorn = nullptr;
 
             for (auto* x : *entry->extraLists) {
-                if (x && x->HasType(wantType)) {
+                if (!x) {
+                    continue;
+                }
+
+                if (!firstNonNull) {
+                    firstNonNull = x;
+                }
+
+                if (x->HasType(preferred)) {
                     return x;
+                }
+
+                if (!anyWorn && (x->HasType(RE::ExtraDataType::kWorn) || x->HasType(RE::ExtraDataType::kWornLeft))) {
+                    anyWorn = x;
                 }
             }
 
-            for (auto* x : *entry->extraLists) {
-                if (x && (x->HasType(RE::ExtraDataType::kWorn) || x->HasType(RE::ExtraDataType::kWornLeft))) {
-                    return x;
-                }
-            }
-
-            for (auto* x : *entry->extraLists) {
-                if (x) return x;
-            }
-            return nullptr;
+            return anyWorn ? anyWorn : firstNonNull;
         }
 
         RE::ExtraDataList* ResolveLiveExtra(const InventoryIndex& idx, RE::TESBoundObject* base,
@@ -365,12 +371,14 @@ namespace IntegratedMagic {
             }
         }
 
-        if (auto* rc = MagicAction::GetCaster(player, RE::MagicSystem::CastingSource::kRightHand)) {
-            _snap.rightSpell = rc->currentSpell;
-        }
-        if (auto* lc = MagicAction::GetCaster(player, RE::MagicSystem::CastingSource::kLeftHand)) {
-            _snap.leftSpell = lc->currentSpell;
-        }
+        auto GetEquippedSpellFromHand = [](RE::Actor* a, bool leftHand) -> RE::SpellItem* {
+            if (!a) return nullptr;
+            auto* f = a->GetEquippedObject(leftHand);
+            return f ? f->As<RE::SpellItem>() : nullptr;
+        };
+
+        _snap.rightSpell = GetEquippedSpellFromHand(player, /*leftHand*/ false);
+        _snap.leftSpell = GetEquippedSpellFromHand(player, /*leftHand*/ true);
 
         _snap.valid = true;
     }
