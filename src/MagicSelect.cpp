@@ -10,43 +10,31 @@
 
 namespace IntegratedMagic::MagicSelect {
     namespace {
-        thread_local bool g_suppressSelection = false;  // NOSONAR
+        thread_local int g_suppressDepth = 0;  // NOSONAR
     }
 
-    ScopedSuppressSelection::ScopedSuppressSelection() {
-        _prev = g_suppressSelection;
-        g_suppressSelection = true;
-    }
+    ScopedSuppressSelection::ScopedSuppressSelection() { ++g_suppressDepth; }
+    ScopedSuppressSelection::~ScopedSuppressSelection() { --g_suppressDepth; }
 
-    ScopedSuppressSelection::~ScopedSuppressSelection() { g_suppressSelection = _prev; }
+    static bool IsSelectionSuppressed() { return g_suppressDepth > 0; }
 
-    bool TrySelectSpellFromEquip(RE::Actor* actor, RE::SpellItem* spell) {
-        if (!actor || !spell) {
+    bool TrySelectSpellFromEquip(RE::SpellItem* spell) {
+        if (IsSelectionSuppressed()) {
             return false;
         }
-
-        if (g_suppressSelection) {
-            return false;
-        }
-
-        if (auto const* player = RE::PlayerCharacter::GetSingleton(); !player || actor != player) {
-            return false;
-        }
-
-        const std::uint32_t formID = spell->GetFormID();
 
         const auto slotOpt = MagicInput::GetDownSlotForSelection();
-        if (!slotOpt.has_value()) {
+        if (!slotOpt.has_value() || !spell) {
             return false;
         }
 
-        const int slot = *slotOpt;
+        const auto formID = spell->GetFormID();
         if (formID == 0) {
             return false;
         }
 
-        IntegratedMagic::MagicSlots::SetSlotSpell(slot, formID, true);
-
+        ScopedSuppressSelection guard;
+        IntegratedMagic::MagicSlots::SetSlotSpell(*slotOpt, formID, true);
         return true;
     }
 }
