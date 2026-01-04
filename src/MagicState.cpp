@@ -84,7 +84,7 @@ namespace IntegratedMagic {
     namespace {
         inline RE::PlayerCharacter* GetPlayer() { return RE::PlayerCharacter::GetSingleton(); }
 
-        static RE::ExtraDataList* GetWornExtraForHand(RE::InventoryEntryData* entry, bool leftHand) {
+        RE::ExtraDataList* GetWornExtraForHand(RE::InventoryEntryData* entry, bool leftHand) {
             if (!entry || !entry->extraLists) {
                 return nullptr;
             }

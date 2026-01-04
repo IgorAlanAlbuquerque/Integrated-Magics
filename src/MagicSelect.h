@@ -10,7 +10,7 @@ namespace RE {
 }
 
 namespace IntegratedMagic::MagicSelect {
-    bool TrySelectSpellFromEquip(RE::Actor* actor, RE::SpellItem* spell);
+    bool TrySelectSpellFromEquip(RE::SpellItem* spell);
 
     class ScopedSuppressSelection {
     public:
