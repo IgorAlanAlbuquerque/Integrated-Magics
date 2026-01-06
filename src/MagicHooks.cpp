@@ -46,7 +46,7 @@ namespace IntegratedMagic::Hooks {
                 }
 
                 const auto src = static_cast<std::size_t>(std::to_underlying(caster->castingSource));
-                auto& rd = actor->GetActorRuntimeData();
+                auto const& rd = actor->GetActorRuntimeData();
                 if (src >= std::size(rd.selectedSpells)) {
                     _orig(caster);
                     return;
