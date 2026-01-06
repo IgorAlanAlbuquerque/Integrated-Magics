@@ -322,7 +322,7 @@ namespace IntegratedMagic {
             return;
         }
 
-        if (slot < 0 || slot >= 4) {
+        if (!IntegratedMagic::MagicSlots::IsValidSlot(slot)) {
             return;
         }
 
@@ -429,7 +429,7 @@ namespace IntegratedMagic {
     }
 
     void MagicState::HoldDown(int slot) {
-        if (slot < 0 || slot >= 4) {
+        if (!IntegratedMagic::MagicSlots::IsValidSlot(slot)) {
             return;
         }
 
@@ -587,7 +587,7 @@ namespace IntegratedMagic {
     }
 
     void MagicState::EnterAutomatic(int slot) {
-        if (slot < 0 || slot >= 4) {
+        if (!IntegratedMagic::MagicSlots::IsValidSlot(slot)) {
             return;
         }
 
@@ -621,7 +621,7 @@ namespace IntegratedMagic {
             return;
         }
 
-        if (slot < 0 || slot >= 4) {
+        if (!IntegratedMagic::MagicSlots::IsValidSlot(slot)) {
             return;
         }
 

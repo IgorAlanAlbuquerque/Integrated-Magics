@@ -1,9 +1,12 @@
 #pragma once
+#include <array>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 
 namespace IntegratedMagic {
+
     struct InputConfig {
         std::atomic<int> KeyboardScanCode1{-1};
         std::atomic<int> KeyboardScanCode2{-1};
@@ -15,21 +18,23 @@ namespace IntegratedMagic {
     };
 
     struct MagicConfig {
-        std::atomic<std::uint32_t> slotSpellFormID1{0};
-        std::atomic<std::uint32_t> slotSpellFormID2{0};
-        std::atomic<std::uint32_t> slotSpellFormID3{0};
-        std::atomic<std::uint32_t> slotSpellFormID4{0};
+        static constexpr std::uint32_t kMaxSlots = 64;
 
-        InputConfig Magic1Input;
-        InputConfig Magic2Input;
-        InputConfig Magic3Input;
-        InputConfig Magic4Input;
+        std::atomic<std::uint32_t> slotCount{4};
+
+        std::array<std::atomic<std::uint32_t>, kMaxSlots> slotSpellFormID;
+
+        std::array<InputConfig, kMaxSlots> slotInput;
 
         bool skipEquipAnimationPatch = false;
         bool requireExclusiveHotkeyPatch = false;
 
+        MagicConfig();
+
         void Load();
         void Save() const;
+
+        std::uint32_t SlotCount() const noexcept;
 
     private:
         static std::filesystem::path IniPath();

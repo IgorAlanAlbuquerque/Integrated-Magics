@@ -1,11 +1,33 @@
 #include "SaveSpellDB.h"
 
+#include <algorithm>
 #include <fstream>
 #include <nlohmann/json.hpp>
 
 #include "PCH.h"
 
 namespace IntegratedMagic {
+
+    namespace {
+
+        constexpr std::size_t kJsonSlotsHardCap = 256;
+
+        std::uint32_t _toU32Clamped(const nlohmann::json& v) {
+            if (v.is_number_unsigned()) {
+                const auto x = v.get<std::uint64_t>();
+                return (x > 0xFFFFFFFFuLL) ? 0xFFFFFFFFu : static_cast<std::uint32_t>(x);
+            }
+            if (v.is_number_integer()) {
+                const auto x = v.get<std::int64_t>();
+                if (x <= 0) {
+                    return 0u;
+                }
+                return (x > 0xFFFFFFFFLL) ? 0xFFFFFFFFu : static_cast<std::uint32_t>(x);
+            }
+            return 0u;
+        }
+    }
+
     SaveSpellDB& SaveSpellDB::Get() {
         static SaveSpellDB g;  // NOSONAR
         return g;
@@ -15,7 +37,9 @@ namespace IntegratedMagic {
 
     std::string SaveSpellDB::NormalizeKey(std::string key) {
         for (auto& c : key) {
-            if (c == '/') c = '\\';
+            if (c == '/') {
+                c = '\\';
+            }
             c = static_cast<char>(::tolower(static_cast<unsigned char>(c)));
         }
         return key;
@@ -23,11 +47,9 @@ namespace IntegratedMagic {
 
     void SaveSpellDB::LoadFromDisk() {
         std::scoped_lock lk(_mtx);
-
         _bySave.clear();
 
         const auto path = JsonPath();
-
         std::ifstream in(path);
         if (!in.good()) {
             return;
@@ -39,10 +61,7 @@ namespace IntegratedMagic {
         }
 
         auto savesIt = j.find("saves");
-        if (savesIt == j.end()) {
-            return;
-        }
-        if (!savesIt->is_object()) {
+        if (savesIt == j.end() || !savesIt->is_object()) {
             return;
         }
 
@@ -52,22 +71,20 @@ namespace IntegratedMagic {
                 const std::string key = NormalizeKey(rawKey);
 
                 const auto& arr = it.value();
-
-                if (!arr.is_array() || arr.size() != 4) {
+                if (!arr.is_array()) {
                     continue;
                 }
 
                 SaveSpellSlots slots{};
-                for (std::size_t i = 0; i < 4; ++i) {
-                    slots.slotSpellFormID[i] = arr.at(i).get<std::uint32_t>();
+                const std::size_t count = std::min<std::size_t>(arr.size(), kJsonSlotsHardCap);
+                slots.slotSpellFormID.resize(count, 0u);
+
+                for (std::size_t i = 0; i < count; ++i) {
+                    slots.slotSpellFormID[i] = _toU32Clamped(arr.at(i));
                 }
 
-                _bySave.insert_or_assign(key, slots);
+                _bySave.insert_or_assign(key, std::move(slots));
 
-            } catch (const nlohmann::json::type_error& e) {
-                spdlog::error("[IMAGIC][SaveSpellDB] Type error for key='{}': {}", it.key(), e.what());
-            } catch (const nlohmann::json::out_of_range& e) {
-                spdlog::error("[IMAGIC][SaveSpellDB] Out of range for key='{}': {}", it.key(), e.what());
             } catch (const nlohmann::json::exception& e) {
                 spdlog::error("[IMAGIC][SaveSpellDB] JSON exception for key='{}': {}", it.key(), e.what());
             } catch (const std::exception& e) {  // NOSONAR
@@ -80,13 +97,13 @@ namespace IntegratedMagic {
         std::scoped_lock lk(_mtx);
 
         nlohmann::json j;
-        j["version"] = 1;
+        j["version"] = 2;
 
         nlohmann::json saves = nlohmann::json::object();
         for (auto const& [key, slots] : _bySave) {
-            saves[key] = nlohmann::json::array({slots.slotSpellFormID[0], slots.slotSpellFormID[1],
-                                                slots.slotSpellFormID[2], slots.slotSpellFormID[3]});
+            saves[key] = slots.slotSpellFormID;
         }
+
         j["saves"] = std::move(saves);
 
         const auto path = JsonPath();

@@ -1,5 +1,10 @@
 #include "MagicAction.h"
 
+#include <atomic>
+#include <chrono>
+#include <thread>
+
+#include "MagicConfig.h"
 #include "MagicEquipSlots.h"
 
 namespace IntegratedMagic::MagicAction {
@@ -19,6 +24,44 @@ namespace IntegratedMagic::MagicAction {
             using func_t = void (RE::ActorEquipManager::*)(RE::Actor*, RE::SpellItem*, int);
             REL::Relocation<func_t> func{RELOCATION_ID(37947, 38903)};
             return func(aeMan, pc, spell, hand);
+        }
+
+        static const RE::BSFixedString kVarSkipEquip("SkipEquipAnimation");
+        static const RE::BSFixedString kVarLoadDelay("LoadBoundObjectDelay");
+        static const RE::BSFixedString kVarSkip3D("Skip3DLoading");
+
+        inline void SetSkipEquipVars(RE::PlayerCharacter* pc, bool enable, int loadDelayMs = 0, bool skip3D = false) {
+            if (!pc) {
+                return;
+            }
+            (void)pc->SetGraphVariableBool(kVarSkipEquip, enable);
+
+            if (enable) {
+                (void)pc->SetGraphVariableInt(kVarLoadDelay, loadDelayMs);
+                (void)pc->SetGraphVariableBool(kVarSkip3D, skip3D);
+            }
+        }
+
+        inline std::atomic<std::uint64_t> g_skipToken{0};
+
+        inline void ScheduleDisableSkipEquip(std::uint64_t token, int delayMs) {
+            std::jthread([token, delayMs]() {
+                std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
+
+                if (g_skipToken.load(std::memory_order_relaxed) != token) {
+                    return;
+                }
+
+                if (auto* task = SKSE::GetTaskInterface()) {
+                    task->AddTask([token]() {
+                        if (g_skipToken.load(std::memory_order_relaxed) != token) {
+                            return;
+                        }
+                        auto* pc = RE::PlayerCharacter::GetSingleton();
+                        SetSkipEquipVars(pc, false);
+                    });
+                }
+            }).detach();
         }
     }
 
@@ -54,6 +97,15 @@ namespace IntegratedMagic::MagicAction {
 
         const auto* leftSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(EquipHand::Left);
         const auto* rightSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(EquipHand::Right);
+
+        auto const& cfg = IntegratedMagic::GetMagicConfig();
+        std::uint64_t token = 0;
+
+        if (cfg.skipEquipAnimationPatch) {
+            token = g_skipToken.fetch_add(1, std::memory_order_relaxed) + 1;
+            SetSkipEquipVars(player, true, /*LoadBoundObjectDelay*/ 0, /*Skip3DLoading*/ false);
+            ScheduleDisableSkipEquip(token, /*delayMs*/ 1000);
+        }
 
         switch (hand) {
             using enum IntegratedMagic::EquipHand;

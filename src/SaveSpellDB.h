@@ -1,5 +1,4 @@
 #pragma once
-#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -7,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace IntegratedMagic {
     struct TransparentSaveKeyHash {
@@ -18,7 +18,7 @@ namespace IntegratedMagic {
     };
 
     struct SaveSpellSlots {
-        std::array<std::uint32_t, 4> slotSpellFormID{{0, 0, 0, 0}};
+        std::vector<std::uint32_t> slotSpellFormID;
     };
 
     class SaveSpellDB {

@@ -33,17 +33,11 @@ namespace {
     int g_captureSlot = -1;          // NOSONAR
 
     IntegratedMagic::InputConfig& SlotInput(IntegratedMagic::MagicConfig& cfg, int slot) {
-        if (slot == 0) return cfg.Magic1Input;
-        if (slot == 1) return cfg.Magic2Input;
-        if (slot == 2) return cfg.Magic3Input;
-        return cfg.Magic4Input;
+        return cfg.slotInput[static_cast<std::size_t>(slot)];
     }
 
     std::atomic<std::uint32_t>& SlotSpell(IntegratedMagic::MagicConfig& cfg, int slot) {
-        if (slot == 0) return cfg.slotSpellFormID1;
-        if (slot == 1) return cfg.slotSpellFormID2;
-        if (slot == 2) return cfg.slotSpellFormID3;
-        return cfg.slotSpellFormID4;
+        return cfg.slotSpellFormID[static_cast<std::size_t>(slot)];
     }
 
     inline int ModeToIndex(IntegratedMagic::ActivationMode m) {
@@ -187,7 +181,22 @@ namespace {
     void DrawGeneralTab(IntegratedMagic::MagicConfig& cfg, bool& dirty) {
         ImGui::TextUnformatted(IntegratedMagic::Strings::Get("Hotkeys_Title", "Hotkeys").c_str());
 
-        for (int slot = 0; slot < 4; slot++) {
+        auto n = static_cast<int>(cfg.SlotCount());
+        ImGui::SetNextItemWidth(180.0f);
+        if (ImGui::InputInt(IntegratedMagic::Strings::Get("Item_SlotCount", "Slot count").c_str(), &n)) {
+            if (n < 1) n = 1;
+            if (n > static_cast<int>(IntegratedMagic::MagicConfig::kMaxSlots)) {
+                n = static_cast<int>(IntegratedMagic::MagicConfig::kMaxSlots);
+            }
+            cfg.slotCount.store(static_cast<std::uint32_t>(n), std::memory_order_relaxed);
+            dirty = true;
+        }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+
+        n = static_cast<int>(cfg.SlotCount());
+        for (int slot = 0; slot < n; ++slot) {
             const auto title = IntegratedMagic::Strings::Get(std::format("Hotkeys_Magic{}", slot + 1),
                                                              std::format("Magic {} hotkeys", slot + 1));
 
@@ -291,21 +300,15 @@ void __stdcall IntegratedMagic_UI::DrawSettings() {
             DrawGeneralTab(cfg, dirty);
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(IntegratedMagic::Strings::Get("Tab_Magic1", "Magic 1").c_str())) {
-            DrawMagicTab(cfg, 0, dirty);
-            ImGui::EndTabItem();
-        }
-        if (ImGui::BeginTabItem(IntegratedMagic::Strings::Get("Tab_Magic2", "Magic 2").c_str())) {
-            DrawMagicTab(cfg, 1, dirty);
-            ImGui::EndTabItem();
-        }
-        if (ImGui::BeginTabItem(IntegratedMagic::Strings::Get("Tab_Magic3", "Magic 3").c_str())) {
-            DrawMagicTab(cfg, 2, dirty);
-            ImGui::EndTabItem();
-        }
-        if (ImGui::BeginTabItem(IntegratedMagic::Strings::Get("Tab_Magic4", "Magic 4").c_str())) {
-            DrawMagicTab(cfg, 3, dirty);
-            ImGui::EndTabItem();
+        const auto n = static_cast<int>(cfg.SlotCount());
+        for (int slot = 0; slot < n; ++slot) {
+            const auto title =
+                IntegratedMagic::Strings::Get(std::format("Tab_Magic{}", slot + 1), std::format("Magic {}", slot + 1));
+
+            if (ImGui::BeginTabItem(title.c_str())) {
+                DrawMagicTab(cfg, slot, dirty);
+                ImGui::EndTabItem();
+            }
         }
         if (ImGui::BeginTabItem(IntegratedMagic::Strings::Get("Tab_Patches", "Patches").c_str())) {
             DrawPatchesTab(cfg, dirty);
