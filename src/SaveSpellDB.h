@@ -18,7 +18,10 @@ namespace IntegratedMagic {
     };
 
     struct SaveSpellSlots {
-        std::vector<std::uint32_t> slotSpellFormID;
+        std::vector<std::uint32_t> left;
+        std::vector<std::uint32_t> right;
+
+        inline std::size_t Size() const noexcept { return std::max(left.size(), right.size()); }
     };
 
     class SaveSpellDB {

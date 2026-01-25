@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 
 #include "PCH.h"
+#include "SpellSettingsDB.h"
 
 namespace IntegratedMagic {
 
@@ -25,6 +26,67 @@ namespace IntegratedMagic {
                 return (x > 0xFFFFFFFFLL) ? 0xFFFFFFFFu : static_cast<std::uint32_t>(x);
             }
             return 0u;
+        }
+
+        std::size_t _clampedCount(std::size_t n) { return std::min<std::size_t>(n, kJsonSlotsHardCap); }
+
+        void _resizeBoth(IntegratedMagic::SaveSpellSlots& s, std::size_t count) {
+            s.left.resize(count, 0u);
+            s.right.resize(count, 0u);
+        }
+
+        IntegratedMagic::SaveSpellSlots _migrateV2ArrayToLR(const nlohmann::json& arr) {
+            IntegratedMagic::SaveSpellSlots s{};
+            const std::size_t count = _clampedCount(arr.size());
+            _resizeBoth(s, count);
+
+            for (std::size_t i = 0; i < count; ++i) {
+                const std::uint32_t id = _toU32Clamped(arr.at(i));
+                if (id == 0u) {
+                    continue;
+                }
+
+                auto settings = IntegratedMagic::SpellSettingsDB::Get().GetOrCreate(id);
+
+                switch (settings.hand) {
+                    using enum IntegratedMagic::EquipHand;
+                    case Left:
+                        s.left[i] = id;
+                        break;
+                    case Right:
+                        s.right[i] = id;
+                        break;
+                    case Both:
+                        s.left[i] = id;
+                        s.right[i] = id;
+                        break;
+                    default:
+                        s.right[i] = id;
+                        break;
+                }
+            }
+
+            return s;
+        }
+
+        IntegratedMagic::SaveSpellSlots _parseV3ObjectToLR(const nlohmann::json& obj) {
+            IntegratedMagic::SaveSpellSlots s{};
+
+            const auto itL = obj.find("left");
+            const auto itR = obj.find("right");
+            if (itL == obj.end() || itR == obj.end() || !itL->is_array() || !itR->is_array()) {
+                return s;
+            }
+
+            const std::size_t count = _clampedCount(std::max(itL->size(), itR->size()));
+            _resizeBoth(s, count);
+
+            for (std::size_t i = 0; i < count; ++i) {
+                if (i < itL->size()) s.left[i] = _toU32Clamped(itL->at(i));
+                if (i < itR->size()) s.right[i] = _toU32Clamped(itR->at(i));
+            }
+
+            return s;
         }
     }
 
@@ -70,17 +132,16 @@ namespace IntegratedMagic {
                 const std::string rawKey = it.key();
                 const std::string key = NormalizeKey(rawKey);
 
-                const auto& arr = it.value();
-                if (!arr.is_array()) {
-                    continue;
-                }
+                const auto& v = it.value();
 
                 SaveSpellSlots slots{};
-                const std::size_t count = std::min<std::size_t>(arr.size(), kJsonSlotsHardCap);
-                slots.slotSpellFormID.resize(count, 0u);
 
-                for (std::size_t i = 0; i < count; ++i) {
-                    slots.slotSpellFormID[i] = _toU32Clamped(arr.at(i));
+                if (v.is_object()) {
+                    slots = _parseV3ObjectToLR(v);
+                } else if (v.is_array()) {
+                    slots = _migrateV2ArrayToLR(v);
+                } else {
+                    continue;
                 }
 
                 _bySave.insert_or_assign(key, std::move(slots));
@@ -97,13 +158,15 @@ namespace IntegratedMagic {
         std::scoped_lock lk(_mtx);
 
         nlohmann::json j;
-        j["version"] = 2;
+        j["version"] = 3;
 
         nlohmann::json saves = nlohmann::json::object();
         for (auto const& [key, slots] : _bySave) {
-            saves[key] = slots.slotSpellFormID;
+            nlohmann::json obj;
+            obj["left"] = slots.left;
+            obj["right"] = slots.right;
+            saves[key] = std::move(obj);
         }
-
         j["saves"] = std::move(saves);
 
         const auto path = JsonPath();
