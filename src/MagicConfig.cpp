@@ -57,9 +57,8 @@ namespace {
 namespace IntegratedMagic {
 
     MagicConfig::MagicConfig() {
-        for (auto& a : slotSpellFormID) {
-            a.store(0u, std::memory_order_relaxed);
-        }
+        for (auto& a : slotSpellFormIDLeft) a.store(0u, std::memory_order_relaxed);
+        for (auto& a : slotSpellFormIDRight) a.store(0u, std::memory_order_relaxed);
     }
 
     std::filesystem::path MagicConfig::IniPath() {

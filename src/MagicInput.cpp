@@ -34,6 +34,7 @@ namespace {
     constexpr int kDIK_A = 0x1E;
     constexpr int kDIK_S = 0x1F;
     constexpr int kDIK_D = 0x20;
+    constexpr int kDIK_Escape = 0x01;
 
     enum class PendingSrc : std::uint8_t { None = 0, Kb = 1, Gp = 2 };
 
@@ -229,7 +230,6 @@ namespace {
             }
         }
 
-        constexpr int kDIK_Escape = 0x01;
         g_kbDown[static_cast<std::size_t>(kDIK_Escape)].store(false, std::memory_order_relaxed);
 
         ClearEdgeStateOnly();
@@ -250,57 +250,21 @@ namespace {
     }
 
     void HandleSlotPressed(int slot) {
-        if (auto const& st = IntegratedMagic::MagicState::Get(); st.IsHoldActive() || st.IsAutomaticActive()) {
-            return;
-        }
-
         if (const int n = ActiveSlots(); slot < 0 || slot >= n) {
             return;
         }
-
         if (auto const* player = RE::PlayerCharacter::GetSingleton(); !player) {
             return;
         }
 
-        const std::uint32_t spellFormID = IntegratedMagic::MagicSlots::GetSlotSpell(slot);
-        if (spellFormID == 0) {
-            return;
-        }
-
-        const auto ss = IntegratedMagic::SpellSettingsDB::Get().GetOrCreate(spellFormID);
-
-        if (ss.mode == IntegratedMagic::ActivationMode::Press) {
-            IntegratedMagic::MagicState::Get().TogglePress(slot);
-            return;
-        }
-
-        if (ss.mode == IntegratedMagic::ActivationMode::Hold) {
-            IntegratedMagic::MagicState::Get().HoldDown(slot);
-            return;
-        }
-
-        if (ss.mode == IntegratedMagic::ActivationMode::Automatic) {
-            IntegratedMagic::MagicState::Get().ToggleAutomatic(slot);
-            return;
-        }
+        IntegratedMagic::MagicState::Get().OnSlotPressed(slot);
     }
 
     void HandleSlotReleased(int slot) {
         if (const int n = ActiveSlots(); slot < 0 || slot >= n) {
             return;
         }
-
-        const std::uint32_t spellFormID = IntegratedMagic::MagicSlots::GetSlotSpell(slot);
-        if (spellFormID == 0) {
-            return;
-        }
-
-        if (const auto ss = IntegratedMagic::SpellSettingsDB::Get().GetOrCreate(spellFormID);
-            ss.mode != IntegratedMagic::ActivationMode::Hold) {
-            return;
-        }
-
-        IntegratedMagic::MagicState::Get().HoldUp(slot);
+        IntegratedMagic::MagicState::Get().OnSlotReleased(slot);
     }
 
     bool SlotComboDown(int slot) {
@@ -539,7 +503,7 @@ namespace {
 
             if (!blocked) {
                 IntegratedMagic::MagicState::Get().PumpAutoAttack(dt);
-                IntegratedMagic::MagicState::Get().PumpAutomatic();
+                IntegratedMagic::MagicState::Get().PumpAutomatic(dt);
             }
 
             return RE::BSEventNotifyControl::kContinue;
@@ -673,6 +637,6 @@ void MagicInput::HandleAnimEvent(const RE::BSAnimationGraphEvent* ev, RE::BSTEve
         IntegratedMagic::MagicState::Get().NotifyAttackEnabled();
     }
     if (tag == "CastStop"sv) {
-        IntegratedMagic::MagicState::Get().AutoExit();
+        IntegratedMagic::MagicState::Get().OnCastStop();
     }
 }

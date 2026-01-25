@@ -28,16 +28,16 @@ namespace {
 
     IntegratedMagic::SaveSpellSlots ReadSlotsFromConfig() {
         auto const& cfg = IntegratedMagic::GetMagicConfig();
-
         IntegratedMagic::SaveSpellSlots s{};
         const auto n = cfg.SlotCount();
 
-        s.slotSpellFormID.resize(n, 0u);
+        s.left.resize(n, 0u);
+        s.right.resize(n, 0u);
 
         for (std::uint32_t i = 0; i < n; ++i) {
-            s.slotSpellFormID[i] = cfg.slotSpellFormID[static_cast<std::size_t>(i)].load(std::memory_order_relaxed);
+            s.left[i] = cfg.slotSpellFormIDLeft[static_cast<std::size_t>(i)].load(std::memory_order_relaxed);
+            s.right[i] = cfg.slotSpellFormIDRight[static_cast<std::size_t>(i)].load(std::memory_order_relaxed);
         }
-
         return s;
     }
 
@@ -46,8 +46,11 @@ namespace {
         const auto n = cfg.SlotCount();
 
         for (std::uint32_t i = 0; i < n; ++i) {
-            const std::uint32_t v = (i < s.slotSpellFormID.size()) ? s.slotSpellFormID[i] : 0u;
-            cfg.slotSpellFormID[static_cast<std::size_t>(i)].store(v, std::memory_order_relaxed);
+            const std::uint32_t l = (i < s.left.size()) ? s.left[i] : 0u;
+            const std::uint32_t r = (i < s.right.size()) ? s.right[i] : 0u;
+
+            cfg.slotSpellFormIDLeft[static_cast<std::size_t>(i)].store(l, std::memory_order_relaxed);
+            cfg.slotSpellFormIDRight[static_cast<std::size_t>(i)].store(r, std::memory_order_relaxed);
         }
     }
 

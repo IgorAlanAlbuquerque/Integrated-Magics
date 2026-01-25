@@ -46,26 +46,6 @@ namespace IntegratedMagic {
         return Hold;
     }
 
-    static const char* HandToStr(EquipHand h) {
-        using enum EquipHand;
-        switch (h) {
-            case Left:
-                return "Left";
-            case Both:
-                return "Both";
-            case Right:
-            default:
-                return "Right";
-        }
-    }
-
-    static EquipHand HandFromStr(const std::string& s) {
-        using enum EquipHand;
-        if (_stricmp(s.c_str(), "Left") == 0) return Left;
-        if (_stricmp(s.c_str(), "Both") == 0) return Both;
-        return Right;
-    }
-
     void SpellSettingsDB::Load() {
         const auto path = JsonPath();
         std::scoped_lock _{_mtx};
@@ -90,7 +70,6 @@ namespace IntegratedMagic {
 
                 SpellSettings s{};
                 s.mode = ModeFromStr(v.value("mode", "Hold"));
-                s.hand = HandFromStr(v.value("hand", "Right"));
                 s.autoAttack = v.value("autoAttack", false);
 
                 _byKey.insert_or_assign(key, s);
@@ -110,11 +89,11 @@ namespace IntegratedMagic {
 
             nlohmann::json spells = nlohmann::json::object();
             for (const auto& [key, s] : _byKey) {
-                spells[key] = {{"mode", ModeToStr(s.mode)}, {"hand", HandToStr(s.hand)}, {"autoAttack", s.autoAttack}};
+                spells[key] = {{"mode", ModeToStr(s.mode)}, {"autoAttack", s.autoAttack}};
             }
 
             nlohmann::json j;
-            j["version"] = 1;
+            j["version"] = 2;
             j["spells"] = std::move(spells);
 
             std::ofstream o(path);
