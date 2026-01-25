@@ -10,6 +10,17 @@ namespace IntegratedMagic::MagicAction {
             }
         }
 
+        RE::MagicSystem::CastingSource ToCastingSource(MagicSlots::Hand hand) {
+            return (hand == MagicSlots::Hand::Left) ? RE::MagicSystem::CastingSource::kLeftHand
+                                                    : RE::MagicSystem::CastingSource::kRightHand;
+        }
+
+        const RE::BGSEquipSlot* ToEquipSlot(MagicSlots::Hand hand) {
+            return IntegratedMagic::EquipUtil::GetHandEquipSlot(hand);
+        }
+
+        int ToUnEquipHandInt(MagicSlots::Hand hand) { return (hand == MagicSlots::Hand::Left) ? 0 : 1; }
+
         void UnEquipSpell(RE::PlayerCharacter* pc, RE::SpellItem* spell, int hand) {
             auto aeMan = RE::ActorEquipManager::GetSingleton();
             if (!aeMan || !pc || !spell) {
@@ -18,7 +29,14 @@ namespace IntegratedMagic::MagicAction {
 
             using func_t = void (RE::ActorEquipManager::*)(RE::Actor*, RE::SpellItem*, int);
             REL::Relocation<func_t> func{RELOCATION_ID(37947, 38903)};
-            return func(aeMan, pc, spell, hand);
+            func(aeMan, pc, spell, hand);
+        }
+
+        RE::SpellItem* GetEquippedSpellFromCaster(RE::ActorMagicCaster* caster) {
+            if (!caster || !caster->currentSpell) {
+                return nullptr;
+            }
+            return caster->currentSpell->As<RE::SpellItem>();
         }
     }
 
@@ -26,16 +44,11 @@ namespace IntegratedMagic::MagicAction {
         if (!player) {
             return nullptr;
         }
-
         auto* mc = player->GetMagicCaster(source);
-        if (!mc) {
-            return nullptr;
-        }
-
-        return skyrim_cast<RE::ActorMagicCaster*>(mc);
+        return mc ? skyrim_cast<RE::ActorMagicCaster*>(mc) : nullptr;
     }
 
-    void EquipSpellInHand(RE::PlayerCharacter* player, RE::SpellItem* spell, EquipHand hand) {
+    void EquipSpellInHand(RE::PlayerCharacter* player, RE::SpellItem* spell, MagicSlots::Hand hand) {
         if (!player || !spell) {
             return;
         }
@@ -46,87 +59,61 @@ namespace IntegratedMagic::MagicAction {
             return;
         }
 
-        auto* leftCaster = GetCaster(player, RE::MagicSystem::CastingSource::kLeftHand);
-        auto* rightCaster = GetCaster(player, RE::MagicSystem::CastingSource::kRightHand);
+        auto* caster = GetCaster(player, ToCastingSource(hand));
 
-        SetCasterDual(leftCaster, false);
-        SetCasterDual(rightCaster, false);
+        SetCasterDual(caster, false);
 
-        const auto* leftSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(EquipHand::Left);
-        const auto* rightSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(EquipHand::Right);
-
-        switch (hand) {
-            using enum IntegratedMagic::EquipHand;
-            case Left:
-                mgr->EquipSpell(player, spell, leftSlot);
-                break;
-            case Right:
-                mgr->EquipSpell(player, spell, rightSlot);
-                break;
-            case Both:
-            default:
-                mgr->EquipSpell(player, spell, leftSlot);
-                mgr->EquipSpell(player, spell, rightSlot);
-                SetCasterDual(leftCaster, true);
-                SetCasterDual(rightCaster, true);
-                break;
-        }
+        const auto* equipSlot = ToEquipSlot(hand);
+        mgr->EquipSpell(player, spell, equipSlot);
     }
 
-    static RE::SpellItem* GetEquippedSpellFromCaster(RE::ActorMagicCaster* caster) {
-        if (!caster) {
-            return nullptr;
-        }
-        if (!caster->currentSpell) {
-            return nullptr;
-        }
-        auto* sp = caster->currentSpell->As<RE::SpellItem>();
-
-        return sp;
-    }
-
-    void ClearHandSpell(RE::PlayerCharacter* player, RE::SpellItem* spell, EquipHand hand) {
-        if (!player) {
-            return;
-        }
-        if (!spell) {
+    void ClearHandSpell(RE::PlayerCharacter* player, RE::SpellItem* spell, MagicSlots::Hand hand) {
+        if (!player || !spell) {
             return;
         }
 
         IntegratedMagic::MagicSelect::ScopedSuppressSelection suppress{};
 
-        auto* leftCaster = GetCaster(player, RE::MagicSystem::CastingSource::kLeftHand);
-        auto* rightCaster = GetCaster(player, RE::MagicSystem::CastingSource::kRightHand);
+        auto* caster = GetCaster(player, ToCastingSource(hand));
+        SetCasterDual(caster, false);
 
-        SetCasterDual(leftCaster, false);
-        SetCasterDual(rightCaster, false);
-
-        switch (hand) {
-            using enum IntegratedMagic::EquipHand;
-            case Left:
-                UnEquipSpell(player, spell, 0);
-                break;
-            case Right:
-                UnEquipSpell(player, spell, 1);
-                break;
-            default:
-                break;
-        }
+        UnEquipSpell(player, spell, ToUnEquipHandInt(hand));
     }
 
-    void ClearHandSpell(RE::PlayerCharacter* player, EquipHand hand) {
+    void ClearHandSpell(RE::PlayerCharacter* player, MagicSlots::Hand hand) {
         if (!player) {
             return;
         }
 
-        auto* caster = (hand == EquipHand::Left) ? GetCaster(player, RE::MagicSystem::CastingSource::kLeftHand)
-                                                 : GetCaster(player, RE::MagicSystem::CastingSource::kRightHand);
-
+        auto* caster = GetCaster(player, ToCastingSource(hand));
         auto* cur = GetEquippedSpellFromCaster(caster);
         if (!cur) {
             return;
         }
 
         ClearHandSpell(player, cur, hand);
+    }
+
+    void EquipSlotSpells(RE::PlayerCharacter* player, int slot) {
+        using enum IntegratedMagic::MagicSlots::Hand;
+        if (!player) {
+            return;
+        }
+
+        const auto rightID = IntegratedMagic::MagicSlots::GetSlotSpell(slot, Right);
+        const auto leftID = IntegratedMagic::MagicSlots::GetSlotSpell(slot, Left);
+
+        RE::SpellItem* rightSpell = rightID ? RE::TESForm::LookupByID<RE::SpellItem>(rightID) : nullptr;
+        RE::SpellItem* leftSpell = leftID ? RE::TESForm::LookupByID<RE::SpellItem>(leftID) : nullptr;
+
+        if (rightSpell) EquipSpellInHand(player, rightSpell, Right);
+        if (leftSpell) EquipSpellInHand(player, leftSpell, Left);
+
+        const bool wantDual = (rightSpell && leftSpell && rightID == leftID);
+
+        auto* leftCaster = GetCaster(player, RE::MagicSystem::CastingSource::kLeftHand);
+        auto* rightCaster = GetCaster(player, RE::MagicSystem::CastingSource::kRightHand);
+        SetCasterDual(leftCaster, wantDual);
+        SetCasterDual(rightCaster, wantDual);
     }
 }
