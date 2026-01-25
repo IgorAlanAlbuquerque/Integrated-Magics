@@ -10,25 +10,17 @@
 
 namespace IntegratedMagic::Hooks {
     namespace {
-        struct EquipSpellHook {
-            using Fn = void(RE::ActorEquipManager*, RE::Actor*, RE::SpellItem*, const RE::BGSEquipSlot*);
-            static inline Fn* func{nullptr};
-
-            static void thunk(RE::ActorEquipManager* mgr, RE::Actor* actor, RE::SpellItem* spell,
-                              const RE::BGSEquipSlot* slot) {
-                auto const* player = RE::PlayerCharacter::GetSingleton();
-                if (const bool isPlayer = (player && actor == player); isPlayer) {
-                    IntegratedMagic::MagicSelect::TrySelectSpellFromEquip(spell);
-                }
-
-                func(mgr, actor, spell, slot);
+        std::optional<IntegratedMagic::MagicSlots::Hand> ToHand(RE::MagicSystem::CastingSource src) {
+            switch (src) {
+                using enum RE::MagicSystem::CastingSource;
+                case kLeftHand:
+                    return IntegratedMagic::MagicSlots::Hand::Left;
+                case kRightHand:
+                    return IntegratedMagic::MagicSlots::Hand::Right;
+                default:
+                    return std::nullopt;
             }
-
-            static void Install() {
-                constexpr auto kEquipSpell = RELOCATION_ID(37939, 38895);
-                Hook::stl::write_detour<EquipSpellHook>(kEquipSpell);
-            }
-        };
+        }
 
         struct SelectSpellImplHook {
             using Fn = void (*)(RE::ActorMagicCaster*);
@@ -46,7 +38,7 @@ namespace IntegratedMagic::Hooks {
                 }
 
                 const auto src = static_cast<std::size_t>(std::to_underlying(caster->castingSource));
-                auto& rd = actor->GetActorRuntimeData();
+                auto const& rd = actor->GetActorRuntimeData();
                 if (src >= std::size(rd.selectedSpells)) {
                     _orig(caster);
                     return;
@@ -56,7 +48,10 @@ namespace IntegratedMagic::Hooks {
                 RE::MagicItem* afterItem = rd.selectedSpells[src];
 
                 if (auto* afterSpell = afterItem ? afterItem->As<RE::SpellItem>() : nullptr; afterSpell) {
-                    (void)IntegratedMagic::MagicSelect::TrySelectSpellFromEquip(afterSpell);
+                    const auto handOpt = ToHand(caster->castingSource);
+                    if (handOpt.has_value()) {
+                        (void)IntegratedMagic::MagicSelect::TrySelectSpellFromEquip(afterSpell, *handOpt);
+                    }
                 }
             }
 
@@ -117,7 +112,6 @@ namespace IntegratedMagic::Hooks {
 
     void Install_Hooks() {
         SKSE::AllocTrampoline(64);
-        EquipSpellHook::Install();
         SelectSpellImplHook::Install();
         PollInputDevicesHook::Install();
         PlayerAnimGraphProcessEventHook::Install();

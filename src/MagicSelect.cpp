@@ -11,14 +11,14 @@
 namespace IntegratedMagic::MagicSelect {
     namespace {
         thread_local int g_suppressDepth = 0;  // NOSONAR
+        bool IsSelectionSuppressed() { return g_suppressDepth > 0; }
     }
 
     ScopedSuppressSelection::ScopedSuppressSelection() { ++g_suppressDepth; }
+
     ScopedSuppressSelection::~ScopedSuppressSelection() { --g_suppressDepth; }
 
-    static bool IsSelectionSuppressed() { return g_suppressDepth > 0; }
-
-    bool TrySelectSpellFromEquip(RE::SpellItem* spell) {
+    bool TrySelectSpellFromEquip(RE::SpellItem* spell, MagicSlots::Hand hand) {
         if (IsSelectionSuppressed()) {
             return false;
         }
@@ -34,7 +34,7 @@ namespace IntegratedMagic::MagicSelect {
         }
 
         ScopedSuppressSelection guard;
-        IntegratedMagic::MagicSlots::SetSlotSpell(*slotOpt, formID, true);
+        IntegratedMagic::MagicSlots::SetSlotSpell(*slotOpt, hand, formID, true);
         return true;
     }
 }

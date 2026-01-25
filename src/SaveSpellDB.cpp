@@ -11,7 +11,7 @@ namespace IntegratedMagic {
 
     namespace {
 
-        constexpr std::size_t kJsonSlotsHardCap = 256;
+        constexpr std::size_t kJsonSlotsHardCap = 64;
 
         std::uint32_t _toU32Clamped(const nlohmann::json& v) {
             if (v.is_number_unsigned()) {
@@ -88,6 +88,30 @@ namespace IntegratedMagic {
 
             return s;
         }
+
+        nlohmann::json _buildJsonV3_NoLock(
+            const std::unordered_map<std::string, SaveSpellSlots, TransparentSaveKeyHash, std::equal_to<>>& bySave) {
+            nlohmann::json j;
+            j["version"] = 3;
+
+            nlohmann::json saves = nlohmann::json::object();
+            for (auto const& [key, slots] : bySave) {
+                nlohmann::json obj;
+                obj["left"] = slots.left;
+                obj["right"] = slots.right;
+                saves[key] = std::move(obj);
+            }
+            j["saves"] = std::move(saves);
+            return j;
+        }
+
+        void _writeJsonToDisk(const std::filesystem::path& path, const nlohmann::json& j) {
+            std::error_code ec;
+            std::filesystem::create_directories(path.parent_path(), ec);
+
+            std::ofstream out(path);
+            out << j.dump(2);
+        }
     }
 
     SaveSpellDB& SaveSpellDB::Get() {
@@ -127,19 +151,26 @@ namespace IntegratedMagic {
             return;
         }
 
+        bool migratedAny = false;
+
         for (auto it = savesIt->begin(); it != savesIt->end(); ++it) {
             try {
                 const std::string rawKey = it.key();
                 const std::string key = NormalizeKey(rawKey);
 
                 const auto& v = it.value();
-
                 SaveSpellSlots slots{};
 
                 if (v.is_object()) {
                     slots = _parseV3ObjectToLR(v);
+
+                    if (slots.Size() == 0) {
+                        continue;
+                    }
+
                 } else if (v.is_array()) {
                     slots = _migrateV2ArrayToLR(v);
+                    migratedAny = true;
                 } else {
                     continue;
                 }
@@ -150,6 +181,16 @@ namespace IntegratedMagic {
                 spdlog::error("[IMAGIC][SaveSpellDB] JSON exception for key='{}': {}", it.key(), e.what());
             } catch (const std::exception& e) {  // NOSONAR
                 spdlog::error("[IMAGIC][SaveSpellDB] Std exception while reading entry: {}", e.what());
+            }
+        }
+
+        if (migratedAny) {
+            try {
+                const auto outJson = _buildJsonV3_NoLock(_bySave);
+                _writeJsonToDisk(path, outJson);
+                spdlog::info("[IMAGIC][SaveSpellDB] Migrated legacy v2 SaveSpells.json to v3 (left/right).");
+            } catch (const std::exception& e) {  // NOSONAR
+                spdlog::error("[IMAGIC][SaveSpellDB] Failed to write migrated v3 JSON: {}", e.what());
             }
         }
     }
@@ -177,16 +218,31 @@ namespace IntegratedMagic {
         out << j.dump(2);
     }
 
+    bool SaveSpellDB::TryGet(std::string_view saveKey, SaveSpellSlots& out) const {
+        const auto key = NormalizeKeyCopy(saveKey);
+        return TryGetNormalized(key, out);
+    }
+
+    void SaveSpellDB::Erase(std::string_view saveKey) {
+        const auto key = NormalizeKeyCopy(saveKey);
+        EraseNormalized(key);
+    }
+
     void SaveSpellDB::Upsert(std::string_view saveKey, const SaveSpellSlots& slots) {
         std::scoped_lock lk(_mtx);
-        auto key = NormalizeKey(std::string(saveKey));
+        auto key = NormalizeKeyCopy(saveKey);
         _bySave.insert_or_assign(std::move(key), slots);
     }
 
-    bool SaveSpellDB::TryGet(std::string_view saveKey, SaveSpellSlots& out) const {
+    std::string SaveSpellDB::NormalizeKeyCopy(std::string_view key) {
+        std::string s(key);
+        return NormalizeKey(std::move(s));
+    }
+
+    bool SaveSpellDB::TryGetNormalized(std::string_view normalizedKey, SaveSpellSlots& out) const {
         std::scoped_lock lk(_mtx);
-        auto key = NormalizeKey(std::string(saveKey));
-        auto it = _bySave.find(key);
+
+        auto it = _bySave.find(normalizedKey);
         if (it == _bySave.end()) {
             return false;
         }
@@ -194,9 +250,8 @@ namespace IntegratedMagic {
         return true;
     }
 
-    void SaveSpellDB::Erase(std::string_view saveKey) {
+    void SaveSpellDB::EraseNormalized(std::string_view normalizedKey) {
         std::scoped_lock lk(_mtx);
-        auto key = NormalizeKey(std::string(saveKey));
-        _bySave.erase(key);
+        _bySave.erase(normalizedKey);
     }
 }

@@ -35,6 +35,10 @@ namespace IntegratedMagic {
         bool TryGet(std::string_view saveKey, SaveSpellSlots& out) const;
         void Erase(std::string_view saveKey);
 
+        bool TryGetNormalized(std::string_view normalizedKey, SaveSpellSlots& out) const;
+        void EraseNormalized(std::string_view normalizedKey);
+        static std::string NormalizeKeyCopy(std::string_view key);
+
         static std::filesystem::path JsonPath();
         static std::string NormalizeKey(std::string key);
 

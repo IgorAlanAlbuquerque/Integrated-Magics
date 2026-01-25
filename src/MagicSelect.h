@@ -10,7 +10,7 @@ namespace RE {
 }
 
 namespace IntegratedMagic::MagicSelect {
-    bool TrySelectSpellFromEquip(RE::SpellItem* spell);
+    bool TrySelectSpellFromEquip(RE::SpellItem* spell, MagicSlots::Hand src);
 
     class ScopedSuppressSelection {
     public:
@@ -19,8 +19,5 @@ namespace IntegratedMagic::MagicSelect {
 
         ScopedSuppressSelection(const ScopedSuppressSelection&) = delete;
         ScopedSuppressSelection& operator=(const ScopedSuppressSelection&) = delete;
-
-    private:
-        bool _prev{false};
     };
 }
