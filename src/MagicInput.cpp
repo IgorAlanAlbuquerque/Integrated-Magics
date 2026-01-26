@@ -250,57 +250,21 @@ namespace {
     }
 
     void HandleSlotPressed(int slot) {
-        if (auto const& st = IntegratedMagic::MagicState::Get(); st.IsHoldActive() || st.IsAutomaticActive()) {
-            return;
-        }
-
         if (const int n = ActiveSlots(); slot < 0 || slot >= n) {
             return;
         }
-
         if (auto const* player = RE::PlayerCharacter::GetSingleton(); !player) {
             return;
         }
 
-        const std::uint32_t spellFormID = IntegratedMagic::MagicSlots::GetSlotSpell(slot);
-        if (spellFormID == 0) {
-            return;
-        }
-
-        const auto ss = IntegratedMagic::SpellSettingsDB::Get().GetOrCreate(spellFormID);
-
-        if (ss.mode == IntegratedMagic::ActivationMode::Press) {
-            IntegratedMagic::MagicState::Get().TogglePress(slot);
-            return;
-        }
-
-        if (ss.mode == IntegratedMagic::ActivationMode::Hold) {
-            IntegratedMagic::MagicState::Get().HoldDown(slot);
-            return;
-        }
-
-        if (ss.mode == IntegratedMagic::ActivationMode::Automatic) {
-            IntegratedMagic::MagicState::Get().ToggleAutomatic(slot);
-            return;
-        }
+        IntegratedMagic::MagicState::Get().OnSlotPressed(slot);
     }
 
     void HandleSlotReleased(int slot) {
         if (const int n = ActiveSlots(); slot < 0 || slot >= n) {
             return;
         }
-
-        const std::uint32_t spellFormID = IntegratedMagic::MagicSlots::GetSlotSpell(slot);
-        if (spellFormID == 0) {
-            return;
-        }
-
-        if (const auto ss = IntegratedMagic::SpellSettingsDB::Get().GetOrCreate(spellFormID);
-            ss.mode != IntegratedMagic::ActivationMode::Hold) {
-            return;
-        }
-
-        IntegratedMagic::MagicState::Get().HoldUp(slot);
+        IntegratedMagic::MagicState::Get().OnSlotReleased(slot);
     }
 
     bool SlotComboDown(int slot) {
@@ -673,6 +637,6 @@ void MagicInput::HandleAnimEvent(const RE::BSAnimationGraphEvent* ev, RE::BSTEve
         IntegratedMagic::MagicState::Get().NotifyAttackEnabled();
     }
     if (tag == "CastStop"sv) {
-        IntegratedMagic::MagicState::Get().AutoExit();
+        IntegratedMagic::MagicState::Get().OnCastStop();
     }
 }

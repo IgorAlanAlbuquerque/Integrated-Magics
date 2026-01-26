@@ -46,24 +46,8 @@ namespace IntegratedMagic {
                     continue;
                 }
 
-                auto settings = IntegratedMagic::SpellSettingsDB::Get().GetOrCreate(id);
-
-                switch (settings.hand) {
-                    using enum IntegratedMagic::EquipHand;
-                    case Left:
-                        s.left[i] = id;
-                        break;
-                    case Right:
-                        s.right[i] = id;
-                        break;
-                    case Both:
-                        s.left[i] = id;
-                        s.right[i] = id;
-                        break;
-                    default:
-                        s.right[i] = id;
-                        break;
-                }
+                s.left[i] = id;
+                s.right[i] = id;
             }
 
             return s;

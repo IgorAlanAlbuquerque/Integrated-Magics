@@ -62,6 +62,51 @@ namespace IntegratedMagic::Hooks {
             }
         };
 
+        struct DeselectSpellImplHook {
+            using Fn = void (*)(RE::ActorMagicCaster*);
+            static inline Fn _orig{nullptr};
+
+            static void thunk(RE::ActorMagicCaster* caster) {
+                if (!caster) {
+                    return;
+                }
+
+                auto* actor = caster->actor;
+                if (auto const* player = RE::PlayerCharacter::GetSingleton(); !actor || !player || actor != player) {
+                    _orig(caster);
+                    return;
+                }
+
+                const auto src = static_cast<std::size_t>(std::to_underlying(caster->castingSource));
+                auto const& rd = actor->GetActorRuntimeData();
+                if (src >= std::size(rd.selectedSpells)) {
+                    _orig(caster);
+                    return;
+                }
+
+                RE::MagicItem* beforeItem = rd.selectedSpells[src];
+                auto* beforeSpell = beforeItem ? beforeItem->As<RE::SpellItem>() : nullptr;
+
+                _orig(caster);
+
+                RE::MagicItem* afterItem = rd.selectedSpells[src];
+                auto* afterSpell = afterItem ? afterItem->As<RE::SpellItem>() : nullptr;
+
+                if (beforeSpell && !afterSpell) {
+                    const auto handOpt = ToHand(caster->castingSource);
+                    if (handOpt.has_value()) {
+                        (void)IntegratedMagic::MagicSelect::TryClearSlotSpellFromUnequip(beforeSpell, *handOpt);
+                    }
+                }
+            }
+
+            static void Install() {
+                REL::Relocation<std::uintptr_t> vtbl{RE::VTABLE_ActorMagicCaster[0]};
+                const std::uintptr_t orig = vtbl.write_vfunc(0x12, thunk);
+                _orig = reinterpret_cast<Fn>(orig);  // NOSONAR
+            }
+        };
+
         struct PollInputDevicesHook {
             using Fn = void(RE::BSTEventSource<RE::InputEvent*>*, RE::InputEvent* const*);
             static inline std::uintptr_t func{0};
@@ -113,6 +158,7 @@ namespace IntegratedMagic::Hooks {
     void Install_Hooks() {
         SKSE::AllocTrampoline(64);
         SelectSpellImplHook::Install();
+        DeselectSpellImplHook::Install();
         PollInputDevicesHook::Install();
         PlayerAnimGraphProcessEventHook::Install();
     }

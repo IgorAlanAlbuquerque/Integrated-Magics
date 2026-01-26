@@ -11,6 +11,7 @@ namespace RE {
 
 namespace IntegratedMagic::MagicSelect {
     bool TrySelectSpellFromEquip(RE::SpellItem* spell, MagicSlots::Hand src);
+    bool TryClearSlotSpellFromUnequip(RE::SpellItem* spell, MagicSlots::Hand hand);
 
     class ScopedSuppressSelection {
     public:

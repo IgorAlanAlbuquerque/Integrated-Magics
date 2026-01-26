@@ -37,4 +37,28 @@ namespace IntegratedMagic::MagicSelect {
         IntegratedMagic::MagicSlots::SetSlotSpell(*slotOpt, hand, formID, true);
         return true;
     }
+
+    bool TryClearSlotSpellFromUnequip(RE::SpellItem* spell, MagicSlots::Hand hand) {
+        if (IsSelectionSuppressed()) {
+            return false;
+        }
+
+        const auto slotOpt = MagicInput::GetDownSlotForSelection();
+        if (!slotOpt.has_value() || !spell) {
+            return false;
+        }
+
+        const auto id = spell->GetFormID();
+        if (id == 0) {
+            return false;
+        }
+
+        if (const auto cur = IntegratedMagic::MagicSlots::GetSlotSpell(*slotOpt, hand); cur != id) {
+            return false;
+        }
+
+        ScopedSuppressSelection guard;
+        IntegratedMagic::MagicSlots::SetSlotSpell(*slotOpt, hand, 0u, true);
+        return true;
+    }
 }
