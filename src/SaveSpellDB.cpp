@@ -182,24 +182,9 @@ namespace IntegratedMagic {
     void SaveSpellDB::SaveToDisk() {
         std::scoped_lock lk(_mtx);
 
-        nlohmann::json j;
-        j["version"] = 3;
-
-        nlohmann::json saves = nlohmann::json::object();
-        for (auto const& [key, slots] : _bySave) {
-            nlohmann::json obj;
-            obj["left"] = slots.left;
-            obj["right"] = slots.right;
-            saves[key] = std::move(obj);
-        }
-        j["saves"] = std::move(saves);
-
         const auto path = JsonPath();
-        std::error_code ec;
-        std::filesystem::create_directories(path.parent_path(), ec);
-
-        std::ofstream out(path);
-        out << j.dump(2);
+        const auto j = _buildJsonV3_NoLock(_bySave);
+        _writeJsonToDisk(path, j);
     }
 
     bool SaveSpellDB::TryGet(std::string_view saveKey, SaveSpellSlots& out) const {

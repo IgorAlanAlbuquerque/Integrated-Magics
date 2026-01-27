@@ -186,6 +186,8 @@ namespace IntegratedMagic {
                     continue;
                 }
 
+                if (it.base->GetFormType() == RE::FormType::Weapon) continue;
+
                 RE::ExtraDataList* liveExtra = ResolveLiveExtra(idx, it.base, it.extra);
                 if (!liveExtra) {
                     liveExtra = FindAnyInstanceExtraForBase(idx, it.base);
@@ -394,8 +396,17 @@ namespace IntegratedMagic {
             return f ? f->As<RE::SpellItem>() : nullptr;
         };
 
-        _snap.rightSpell = GetEquippedSpellFromHand(player, /*leftHand*/ false);
-        _snap.leftSpell = GetEquippedSpellFromHand(player, /*leftHand*/ true);
+        if (player->GetEquippedEntryData(false)) {
+            _snap.rightSpell = nullptr;
+        } else {
+            _snap.rightSpell = GetEquippedSpellFromHand(player, /*leftHand*/ false);
+        }
+
+        if (player->GetEquippedEntryData(true)) {
+            _snap.leftSpell = nullptr;
+        } else {
+            _snap.leftSpell = GetEquippedSpellFromHand(player, /*leftHand*/ true);
+        }
 
         _snap.valid = true;
     }
@@ -417,17 +428,22 @@ namespace IntegratedMagic {
         const auto* rightSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(Right);
         const auto* leftSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(Left);
 
-        auto* leftSpell = AsSpell(_snap.leftSpell);
-        auto* rightSpell = AsSpell(_snap.rightSpell);
+        auto* leftSnapSpell = (_snap.leftObj.base ? nullptr : AsSpell(_snap.leftSpell));
+        auto* rightSnapSpell = (_snap.rightObj.base ? nullptr : AsSpell(_snap.rightSpell));
 
-        ClearHandSpellIfNoSnapshot(player, leftSpell, _modeSpellLeft, Left);
-        ClearHandSpellIfNoSnapshot(player, rightSpell, _modeSpellRight, Right);
+        if (_dirtyRight) {
+            ClearHandSpellIfNoSnapshot(player, rightSnapSpell, _modeSpellRight, Right);
 
-        RestoreOneHand(player, mgr, idx, /*leftHand*/ false, _snap.rightObj, rightSlot);
-        RestoreOneHand(player, mgr, idx, /*leftHand*/ true, _snap.leftObj, leftSlot);
+            RestoreOneHand(player, mgr, idx, false, _snap.rightObj, rightSlot);
+            EquipSpellIfPresent(player, rightSnapSpell, Right);
+        }
 
-        EquipSpellIfPresent(player, leftSpell, Left);
-        EquipSpellIfPresent(player, rightSpell, Right);
+        if (_dirtyLeft) {
+            ClearHandSpellIfNoSnapshot(player, leftSnapSpell, _modeSpellLeft, Left);
+
+            RestoreOneHand(player, mgr, idx, true, _snap.leftObj, leftSlot);
+            EquipSpellIfPresent(player, leftSnapSpell, Left);
+        }
 
         auto idx2 = BuildInventoryIndex(player);
         ReequipPrevExtraEquipped(player, mgr, idx2, _prevExtraEquipped);
@@ -435,6 +451,8 @@ namespace IntegratedMagic {
         _snap.valid = false;
         _modeSpellLeft = nullptr;
         _modeSpellRight = nullptr;
+        _dirtyLeft = false;
+        _dirtyRight = false;
     }
 
     bool MagicState::PrepareSlotEntry(int slot, SlotEntry& out) {
@@ -534,6 +552,9 @@ namespace IntegratedMagic {
                 hm.autoActive = true;
                 hm.waitingChargeComplete = true;
                 hm.waitingAutoAfterEquip = true;
+                hm.chargeComplete = false;
+                hm.wantAutoAttack = true;
+                hm.waitingEnableBumperSecs = 0.0f;
                 _attackEnabled = false;
                 break;
 
@@ -572,11 +593,42 @@ namespace IntegratedMagic {
     }
 
     void MagicState::OnSlotPressed(int slot) {
+        if (_active && slot == _activeSlot) {
+            using enum IntegratedMagic::MagicSlots::Hand;
+
+            const bool needL = (_modeSpellLeft != nullptr);
+            const bool needR = (_modeSpellRight != nullptr);
+
+            const bool pressL = needL && (_left.mode == IntegratedMagic::ActivationMode::Press) && _left.pressActive;
+            const bool pressR = needR && (_right.mode == IntegratedMagic::ActivationMode::Press) && _right.pressActive;
+
+            if (!pressL && !pressR) {
+                return;
+            }
+
+            if (pressL && pressR) {
+                FinishHand(Left);
+                FinishHand(Right);
+
+                ExitAllNow();
+                return;
+            }
+
+            if (pressL) {
+                FinishHand(Left);
+            }
+            if (pressR) {
+                FinishHand(Right);
+            }
+
+            TryFinalizeExit();
+            return;
+        }
+
         if (_active && slot != _activeSlot) {
             if (!CanOverwriteNow()) {
                 return;
             }
-
             PrepareForOverwriteToSlot(slot);
         }
 
@@ -584,24 +636,45 @@ namespace IntegratedMagic {
         if (!PrepareSlotEntry(slot, e)) {
             return;
         }
-
-        auto player = e.player;
-        auto s = slot;
-        UpdatePrevExtraEquippedForOverlay([player, s] { IntegratedMagic::MagicAction::EquipSlotSpells(player, s); });
-
         using enum IntegratedMagic::MagicSlots::Hand;
 
         if (e.hasRight && e.rightSettings.mode == IntegratedMagic::ActivationMode::Automatic &&
-            (!HasEnoughMagickaForSpell(e.player, e.rightSpell))) {
-            _right = {};
+            !HasEnoughMagickaForSpell(e.player, e.rightSpell)) {
             e.hasRight = false;
+            DisableHand(IntegratedMagic::MagicSlots::Hand::Right);
         }
 
         if (e.hasLeft && e.leftSettings.mode == IntegratedMagic::ActivationMode::Automatic &&
-            (!HasEnoughMagickaForSpell(e.player, e.leftSpell))) {
-            _left = {};
+            !HasEnoughMagickaForSpell(e.player, e.leftSpell)) {
             e.hasLeft = false;
+            DisableHand(IntegratedMagic::MagicSlots::Hand::Left);
         }
+
+        if (!e.hasRight) {
+            DisableHand(Right);
+            SetModeSpellsFromHand(Right, nullptr);
+        }
+        if (!e.hasLeft) {
+            DisableHand(Left);
+            SetModeSpellsFromHand(Left, nullptr);
+        }
+
+        if (!e.hasLeft && !e.hasRight) {
+            ExitAllNow();
+            return;
+        }
+
+        auto* player = e.player;
+        UpdatePrevExtraEquippedForOverlay([&] {
+            if (e.hasRight) {
+                IntegratedMagic::MagicAction::EquipSpellInHand(player, e.rightSpell, Right);
+                MarkDirty(Right);
+            }
+            if (e.hasLeft) {
+                IntegratedMagic::MagicAction::EquipSpellInHand(player, e.leftSpell, Left);
+                MarkDirty(Left);
+            }
+        });
 
         if (e.hasRight) {
             SetModeSpellsFromHand(Right, e.rightSpell);
@@ -702,23 +775,48 @@ namespace IntegratedMagic {
 
         if (_left.waitingAutoAfterEquip) {
             _left.waitingAutoAfterEquip = false;
-            if (_left.wantAutoAttack && !_aaHeldLeft) {
+            if ((_left.autoActive || _left.wantAutoAttack) && !_aaHeldLeft) {
                 StartAutoAttack(Left);
             }
         }
 
         if (_right.waitingAutoAfterEquip) {
             _right.waitingAutoAfterEquip = false;
-            if (_right.wantAutoAttack && !_aaHeldRight) {
+            if ((_right.autoActive || _right.wantAutoAttack) && !_aaHeldRight) {
                 StartAutoAttack(Right);
             }
         }
     }
 
-    void MagicState::PumpAutomatic() {
+    void MagicState::PumpAutomatic(float dt) {
         using enum IntegratedMagic::MagicSlots::Hand;
+        PumpAutoStartFallback(Left, dt);
+        PumpAutoStartFallback(Right, dt);
         PumpAutomaticHand(Left);
         PumpAutomaticHand(Right);
+    }
+
+    void MagicState::PumpAutoStartFallback(IntegratedMagic::MagicSlots::Hand hand, float dt) {
+        using enum IntegratedMagic::MagicSlots::Hand;
+        auto& hm = ModeFor(hand);
+
+        if (!_active || !hm.autoActive || !hm.waitingAutoAfterEquip) {
+            return;
+        }
+
+        hm.waitingEnableBumperSecs += (dt > 0.0f ? dt : 0.0f);
+
+        constexpr float kFallbackDelay = 0.25f;
+
+        if (hm.waitingEnableBumperSecs >= kFallbackDelay) {
+            hm.waitingAutoAfterEquip = false;
+
+            if (hand == Left) {
+                if (!_aaHeldLeft) StartAutoAttack(Left);
+            } else {
+                if (!_aaHeldRight) StartAutoAttack(Right);
+            }
+        }
     }
 
     void MagicState::PumpAutomaticHand(IntegratedMagic::MagicSlots::Hand hand) {
@@ -786,8 +884,6 @@ namespace IntegratedMagic {
         hm.chargeComplete = true;
 
         StopAutoAttack(hand);
-
-        FinishHand(hand);
     }
 
     bool MagicState::HandIsRelevant(IntegratedMagic::MagicSlots::Hand h) const {
@@ -864,15 +960,17 @@ namespace IntegratedMagic {
         }
 
         using enum IntegratedMagic::MagicSlots::Hand;
-
         if (_left.autoActive && !_left.finished) {
-            FinishHand(Left);
+            if (_left.chargeComplete) {
+                FinishHand(Left);
+            }
         }
 
         if (_right.autoActive && !_right.finished) {
-            FinishHand(Right);
+            if (_right.chargeComplete) {
+                FinishHand(Right);
+            }
         }
-
         TryFinalizeExit();
     }
 
@@ -932,5 +1030,13 @@ namespace IntegratedMagic {
 
         _modeSpellLeft = nullptr;
         _modeSpellRight = nullptr;
+    }
+
+    void MagicState::DisableHand(IntegratedMagic::MagicSlots::Hand hand) {
+        auto& hm = ModeFor(hand);
+        StopAutoAttack(hand);
+        hm = {};
+        hm.finished = true;
+        SetModeSpellsFromHand(hand, nullptr);
     }
 }

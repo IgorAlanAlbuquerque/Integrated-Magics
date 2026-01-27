@@ -34,6 +34,7 @@ namespace {
     constexpr int kDIK_A = 0x1E;
     constexpr int kDIK_S = 0x1F;
     constexpr int kDIK_D = 0x20;
+    constexpr int kDIK_Escape = 0x01;
 
     enum class PendingSrc : std::uint8_t { None = 0, Kb = 1, Gp = 2 };
 
@@ -229,7 +230,6 @@ namespace {
             }
         }
 
-        constexpr int kDIK_Escape = 0x01;
         g_kbDown[static_cast<std::size_t>(kDIK_Escape)].store(false, std::memory_order_relaxed);
 
         ClearEdgeStateOnly();
@@ -503,7 +503,7 @@ namespace {
 
             if (!blocked) {
                 IntegratedMagic::MagicState::Get().PumpAutoAttack(dt);
-                IntegratedMagic::MagicState::Get().PumpAutomatic();
+                IntegratedMagic::MagicState::Get().PumpAutomatic(dt);
             }
 
             return RE::BSEventNotifyControl::kContinue;

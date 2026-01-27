@@ -89,10 +89,7 @@ namespace IntegratedMagic::Hooks {
 
                 _orig(caster);
 
-                RE::MagicItem* afterItem = rd.selectedSpells[src];
-                auto* afterSpell = afterItem ? afterItem->As<RE::SpellItem>() : nullptr;
-
-                if (beforeSpell && !afterSpell) {
+                if (beforeSpell) {
                     const auto handOpt = ToHand(caster->castingSource);
                     if (handOpt.has_value()) {
                         (void)IntegratedMagic::MagicSelect::TryClearSlotSpellFromUnequip(beforeSpell, *handOpt);

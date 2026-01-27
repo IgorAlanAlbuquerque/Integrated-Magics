@@ -83,6 +83,22 @@ namespace {
         }
     }
 
+    void ClearSlotData(IntegratedMagic::MagicConfig& cfg, int slot) {
+        using Hand = IntegratedMagic::MagicSlots::Hand;
+
+        cfg.slotSpellFormIDLeft[static_cast<std::size_t>(slot)].store(0u, std::memory_order_relaxed);
+        cfg.slotSpellFormIDRight[static_cast<std::size_t>(slot)].store(0u, std::memory_order_relaxed);
+
+        auto& icfg = cfg.slotInput[static_cast<std::size_t>(slot)];
+        icfg.KeyboardScanCode1.store(-1, std::memory_order_relaxed);
+        icfg.KeyboardScanCode2.store(-1, std::memory_order_relaxed);
+        icfg.KeyboardScanCode3.store(-1, std::memory_order_relaxed);
+
+        icfg.GamepadButton1.store(-1, std::memory_order_relaxed);
+        icfg.GamepadButton2.store(-1, std::memory_order_relaxed);
+        icfg.GamepadButton3.store(-1, std::memory_order_relaxed);
+    }
+
     inline void DrawKeyboardKeysUI(IntegratedMagic::MagicConfig& cfg, int slot, bool& dirty) {
         auto& icfg = SlotInput(cfg, slot);
 
@@ -200,15 +216,29 @@ namespace {
     void DrawGeneralTab(IntegratedMagic::MagicConfig& cfg, bool& dirty) {
         ImGui::TextUnformatted(IntegratedMagic::Strings::Get("Hotkeys_Title", "Hotkeys").c_str());
 
-        auto n = static_cast<int>(cfg.SlotCount());
+        const auto oldCount = static_cast<int>(cfg.SlotCount());
+
+        int n = oldCount;
         ImGui::SetNextItemWidth(180.0f);
         if (ImGui::InputInt(IntegratedMagic::Strings::Get("Item_SlotCount", "Slot count").c_str(), &n)) {
             if (n < 1) n = 1;
             if (n > static_cast<int>(IntegratedMagic::MagicConfig::kMaxSlots)) {
                 n = static_cast<int>(IntegratedMagic::MagicConfig::kMaxSlots);
             }
+
             cfg.slotCount.store(static_cast<std::uint32_t>(n), std::memory_order_relaxed);
             dirty = true;
+
+            if (n < oldCount) {
+                for (int slot = n; slot < oldCount; ++slot) {
+                    ClearSlotData(cfg, slot);
+                }
+
+                if (g_capturingHotkey && g_captureSlot >= n) {
+                    g_capturingHotkey = false;
+                    g_captureSlot = -1;
+                }
+            }
         }
 
         ImGui::Spacing();

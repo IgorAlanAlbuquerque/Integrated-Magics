@@ -12,13 +12,16 @@ namespace RE {
 namespace IntegratedMagic::MagicSelect {
     bool TrySelectSpellFromEquip(RE::SpellItem* spell, MagicSlots::Hand src);
     bool TryClearSlotSpellFromUnequip(RE::SpellItem* spell, MagicSlots::Hand hand);
+    bool IsSelectionSuppressed() noexcept;
 
     class ScopedSuppressSelection {
     public:
-        ScopedSuppressSelection();
-        ~ScopedSuppressSelection();
+        ScopedSuppressSelection() noexcept;
+        ~ScopedSuppressSelection() noexcept;
 
         ScopedSuppressSelection(const ScopedSuppressSelection&) = delete;
         ScopedSuppressSelection& operator=(const ScopedSuppressSelection&) = delete;
+        ScopedSuppressSelection(ScopedSuppressSelection&&) = delete;
+        ScopedSuppressSelection& operator=(ScopedSuppressSelection&&) = delete;
     };
 }

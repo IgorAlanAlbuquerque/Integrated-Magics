@@ -69,6 +69,7 @@ namespace IntegratedMagic {
         bool waitingAutoAfterEquip{false};
 
         bool finished{false};
+        float waitingEnableBumperSecs{0.0f};
     };
 
     class MagicState {
@@ -95,7 +96,7 @@ namespace IntegratedMagic {
 
         void NotifyAttackEnabled();
 
-        void PumpAutomatic();
+        void PumpAutomatic(float dt);
 
         const HandMode& LeftMode() const noexcept { return _left; }
         const HandMode& RightMode() const noexcept { return _right; }
@@ -119,6 +120,8 @@ namespace IntegratedMagic {
         void ExitAllNow();
         bool CanOverwriteNow() const;
         void PrepareForOverwriteToSlot(int newSlot);
+        void PumpAutoStartFallback(IntegratedMagic::MagicSlots::Hand hand, float dt);
+        void DisableHand(IntegratedMagic::MagicSlots::Hand hand);
 
         struct SlotEntry {
             RE::PlayerCharacter* player{nullptr};
@@ -141,6 +144,17 @@ namespace IntegratedMagic {
         void PumpAutomaticHand(IntegratedMagic::MagicSlots::Hand hand);
 
         void SetModeSpellsFromHand(IntegratedMagic::MagicSlots::Hand hand, RE::SpellItem* spell);
+
+        static inline bool IsLeft(IntegratedMagic::MagicSlots::Hand h) {
+            return h == IntegratedMagic::MagicSlots::Hand::Left;
+        }
+
+        void MarkDirty(IntegratedMagic::MagicSlots::Hand h) {
+            if (IsLeft(h))
+                _dirtyLeft = true;
+            else
+                _dirtyRight = true;
+        }
 
         template <class Fn>
         void UpdatePrevExtraEquippedForOverlay(Fn&& equipFn);
@@ -165,6 +179,8 @@ namespace IntegratedMagic {
 
         RE::SpellItem* _modeSpellLeft{nullptr};
         RE::SpellItem* _modeSpellRight{nullptr};
+        bool _dirtyLeft{false};
+        bool _dirtyRight{false};
     };
 
     template <class Fn>
