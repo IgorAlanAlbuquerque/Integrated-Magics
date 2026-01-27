@@ -4,10 +4,13 @@
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
+#include "MagicSlots.h"
 #include "PCH.h"
 
 namespace IntegratedMagic {
+
     namespace detail {
         constexpr std::uint32_t kRightAttackMouseId = 0;
         constexpr std::uint32_t kLeftAttackMouseId = 1;
@@ -22,14 +25,15 @@ namespace IntegratedMagic {
             std::mutex mutex;
             std::queue<RE::ButtonEvent*> pending;
         };
+
+        void EnqueueSyntheticAttack(RE::ButtonEvent* ev);
+        RE::InputEvent* FlushSyntheticInput(RE::InputEvent* head);
+
+        void DispatchAttack(IntegratedMagic::MagicSlots::Hand hand, float value, float heldSecs);
     }
 
     struct SpellSettings;
-    namespace detail {
-        void EnqueueSyntheticAttack(RE::ButtonEvent* ev);
-        RE::InputEvent* FlushSyntheticInput(RE::InputEvent* head);
-        void DispatchAttack(EquipHand hand, float value, float heldSecs);
-    }
+
     struct ObjSnapshot {
         RE::TESBoundObject* base{nullptr};
         RE::ExtraDataList* extra{nullptr};
@@ -51,6 +55,23 @@ namespace IntegratedMagic {
 
     InventoryIndex BuildInventoryIndex(RE::PlayerCharacter* player);
 
+    struct HandMode {
+        IntegratedMagic::ActivationMode mode{IntegratedMagic::ActivationMode::Hold};
+        bool wantAutoAttack{false};
+
+        bool pressActive{false};
+        bool holdActive{false};
+        bool autoActive{false};
+
+        bool waitingChargeComplete{false};
+        bool chargeComplete{false};
+
+        bool waitingAutoAfterEquip{false};
+
+        bool finished{false};
+        float waitingEnableBumperSecs{0.0f};
+    };
+
     class MagicState {
     public:
         static MagicState& Get();
@@ -60,58 +81,106 @@ namespace IntegratedMagic {
             RE::ExtraDataList* extra{nullptr};
         };
 
-        void TogglePress(int slot);
-        void ToggleAutomatic(int slot);
-        void HoldDown(int slot);
-        void HoldUp(int slot);
-        bool IsHoldActive() const { return _holdActive; }
-        int HoldSlot() const { return _holdSlot; }
-        bool IsAutomaticActive() const { return _autoActive; }
-        int AutomaticSlot() const { return _autoSlot; }
-        void StartAutoAttack(EquipHand hand);
-        void StopAutoAttack();
+        void OnSlotPressed(int slot);
+        void OnSlotReleased(int slot);
+        void OnCastStop();
+        void TryFinalizeExit();
+
+        bool IsActive() const noexcept { return _active; }
+        int ActiveSlot() const noexcept { return _activeSlot; }
+
+        void StartAutoAttack(IntegratedMagic::MagicSlots::Hand hand);
+        void StopAutoAttack(IntegratedMagic::MagicSlots::Hand hand);
+        void StopAllAutoAttack();
         void PumpAutoAttack(float dt);
+
         void NotifyAttackEnabled();
-        void RequestAutoAttackStart(EquipHand hand);
-        void TryStartWaitingAutoAttack();
-        void PumpAutomatic();
-        void AutoExit();
+
+        void PumpAutomatic(float dt);
+
+        const HandMode& LeftMode() const noexcept { return _left; }
+        const HandMode& RightMode() const noexcept { return _right; }
 
     private:
-        void EnterPress(int slot);
-        bool ApplyPress(int slot);
-        void EnterHold(int slot);
-        void EnterAutomatic(int slot);
-        void ExitAll();
-        void SetModeSpellsFromHand(EquipHand hand, RE::SpellItem* spell);
-        void EnsureActiveWithSnapshot(RE::PlayerCharacter* player, int slot);
-        bool PrepareSlotSpell(int slot, bool checkMagicka, RE::PlayerCharacter*& player, RE::SpellItem*& spell,
-                              SpellSettings& outSettings);
+        MagicState() = default;
 
+        static inline RE::PlayerCharacter* GetPlayer() { return RE::PlayerCharacter::GetSingleton(); }
+        HandMode& ModeFor(IntegratedMagic::MagicSlots::Hand hand) noexcept {
+            return (hand == IntegratedMagic::MagicSlots::Hand::Left) ? _left : _right;
+        }
+        const HandMode& ModeFor(IntegratedMagic::MagicSlots::Hand hand) const noexcept {
+            return (hand == IntegratedMagic::MagicSlots::Hand::Left) ? _left : _right;
+        }
+
+        void EnsureActiveWithSnapshot(RE::PlayerCharacter* player, int slot);
         void CaptureSnapshot(RE::PlayerCharacter* player);
         void RestoreSnapshot(RE::PlayerCharacter* player);
+        bool HandIsRelevant(IntegratedMagic::MagicSlots::Hand h) const;
+        bool AllRelevantHandsFinished() const;
+        void ExitAllNow();
+        bool CanOverwriteNow() const;
+        void PrepareForOverwriteToSlot(int newSlot);
+        void PumpAutoStartFallback(IntegratedMagic::MagicSlots::Hand hand, float dt);
+        void DisableHand(IntegratedMagic::MagicSlots::Hand hand);
+
+        struct SlotEntry {
+            RE::PlayerCharacter* player{nullptr};
+            std::uint32_t leftID{0};
+            std::uint32_t rightID{0};
+            RE::SpellItem* leftSpell{nullptr};
+            RE::SpellItem* rightSpell{nullptr};
+            SpellSettings leftSettings{};
+            SpellSettings rightSettings{};
+            bool hasLeft{false};
+            bool hasRight{false};
+        };
+
+        bool PrepareSlotEntry(int slot, SlotEntry& out);
+
+        void EnterHand(IntegratedMagic::MagicSlots::Hand hand, const SpellSettings& ss);
+        void TogglePressHand(IntegratedMagic::MagicSlots::Hand hand, const SpellSettings& ss);
+        void FinishHand(IntegratedMagic::MagicSlots::Hand hand);
+
+        void PumpAutomaticHand(IntegratedMagic::MagicSlots::Hand hand);
+
+        void SetModeSpellsFromHand(IntegratedMagic::MagicSlots::Hand hand, RE::SpellItem* spell);
+
+        static inline bool IsLeft(IntegratedMagic::MagicSlots::Hand h) {
+            return h == IntegratedMagic::MagicSlots::Hand::Left;
+        }
+
+        void MarkDirty(IntegratedMagic::MagicSlots::Hand h) {
+            if (IsLeft(h))
+                _dirtyLeft = true;
+            else
+                _dirtyRight = true;
+        }
+
         template <class Fn>
         void UpdatePrevExtraEquippedForOverlay(Fn&& equipFn);
 
+    private:
         std::vector<ExtraEquippedItem> _prevExtraEquipped;
+
+        HandMode _left{};
+        HandMode _right{};
+
         bool _active{false};
         int _activeSlot{-1};
-        bool _holdActive{false};
-        int _holdSlot{-1};
-        bool _autoActive{false};
-        int _autoSlot{-1};
-        EquipHand _autoHand{EquipHand::Right};
-        bool _autoWaitingChargeComplete{false};
-        bool _autoChargeComplete{false};
-        HandSnapshot _snap{};
-        bool _autoAttackHeld{false};
-        EquipHand _autoAttackHand{EquipHand::Right};
-        float _autoAttackSecs{0.0f};
+
+        bool _aaHeldLeft{false};
+        bool _aaHeldRight{false};
+        float _aaSecsLeft{0.f};
+        float _aaSecsRight{0.f};
+
         bool _attackEnabled{false};
-        bool _waitingAutoAfterEquip{false};
-        EquipHand _waitingAutoHand{EquipHand::Right};
+
+        HandSnapshot _snap{};
+
         RE::SpellItem* _modeSpellLeft{nullptr};
         RE::SpellItem* _modeSpellRight{nullptr};
+        bool _dirtyLeft{false};
+        bool _dirtyRight{false};
     };
 
     template <class Fn>

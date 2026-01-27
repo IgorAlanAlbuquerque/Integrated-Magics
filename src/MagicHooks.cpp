@@ -10,25 +10,17 @@
 
 namespace IntegratedMagic::Hooks {
     namespace {
-        struct EquipSpellHook {
-            using Fn = void(RE::ActorEquipManager*, RE::Actor*, RE::SpellItem*, const RE::BGSEquipSlot*);
-            static inline Fn* func{nullptr};
-
-            static void thunk(RE::ActorEquipManager* mgr, RE::Actor* actor, RE::SpellItem* spell,
-                              const RE::BGSEquipSlot* slot) {
-                auto const* player = RE::PlayerCharacter::GetSingleton();
-                if (const bool isPlayer = (player && actor == player); isPlayer) {
-                    IntegratedMagic::MagicSelect::TrySelectSpellFromEquip(spell);
-                }
-
-                func(mgr, actor, spell, slot);
+        std::optional<IntegratedMagic::MagicSlots::Hand> ToHand(RE::MagicSystem::CastingSource src) {
+            switch (src) {
+                using enum RE::MagicSystem::CastingSource;
+                case kLeftHand:
+                    return IntegratedMagic::MagicSlots::Hand::Left;
+                case kRightHand:
+                    return IntegratedMagic::MagicSlots::Hand::Right;
+                default:
+                    return std::nullopt;
             }
-
-            static void Install() {
-                constexpr auto kEquipSpell = RELOCATION_ID(37939, 38895);
-                Hook::stl::write_detour<EquipSpellHook>(kEquipSpell);
-            }
-        };
+        }
 
         struct SelectSpellImplHook {
             using Fn = void (*)(RE::ActorMagicCaster*);
@@ -46,7 +38,7 @@ namespace IntegratedMagic::Hooks {
                 }
 
                 const auto src = static_cast<std::size_t>(std::to_underlying(caster->castingSource));
-                auto& rd = actor->GetActorRuntimeData();
+                auto const& rd = actor->GetActorRuntimeData();
                 if (src >= std::size(rd.selectedSpells)) {
                     _orig(caster);
                     return;
@@ -56,13 +48,58 @@ namespace IntegratedMagic::Hooks {
                 RE::MagicItem* afterItem = rd.selectedSpells[src];
 
                 if (auto* afterSpell = afterItem ? afterItem->As<RE::SpellItem>() : nullptr; afterSpell) {
-                    (void)IntegratedMagic::MagicSelect::TrySelectSpellFromEquip(afterSpell);
+                    const auto handOpt = ToHand(caster->castingSource);
+                    if (handOpt.has_value()) {
+                        (void)IntegratedMagic::MagicSelect::TrySelectSpellFromEquip(afterSpell, *handOpt);
+                    }
                 }
             }
 
             static void Install() {
                 REL::Relocation<std::uintptr_t> vtbl{RE::VTABLE_ActorMagicCaster[0]};
                 const std::uintptr_t orig = vtbl.write_vfunc(0x11, thunk);
+                _orig = reinterpret_cast<Fn>(orig);  // NOSONAR
+            }
+        };
+
+        struct DeselectSpellImplHook {
+            using Fn = void (*)(RE::ActorMagicCaster*);
+            static inline Fn _orig{nullptr};
+
+            static void thunk(RE::ActorMagicCaster* caster) {
+                if (!caster) {
+                    return;
+                }
+
+                auto* actor = caster->actor;
+                if (auto const* player = RE::PlayerCharacter::GetSingleton(); !actor || !player || actor != player) {
+                    _orig(caster);
+                    return;
+                }
+
+                const auto src = static_cast<std::size_t>(std::to_underlying(caster->castingSource));
+                auto const& rd = actor->GetActorRuntimeData();
+                if (src >= std::size(rd.selectedSpells)) {
+                    _orig(caster);
+                    return;
+                }
+
+                RE::MagicItem* beforeItem = rd.selectedSpells[src];
+                auto* beforeSpell = beforeItem ? beforeItem->As<RE::SpellItem>() : nullptr;
+
+                _orig(caster);
+
+                if (beforeSpell) {
+                    const auto handOpt = ToHand(caster->castingSource);
+                    if (handOpt.has_value()) {
+                        (void)IntegratedMagic::MagicSelect::TryClearSlotSpellFromUnequip(beforeSpell, *handOpt);
+                    }
+                }
+            }
+
+            static void Install() {
+                REL::Relocation<std::uintptr_t> vtbl{RE::VTABLE_ActorMagicCaster[0]};
+                const std::uintptr_t orig = vtbl.write_vfunc(0x12, thunk);
                 _orig = reinterpret_cast<Fn>(orig);  // NOSONAR
             }
         };
@@ -117,8 +154,8 @@ namespace IntegratedMagic::Hooks {
 
     void Install_Hooks() {
         SKSE::AllocTrampoline(64);
-        EquipSpellHook::Install();
         SelectSpellImplHook::Install();
+        DeselectSpellImplHook::Install();
         PollInputDevicesHook::Install();
         PlayerAnimGraphProcessEventHook::Install();
     }

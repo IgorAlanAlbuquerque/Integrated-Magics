@@ -36,8 +36,12 @@ namespace {
         return cfg.slotInput[static_cast<std::size_t>(slot)];
     }
 
-    std::atomic<std::uint32_t>& SlotSpell(IntegratedMagic::MagicConfig& cfg, int slot) {
-        return cfg.slotSpellFormID[static_cast<std::size_t>(slot)];
+    std::atomic<std::uint32_t>& SlotSpell(IntegratedMagic::MagicConfig& cfg, int slot,
+                                          IntegratedMagic::MagicSlots::Hand hand) {
+        if (hand == IntegratedMagic::MagicSlots::Hand::Left) {
+            return cfg.slotSpellFormIDLeft[static_cast<std::size_t>(slot)];
+        }
+        return cfg.slotSpellFormIDRight[static_cast<std::size_t>(slot)];
     }
 
     inline int ModeToIndex(IntegratedMagic::ActivationMode m) {
@@ -65,31 +69,6 @@ namespace {
         }
     }
 
-    inline int HandToIndex(IntegratedMagic::EquipHand h) {
-        using enum IntegratedMagic::EquipHand;
-        switch (h) {
-            case Left:
-                return 0;
-            case Right:
-                return 1;
-            case Both:
-                return 2;
-        }
-        return 2;
-    }
-
-    inline IntegratedMagic::EquipHand IndexToHand(int idx) {
-        using enum IntegratedMagic::EquipHand;
-        switch (idx) {
-            case 0:
-                return Left;
-            case 1:
-                return Right;
-            default:
-                return Both;
-        }
-    }
-
     inline int ClampMinusOne(int v) { return (v < -1) ? -1 : v; }
 
     inline void DrawAtomicIntInput(const std::string& label, std::atomic<int>& atom, bool& dirty,
@@ -102,6 +81,22 @@ namespace {
             atom.store(v, std::memory_order_relaxed);
             dirty = true;
         }
+    }
+
+    void ClearSlotData(IntegratedMagic::MagicConfig& cfg, int slot) {
+        using Hand = IntegratedMagic::MagicSlots::Hand;
+
+        cfg.slotSpellFormIDLeft[static_cast<std::size_t>(slot)].store(0u, std::memory_order_relaxed);
+        cfg.slotSpellFormIDRight[static_cast<std::size_t>(slot)].store(0u, std::memory_order_relaxed);
+
+        auto& icfg = cfg.slotInput[static_cast<std::size_t>(slot)];
+        icfg.KeyboardScanCode1.store(-1, std::memory_order_relaxed);
+        icfg.KeyboardScanCode2.store(-1, std::memory_order_relaxed);
+        icfg.KeyboardScanCode3.store(-1, std::memory_order_relaxed);
+
+        icfg.GamepadButton1.store(-1, std::memory_order_relaxed);
+        icfg.GamepadButton2.store(-1, std::memory_order_relaxed);
+        icfg.GamepadButton3.store(-1, std::memory_order_relaxed);
     }
 
     inline void DrawKeyboardKeysUI(IntegratedMagic::MagicConfig& cfg, int slot, bool& dirty) {
@@ -178,18 +173,72 @@ namespace {
         ImGui::PopID();
     }
 
+    void DrawOneSpellSettings(const char* title, std::uint32_t formID, bool& dirty) {
+        ImGui::Text("%s: %s", title, GetSpellNameByFormID(formID));
+        ImGui::Text("FormID: 0x%08X", formID);
+
+        if (formID == 0u) {
+            ImGui::TextDisabled("%s",
+                                IntegratedMagic::Strings::Get("Spell_NoSpell", "No spell set for this slot.").c_str());
+            return;
+        }
+
+        auto s = IntegratedMagic::SpellSettingsDB::Get().GetOrCreate(formID);
+
+        const auto mHold = IntegratedMagic::Strings::Get("Item_Mode_Hold", "Hold");
+        const auto mPress = IntegratedMagic::Strings::Get("Item_Mode_Press", "Press");
+        const auto mAuto = IntegratedMagic::Strings::Get("Item_Mode_Automatic", "Automatic");
+        const std::array<const char*, 3> modes{mHold.c_str(), mPress.c_str(), mAuto.c_str()};
+
+        ImGui::TextUnformatted(IntegratedMagic::Strings::Get("Item_ModeLabel", "Activation mode").c_str());
+        int modeIdx = ModeToIndex(s.mode);
+        ImGui::SetNextItemWidth(220.0f);
+        if (ImGui::Combo("##mode", &modeIdx, modes.data(), static_cast<int>(modes.size()))) {
+            s.mode = IndexToMode(modeIdx);
+            IntegratedMagic::SpellSettingsDB::Get().Set(formID, s);
+            dirty = true;
+        }
+
+        const bool disableAA = (s.mode != IntegratedMagic::ActivationMode::Hold);
+        if (disableAA) ImGui::BeginDisabled(true);
+
+        if (bool aa = s.autoAttack; ImGui::Checkbox("##aa", &aa)) {
+            s.autoAttack = aa;
+            IntegratedMagic::SpellSettingsDB::Get().Set(formID, s);
+            dirty = true;
+        }
+        ImGui::SameLine();
+        ImGui::TextUnformatted(IntegratedMagic::Strings::Get("Item_AutoAttack", "Auto-attack while holding").c_str());
+
+        if (disableAA) ImGui::EndDisabled();
+    }
+
     void DrawGeneralTab(IntegratedMagic::MagicConfig& cfg, bool& dirty) {
         ImGui::TextUnformatted(IntegratedMagic::Strings::Get("Hotkeys_Title", "Hotkeys").c_str());
 
-        auto n = static_cast<int>(cfg.SlotCount());
+        const auto oldCount = static_cast<int>(cfg.SlotCount());
+
+        int n = oldCount;
         ImGui::SetNextItemWidth(180.0f);
         if (ImGui::InputInt(IntegratedMagic::Strings::Get("Item_SlotCount", "Slot count").c_str(), &n)) {
             if (n < 1) n = 1;
             if (n > static_cast<int>(IntegratedMagic::MagicConfig::kMaxSlots)) {
                 n = static_cast<int>(IntegratedMagic::MagicConfig::kMaxSlots);
             }
+
             cfg.slotCount.store(static_cast<std::uint32_t>(n), std::memory_order_relaxed);
             dirty = true;
+
+            if (n < oldCount) {
+                for (int slot = n; slot < oldCount; ++slot) {
+                    ClearSlotData(cfg, slot);
+                }
+
+                if (g_capturingHotkey && g_captureSlot >= n) {
+                    g_capturingHotkey = false;
+                    g_captureSlot = -1;
+                }
+            }
         }
 
         ImGui::Spacing();
@@ -207,64 +256,27 @@ namespace {
     }
 
     void DrawMagicTab(IntegratedMagic::MagicConfig& cfg, int slot, bool& dirty) {
-        auto const& spellForm = SlotSpell(cfg, slot);
-        const std::uint32_t formID = spellForm.load(std::memory_order_relaxed);
+        const std::uint32_t rightID =
+            SlotSpell(cfg, slot, IntegratedMagic::MagicSlots::Hand::Right).load(std::memory_order_relaxed);
+        const std::uint32_t leftID =
+            SlotSpell(cfg, slot, IntegratedMagic::MagicSlots::Hand::Left).load(std::memory_order_relaxed);
 
-        ImGui::Text("%s: %s", "Selected Spell", GetSpellNameByFormID(formID));
-        ImGui::Text("FormID: 0x%08X", formID);
+        if (ImGui::BeginTable("SlotSpellsTable", 2)) {
+            ImGui::TableNextRow();
 
-        ImGui::Separator();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::PushID("RightSpell");
+            DrawOneSpellSettings(IntegratedMagic::Strings::Get("Item_Spell_Right", "Right-hand spell").c_str(), rightID,
+                                 dirty);
+            ImGui::PopID();
 
-        if (formID == 0) {
-            ImGui::TextDisabled("%s",
-                                IntegratedMagic::Strings::Get("Spell_NoSpell", "No spell set for this slot.").c_str());
-            return;
-        }
+            ImGui::TableSetColumnIndex(1);
+            ImGui::PushID("LeftSpell");
+            DrawOneSpellSettings(IntegratedMagic::Strings::Get("Item_Spell_Left", "Left-hand spell").c_str(), leftID,
+                                 dirty);
+            ImGui::PopID();
 
-        auto s = IntegratedMagic::SpellSettingsDB::Get().GetOrCreate(formID);
-
-        const auto mHold = IntegratedMagic::Strings::Get("Item_Mode_Hold", "Hold");
-        const auto mPress = IntegratedMagic::Strings::Get("Item_Mode_Press", "Press");
-        const auto mAuto = IntegratedMagic::Strings::Get("Item_Mode_Automatic", "Automatic");
-        const std::array<const char*, 3> modes{mHold.c_str(), mPress.c_str(), mAuto.c_str()};
-
-        int modeIdx = ModeToIndex(s.mode);
-
-        ImGui::SetNextItemWidth(220.0f);
-        if (ImGui::Combo(IntegratedMagic::Strings::Get("Item_Mode", "Activation mode").c_str(), &modeIdx, modes.data(),
-                         static_cast<int>(modes.size()))) {
-            s.mode = IndexToMode(modeIdx);
-            IntegratedMagic::SpellSettingsDB::Get().Set(formID, s);
-            dirty = true;
-        }
-
-        const auto hLeft = IntegratedMagic::Strings::Get("Item_Hand_Left", "Left");
-        const auto hRight = IntegratedMagic::Strings::Get("Item_Hand_Right", "Right");
-        const auto hBoth = IntegratedMagic::Strings::Get("Item_Hand_Both", "Both");
-        const std::array<const char*, 3> hands{hLeft.c_str(), hRight.c_str(), hBoth.c_str()};
-
-        int handIdx = HandToIndex(s.hand);
-
-        ImGui::SetNextItemWidth(220.0f);
-        if (ImGui::Combo(IntegratedMagic::Strings::Get("Item_Hand", "Equip hand").c_str(), &handIdx, hands.data(),
-                         static_cast<int>(hands.size()))) {
-            s.hand = IndexToHand(handIdx);
-            IntegratedMagic::SpellSettingsDB::Get().Set(formID, s);
-            dirty = true;
-        }
-
-        const bool disableAA = (s.mode != IntegratedMagic::ActivationMode::Hold);
-        if (disableAA) ImGui::BeginDisabled(true);
-
-        if (bool aa = s.autoAttack; ImGui::Checkbox(
-                IntegratedMagic::Strings::Get("Item_AutoAttack", "Auto-attack while holding").c_str(), &aa)) {
-            s.autoAttack = aa;
-            IntegratedMagic::SpellSettingsDB::Get().Set(formID, s);
-            dirty = true;
-        }
-
-        if (disableAA) {
-            ImGui::EndDisabled();
+            ImGui::EndTable();
         }
     }
 

@@ -22,7 +22,8 @@ namespace IntegratedMagic {
 
         std::atomic<std::uint32_t> slotCount{4};
 
-        std::array<std::atomic<std::uint32_t>, kMaxSlots> slotSpellFormID;
+        std::array<std::atomic<std::uint32_t>, kMaxSlots> slotSpellFormIDLeft;
+        std::array<std::atomic<std::uint32_t>, kMaxSlots> slotSpellFormIDRight;
 
         std::array<InputConfig, kMaxSlots> slotInput;
 
