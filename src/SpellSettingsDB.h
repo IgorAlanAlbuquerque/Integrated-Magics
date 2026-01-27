@@ -22,11 +22,9 @@ namespace IntegratedMagic {
     };
 
     enum class ActivationMode : std::uint32_t { Hold = 0, Press = 1, Automatic = 2 };
-    enum class EquipHand : std::uint32_t { Left = 0, Right = 1, Both = 2 };
 
     struct SpellSettings {
         ActivationMode mode{ActivationMode::Hold};
-        EquipHand hand{EquipHand::Right};
         bool autoAttack{false};
     };
 

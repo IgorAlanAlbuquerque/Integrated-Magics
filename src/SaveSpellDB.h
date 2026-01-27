@@ -1,5 +1,4 @@
 #pragma once
-#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -7,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace IntegratedMagic {
     struct TransparentSaveKeyHash {
@@ -18,7 +18,10 @@ namespace IntegratedMagic {
     };
 
     struct SaveSpellSlots {
-        std::array<std::uint32_t, 4> slotSpellFormID{{0, 0, 0, 0}};
+        std::vector<std::uint32_t> left;
+        std::vector<std::uint32_t> right;
+
+        inline std::size_t Size() const noexcept { return std::max(left.size(), right.size()); }
     };
 
     class SaveSpellDB {
@@ -31,6 +34,10 @@ namespace IntegratedMagic {
         void Upsert(std::string_view saveKey, const SaveSpellSlots& slots);
         bool TryGet(std::string_view saveKey, SaveSpellSlots& out) const;
         void Erase(std::string_view saveKey);
+
+        bool TryGetNormalized(std::string_view normalizedKey, SaveSpellSlots& out) const;
+        void EraseNormalized(std::string_view normalizedKey);
+        static std::string NormalizeKeyCopy(std::string_view key);
 
         static std::filesystem::path JsonPath();
         static std::string NormalizeKey(std::string key);
