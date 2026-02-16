@@ -70,7 +70,7 @@ namespace IntegratedMagic {
 
                 SpellSettings s{};
                 s.mode = ModeFromStr(v.value("mode", "Hold"));
-                s.autoAttack = v.value("autoAttack", false);
+                s.autoAttack = v.value("autoAttack", true);
 
                 _byKey.insert_or_assign(key, s);
             }

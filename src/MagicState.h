@@ -57,7 +57,7 @@ namespace IntegratedMagic {
 
     struct HandMode {
         IntegratedMagic::ActivationMode mode{IntegratedMagic::ActivationMode::Hold};
-        bool wantAutoAttack{false};
+        bool wantAutoAttack{true};
 
         bool pressActive{false};
         bool holdActive{false};
@@ -67,6 +67,7 @@ namespace IntegratedMagic {
         bool chargeComplete{false};
 
         bool waitingAutoAfterEquip{false};
+        bool holdFiredAndWaitingCastStop{false};
 
         bool finished{false};
         float waitingEnableBumperSecs{0.0f};
@@ -113,7 +114,7 @@ namespace IntegratedMagic {
         }
 
         void EnsureActiveWithSnapshot(RE::PlayerCharacter* player, int slot);
-        void CaptureSnapshot(RE::PlayerCharacter* player);
+        void CaptureSnapshot(RE::PlayerCharacter const* player);
         void RestoreSnapshot(RE::PlayerCharacter* player);
         bool HandIsRelevant(IntegratedMagic::MagicSlots::Hand h) const;
         bool AllRelevantHandsFinished() const;

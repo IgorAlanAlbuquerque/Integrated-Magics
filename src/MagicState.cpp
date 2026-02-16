@@ -87,7 +87,7 @@ namespace IntegratedMagic {
     namespace {
         inline RE::PlayerCharacter* GetPlayer() { return RE::PlayerCharacter::GetSingleton(); }
 
-        RE::ExtraDataList* GetWornExtraForHand(RE::InventoryEntryData* entry, bool leftHand) {
+        RE::ExtraDataList* GetWornExtraForHand(RE::InventoryEntryData const* entry, bool leftHand) {
             if (!entry || !entry->extraLists) {
                 return nullptr;
             }
@@ -119,7 +119,7 @@ namespace IntegratedMagic {
         }
 
         RE::ExtraDataList* ResolveLiveExtra(const InventoryIndex& idx, RE::TESBoundObject* base,
-                                            RE::ExtraDataList* candidate) {
+                                            RE::ExtraDataList const* candidate) {
             if (!base || !candidate) {
                 return nullptr;
             }
@@ -153,7 +153,7 @@ namespace IntegratedMagic {
             return base && idx.wornBases.contains(base);
         }
 
-        bool IsEquippedInHands(RE::Actor* actor, RE::TESBoundObject* base) {
+        bool IsEquippedInHands(RE::Actor const* actor, RE::TESBoundObject const* base) {
             if (!actor || !base) {
                 return false;
             }
@@ -217,14 +217,14 @@ namespace IntegratedMagic {
             return 0.0f;
         }
 
-        float GetSpellMagickaCost(RE::PlayerCharacter* player, RE::SpellItem* spell) {
+        float GetSpellMagickaCost(RE::PlayerCharacter* player, RE::SpellItem const* spell) {
             if (!player || !spell) {
                 return 0.0f;
             }
             return spell->CalculateMagickaCost(player);
         }
 
-        bool HasEnoughMagickaForSpell(RE::PlayerCharacter* player, RE::SpellItem* spell) {
+        bool HasEnoughMagickaForSpell(RE::PlayerCharacter* player, RE::SpellItem const* spell) {
             const float mag = GetPlayerMagicka(player);
             const float cost = GetSpellMagickaCost(player, spell);
 
@@ -237,7 +237,28 @@ namespace IntegratedMagic {
 
         inline RE::SpellItem* AsSpell(RE::MagicItem* m) { return m ? m->As<RE::SpellItem>() : nullptr; }
 
-        inline void ClearHandSpellIfNoSnapshot(RE::PlayerCharacter* player, RE::SpellItem* snapSpell,
+        bool IsChargeComplete(RE::ActorMagicCaster const* caster, const RE::SpellItem* spell) {
+            if (!spell) {
+                return false;
+            }
+            const float charge = spell->GetChargeTime();
+            if (charge <= 0.0f) {
+                return true;
+            }
+            if (!caster) {
+                return false;
+            }
+            const auto st = caster->state.get();
+            if (st == RE::MagicCaster::State::kReady) {
+                return true;
+            }
+            if (st == RE::MagicCaster::State::kCharging) {
+                return (caster->castingTimer + 1e-3f) >= charge;
+            }
+            return false;
+        }
+
+        inline void ClearHandSpellIfNoSnapshot(RE::PlayerCharacter* player, RE::SpellItem const* snapSpell,
                                                RE::SpellItem* modeSpell, IntegratedMagic::MagicSlots::Hand hand) {
             if (snapSpell) {
                 return;
@@ -360,7 +381,7 @@ namespace IntegratedMagic {
         _modeSpellRight = nullptr;
     }
 
-    void MagicState::CaptureSnapshot(RE::PlayerCharacter* player) {
+    void MagicState::CaptureSnapshot(RE::PlayerCharacter const* player) {
         _snap = {};
         _snap.valid = false;
 
@@ -388,7 +409,7 @@ namespace IntegratedMagic {
             }
         }
 
-        auto GetEquippedSpellFromHand = [](RE::Actor* a, bool leftHand) -> RE::SpellItem* {
+        auto GetEquippedSpellFromHand = [](RE::Actor const* a, bool leftHand) -> RE::SpellItem* {
             if (!a) {
                 return nullptr;
             }
@@ -588,6 +609,7 @@ namespace IntegratedMagic {
 
         hm.waitingAutoAfterEquip = false;
         hm.waitingChargeComplete = false;
+        hm.holdFiredAndWaitingCastStop = false;
 
         StopAutoAttack(hand);
     }
@@ -696,17 +718,47 @@ namespace IntegratedMagic {
             return;
         }
 
+        using Hand = IntegratedMagic::MagicSlots::Hand;
         using enum IntegratedMagic::MagicSlots::Hand;
 
-        if (_left.holdActive) {
-            _left.holdActive = false;
-            FinishHand(Left);
-        }
+        auto handleHoldRelease = [&](Hand hand) {
+            auto& hm = ModeFor(hand);
+            if (!hm.holdActive) {
+                return;
+            }
 
-        if (_right.holdActive) {
-            _right.holdActive = false;
-            FinishHand(Right);
-        }
+            hm.holdActive = false;
+
+            const std::uint32_t id = IntegratedMagic::MagicSlots::GetSlotSpell(_activeSlot, hand);
+            const auto* spell = id ? RE::TESForm::LookupByID<RE::SpellItem>(id) : nullptr;
+            const float charge = spell ? spell->GetChargeTime() : 0.0f;
+
+            if (charge <= 0.0f) {
+                FinishHand(hand);
+                return;
+            }
+
+            const auto src =
+                (hand == Left) ? RE::MagicSystem::CastingSource::kLeftHand : RE::MagicSystem::CastingSource::kRightHand;
+            auto* caster = IntegratedMagic::MagicAction::GetCaster(GetPlayer(), src);
+            const bool chargedNow = IsChargeComplete(caster, spell);
+
+            if (!chargedNow) {
+                FinishHand(hand);
+                return;
+            }
+
+            if (!hm.wantAutoAttack) {
+                FinishHand(hand);
+                return;
+            }
+
+            StopAutoAttack(hand);
+            hm.holdFiredAndWaitingCastStop = true;
+        };
+
+        handleHoldRelease(Left);
+        handleHoldRelease(Right);
 
         TryFinalizeExit();
     }
@@ -960,6 +1012,7 @@ namespace IntegratedMagic {
         }
 
         using enum IntegratedMagic::MagicSlots::Hand;
+
         if (_left.autoActive && !_left.finished) {
             if (_left.chargeComplete) {
                 FinishHand(Left);
@@ -971,6 +1024,15 @@ namespace IntegratedMagic {
                 FinishHand(Right);
             }
         }
+
+        if (_left.holdFiredAndWaitingCastStop && !_left.finished) {
+            FinishHand(Left);
+        }
+
+        if (_right.holdFiredAndWaitingCastStop && !_right.finished) {
+            FinishHand(Right);
+        }
+
         TryFinalizeExit();
     }
 
@@ -988,7 +1050,8 @@ namespace IntegratedMagic {
             return false;
         }
 
-        if ((needL && (_left.holdActive || _left.autoActive)) || (needR && (_right.holdActive || _right.autoActive))) {
+        if ((needL && (_left.holdActive || _left.autoActive || _left.holdFiredAndWaitingCastStop)) ||
+            (needR && (_right.holdActive || _right.autoActive || _right.holdFiredAndWaitingCastStop))) {
             return false;
         }
 

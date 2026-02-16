@@ -25,7 +25,7 @@ namespace IntegratedMagic {
 
     struct SpellSettings {
         ActivationMode mode{ActivationMode::Hold};
-        bool autoAttack{false};
+        bool autoAttack{true};
     };
 
     class SpellSettingsDB {
