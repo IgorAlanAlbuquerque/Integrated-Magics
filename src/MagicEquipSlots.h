@@ -9,10 +9,8 @@ namespace IntegratedMagic::EquipUtil {
         if (!dom) {
             return nullptr;
         }
-
         const auto id = (hand == MagicSlots::Hand::Left) ? RE::DefaultObjectID::kLeftHandEquip
                                                          : RE::DefaultObjectID::kRightHandEquip;
-
         auto** pp = dom->GetObject<RE::BGSEquipSlot>(id);
         return pp ? *pp : nullptr;
     }

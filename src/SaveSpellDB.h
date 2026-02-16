@@ -11,7 +11,6 @@
 namespace IntegratedMagic {
     struct TransparentSaveKeyHash {
         using is_transparent = void;
-
         std::size_t operator()(std::string_view sv) const noexcept { return std::hash<std::string_view>{}(sv); }
         std::size_t operator()(const std::string& s) const noexcept { return (*this)(std::string_view{s}); }
         std::size_t operator()(const char* s) const noexcept { return (*this)(std::string_view{s}); }
@@ -20,31 +19,24 @@ namespace IntegratedMagic {
     struct SaveSpellSlots {
         std::vector<std::uint32_t> left;
         std::vector<std::uint32_t> right;
-
         inline std::size_t Size() const noexcept { return std::max(left.size(), right.size()); }
     };
 
     class SaveSpellDB {
     public:
         static SaveSpellDB& Get();
-
         void LoadFromDisk();
         void SaveToDisk();
-
         void Upsert(std::string_view saveKey, const SaveSpellSlots& slots);
         bool TryGet(std::string_view saveKey, SaveSpellSlots& out) const;
         void Erase(std::string_view saveKey);
-
         bool TryGetNormalized(std::string_view normalizedKey, SaveSpellSlots& out) const;
         void EraseNormalized(std::string_view normalizedKey);
         static std::string NormalizeKeyCopy(std::string_view key);
-
         static std::filesystem::path JsonPath();
         static std::string NormalizeKey(std::string key);
-
     private:
         SaveSpellDB() = default;
-
         mutable std::mutex _mtx;
         std::unordered_map<std::string, SaveSpellSlots, TransparentSaveKeyHash, std::equal_to<>> _bySave;
     };

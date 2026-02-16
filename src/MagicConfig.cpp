@@ -37,7 +37,6 @@ namespace {
         out.KeyboardScanCode1.store(_getInt(ini, sec, "KeyboardScanCode1", -1), std::memory_order_relaxed);
         out.KeyboardScanCode2.store(_getInt(ini, sec, "KeyboardScanCode2", -1), std::memory_order_relaxed);
         out.KeyboardScanCode3.store(_getInt(ini, sec, "KeyboardScanCode3", -1), std::memory_order_relaxed);
-
         out.GamepadButton1.store(_getInt(ini, sec, "GamepadButton1", -1), std::memory_order_relaxed);
         out.GamepadButton2.store(_getInt(ini, sec, "GamepadButton2", -1), std::memory_order_relaxed);
         out.GamepadButton3.store(_getInt(ini, sec, "GamepadButton3", -1), std::memory_order_relaxed);
@@ -47,7 +46,6 @@ namespace {
         ini.SetLongValue(sec, "KeyboardScanCode1", in.KeyboardScanCode1.load(std::memory_order_relaxed));
         ini.SetLongValue(sec, "KeyboardScanCode2", in.KeyboardScanCode2.load(std::memory_order_relaxed));
         ini.SetLongValue(sec, "KeyboardScanCode3", in.KeyboardScanCode3.load(std::memory_order_relaxed));
-
         ini.SetLongValue(sec, "GamepadButton1", in.GamepadButton1.load(std::memory_order_relaxed));
         ini.SetLongValue(sec, "GamepadButton2", in.GamepadButton2.load(std::memory_order_relaxed));
         ini.SetLongValue(sec, "GamepadButton3", in.GamepadButton3.load(std::memory_order_relaxed));
@@ -79,28 +77,21 @@ namespace IntegratedMagic {
     void MagicConfig::Load() {
         CSimpleIniA ini;
         ini.SetUnicode();
-
         const auto path = IniPath();
         if (SI_Error rc = ini.LoadFile(path.string().c_str()); rc < 0) {
             return;
         }
-
-        {
-            const int raw = _getInt(ini, "General", "SlotCount", 4);
-            std::uint32_t v = (raw < 1) ? 1u : static_cast<std::uint32_t>(raw);
-            if (v > kMaxSlots) {
-                v = kMaxSlots;
-            }
-            slotCount.store(v, std::memory_order_relaxed);
+        const int raw = _getInt(ini, "General", "SlotCount", 4);
+        std::uint32_t v = (raw < 1) ? 1u : static_cast<std::uint32_t>(raw);
+        if (v > kMaxSlots) {
+            v = kMaxSlots;
         }
-
+        slotCount.store(v, std::memory_order_relaxed);
         const auto n = SlotCount();
-
         for (std::uint32_t i = 0; i < n; ++i) {
             const auto sec = std::format("Magic{}", i + 1);
             _loadInput(ini, sec.c_str(), slotInput[i]);
         }
-
         skipEquipAnimationPatch = _getBool(ini, "Patches", "SkipEquipAnimationPatch", false);
         requireExclusiveHotkeyPatch = _getBool(ini, "Patches", "RequireExclusiveHotkeyPatch", false);
     }
@@ -108,22 +99,16 @@ namespace IntegratedMagic {
     void MagicConfig::Save() const {
         CSimpleIniA ini;
         ini.SetUnicode();
-
         const auto path = IniPath();
         ini.LoadFile(path.string().c_str());
-
         const auto n = SlotCount();
-
         ini.SetLongValue("General", "SlotCount", static_cast<long>(n));
-
         for (std::uint32_t i = 0; i < n; ++i) {
             const auto sec = std::format("Magic{}", i + 1);
             _saveInput(ini, sec.c_str(), slotInput[i]);
         }
-
         ini.SetBoolValue("Patches", "SkipEquipAnimationPatch", skipEquipAnimationPatch);
         ini.SetBoolValue("Patches", "RequireExclusiveHotkeyPatch", requireExclusiveHotkeyPatch);
-
         std::error_code ec;
         std::filesystem::create_directories(path.parent_path(), ec);
         ini.SaveFile(path.string().c_str());

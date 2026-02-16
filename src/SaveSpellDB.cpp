@@ -10,7 +10,6 @@
 namespace IntegratedMagic {
 
     namespace {
-
         constexpr std::size_t kJsonSlotsHardCap = 64;
 
         std::uint32_t _toU32Clamped(const nlohmann::json& v) {
@@ -39,37 +38,30 @@ namespace IntegratedMagic {
             IntegratedMagic::SaveSpellSlots s{};
             const std::size_t count = _clampedCount(arr.size());
             _resizeBoth(s, count);
-
             for (std::size_t i = 0; i < count; ++i) {
                 const std::uint32_t id = _toU32Clamped(arr.at(i));
                 if (id == 0u) {
                     continue;
                 }
-
                 s.left[i] = id;
                 s.right[i] = id;
             }
-
             return s;
         }
 
         IntegratedMagic::SaveSpellSlots _parseV3ObjectToLR(const nlohmann::json& obj) {
             IntegratedMagic::SaveSpellSlots s{};
-
             const auto itL = obj.find("left");
             const auto itR = obj.find("right");
             if (itL == obj.end() || itR == obj.end() || !itL->is_array() || !itR->is_array()) {
                 return s;
             }
-
             const std::size_t count = _clampedCount(std::max(itL->size(), itR->size()));
             _resizeBoth(s, count);
-
             for (std::size_t i = 0; i < count; ++i) {
                 if (i < itL->size()) s.left[i] = _toU32Clamped(itL->at(i));
                 if (i < itR->size()) s.right[i] = _toU32Clamped(itR->at(i));
             }
-
             return s;
         }
 
@@ -77,7 +69,6 @@ namespace IntegratedMagic {
             const std::unordered_map<std::string, SaveSpellSlots, TransparentSaveKeyHash, std::equal_to<>>& bySave) {
             nlohmann::json j;
             j["version"] = 3;
-
             nlohmann::json saves = nlohmann::json::object();
             for (auto const& [key, slots] : bySave) {
                 nlohmann::json obj;
@@ -92,7 +83,6 @@ namespace IntegratedMagic {
         void _writeJsonToDisk(const std::filesystem::path& path, const nlohmann::json& j) {
             std::error_code ec;
             std::filesystem::create_directories(path.parent_path(), ec);
-
             std::ofstream out(path);
             out << j.dump(2);
         }
@@ -118,56 +108,44 @@ namespace IntegratedMagic {
     void SaveSpellDB::LoadFromDisk() {
         std::scoped_lock lk(_mtx);
         _bySave.clear();
-
         const auto path = JsonPath();
         std::ifstream in(path);
         if (!in.good()) {
             return;
         }
-
         nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
         if (j.is_discarded()) {
             return;
         }
-
         auto savesIt = j.find("saves");
         if (savesIt == j.end() || !savesIt->is_object()) {
             return;
         }
-
         bool migratedAny = false;
-
         for (auto it = savesIt->begin(); it != savesIt->end(); ++it) {
             try {
                 const std::string rawKey = it.key();
                 const std::string key = NormalizeKey(rawKey);
-
                 const auto& v = it.value();
                 SaveSpellSlots slots{};
-
                 if (v.is_object()) {
                     slots = _parseV3ObjectToLR(v);
-
                     if (slots.Size() == 0) {
                         continue;
                     }
-
                 } else if (v.is_array()) {
                     slots = _migrateV2ArrayToLR(v);
                     migratedAny = true;
                 } else {
                     continue;
                 }
-
                 _bySave.insert_or_assign(key, std::move(slots));
-
             } catch (const nlohmann::json::exception& e) {
                 spdlog::error("[IMAGIC][SaveSpellDB] JSON exception for key='{}': {}", it.key(), e.what());
             } catch (const std::exception& e) {  // NOSONAR
                 spdlog::error("[IMAGIC][SaveSpellDB] Std exception while reading entry: {}", e.what());
             }
         }
-
         if (migratedAny) {
             try {
                 const auto outJson = _buildJsonV3_NoLock(_bySave);
@@ -181,7 +159,6 @@ namespace IntegratedMagic {
 
     void SaveSpellDB::SaveToDisk() {
         std::scoped_lock lk(_mtx);
-
         const auto path = JsonPath();
         const auto j = _buildJsonV3_NoLock(_bySave);
         _writeJsonToDisk(path, j);
@@ -210,7 +187,6 @@ namespace IntegratedMagic {
 
     bool SaveSpellDB::TryGetNormalized(std::string_view normalizedKey, SaveSpellSlots& out) const {
         std::scoped_lock lk(_mtx);
-
         auto it = _bySave.find(normalizedKey);
         if (it == _bySave.end()) {
             return false;
