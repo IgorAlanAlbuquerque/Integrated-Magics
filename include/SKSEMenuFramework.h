@@ -1,4 +1,5 @@
 #pragma once
+#pragma warning(disable : 4099 5054)
 
 #include <windows.h>
 #include <codecvt>
