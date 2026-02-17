@@ -296,9 +296,8 @@ namespace IntegratedMagic {
                 if (!desiredExtra) {
                     desiredExtra = FindAnyInstanceExtraForBase(idx, want.base);
                 }
-                const bool queue = (desiredExtra == nullptr);
                 mgr->EquipObject(player, want.base, desiredExtra, 1, slot,
-                                 /*queue*/ queue,
+                                 /*queue*/ true,
                                  /*force*/ false,
                                  /*sounds*/ true,
                                  /*applyNow*/ false);
@@ -582,6 +581,7 @@ namespace IntegratedMagic {
             if (!CanOverwriteNow()) {
                 return;
             }
+            _firstInterrupt = 0;
             PrepareForOverwriteToSlot(slot);
         }
         SlotEntry e{};
@@ -880,23 +880,28 @@ namespace IntegratedMagic {
             return;
         }
         StopAllAutoAttack();
-        RestoreSnapshot(player);
-        if (auto* mgr = RE::ActorEquipManager::GetSingleton(); mgr) {
-            auto idx = BuildInventoryIndex(player);
-            ReequipPrevExtraEquipped(player, mgr, idx, _prevExtraEquipped);
+        if (_firstInterrupt > 1) {
+            _pendingRestore = true;
+        } else {
+            RestoreSnapshot(player);
+            if (auto* mgr = RE::ActorEquipManager::GetSingleton(); mgr) {
+                auto idx = BuildInventoryIndex(player);
+                ReequipPrevExtraEquipped(player, mgr, idx, _prevExtraEquipped);
+            }
+            _active = false;
+            _activeSlot = -1;
+            _left = {};
+            _right = {};
+            _aaHeldLeft = false;
+            _aaHeldRight = false;
+            _aaSecsLeft = 0.f;
+            _aaSecsRight = 0.f;
+            _attackEnabled = false;
+            _modeSpellLeft = nullptr;
+            _modeSpellRight = nullptr;
+            _snap.valid = false;
+            _firstInterrupt = 0;
         }
-        _active = false;
-        _activeSlot = -1;
-        _left = {};
-        _right = {};
-        _aaHeldLeft = false;
-        _aaHeldRight = false;
-        _aaSecsLeft = 0.f;
-        _aaSecsRight = 0.f;
-        _attackEnabled = false;
-        _modeSpellLeft = nullptr;
-        _modeSpellRight = nullptr;
-        _snap.valid = false;
     }
 
     void MagicState::OnCastStop() {
@@ -934,6 +939,11 @@ namespace IntegratedMagic {
         if (!_active) {
             return;
         }
+        if (_firstInterrupt == 0) {
+            _firstInterrupt++;
+            return;
+        }
+        _firstInterrupt++;
         using enum IntegratedMagic::MagicSlots::Hand;
         bool anyFinished = false;
         if (_left.autoActive && !_left.finished) {
@@ -946,7 +956,6 @@ namespace IntegratedMagic {
         }
         if (anyFinished) {
             _isDualCasting = false;
-            TryFinalizeExit();
         }
     }
 
@@ -1003,5 +1012,31 @@ namespace IntegratedMagic {
         hm = {};
         hm.finished = true;
         SetModeSpellsFromHand(hand, nullptr);
+    }
+
+    void MagicState::OnStaggerStop() {
+        if (_pendingRestore) {
+            if (auto* player = RE::PlayerCharacter::GetSingleton(); player) {
+                RestoreSnapshot(player);
+                if (auto* mgr = RE::ActorEquipManager::GetSingleton(); mgr) {
+                    auto idx = BuildInventoryIndex(player);
+                    ReequipPrevExtraEquipped(player, mgr, idx, _prevExtraEquipped);
+                }
+                _active = false;
+                _activeSlot = -1;
+                _left = {};
+                _right = {};
+                _aaHeldLeft = false;
+                _aaHeldRight = false;
+                _aaSecsLeft = 0.f;
+                _aaSecsRight = 0.f;
+                _attackEnabled = false;
+                _modeSpellLeft = nullptr;
+                _modeSpellRight = nullptr;
+                _snap.valid = false;
+                _firstInterrupt = 0;
+            }
+            _pendingRestore = false;
+        }
     }
 }

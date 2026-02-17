@@ -559,6 +559,7 @@ void MagicInput::HandleAnimEvent(const RE::BSAnimationGraphEvent* ev, RE::BSTEve
     std::string_view tag{ev->tag.c_str(), ev->tag.size()};
     if (tag == "EnableBumper"sv) {
         IntegratedMagic::MagicState::Get().NotifyAttackEnabled();
+        IntegratedMagic::MagicState::Get().OnStaggerStop();
     }
     if (tag == "CastStop"sv) {
         IntegratedMagic::MagicState::Get().OnCastStop();

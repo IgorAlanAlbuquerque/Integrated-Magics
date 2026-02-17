@@ -79,6 +79,7 @@ namespace IntegratedMagic {
         void OnSlotReleased(int slot);
         void OnCastStop();
         void OnCastInterrupt();
+        void OnStaggerStop();
         void TryFinalizeExit();
         bool IsActive() const noexcept { return _active; }
         int ActiveSlot() const noexcept { return _activeSlot; }
@@ -138,6 +139,7 @@ namespace IntegratedMagic {
         }
         template <class Fn>
         void UpdatePrevExtraEquippedForOverlay(Fn&& equipFn);
+
     private:
         std::vector<ExtraEquippedItem> _prevExtraEquipped;
         HandMode _left{};
@@ -155,6 +157,8 @@ namespace IntegratedMagic {
         RE::SpellItem* _modeSpellRight{nullptr};
         bool _dirtyLeft{false};
         bool _dirtyRight{false};
+        int _firstInterrupt = 0;
+        bool _pendingRestore{false};
     };
 
     template <class Fn>
