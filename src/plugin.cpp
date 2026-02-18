@@ -30,10 +30,8 @@ namespace {
         auto const& cfg = IntegratedMagic::GetMagicConfig();
         IntegratedMagic::SaveSpellSlots s{};
         const auto n = cfg.SlotCount();
-
         s.left.resize(n, 0u);
         s.right.resize(n, 0u);
-
         for (std::uint32_t i = 0; i < n; ++i) {
             s.left[i] = cfg.slotSpellFormIDLeft[static_cast<std::size_t>(i)].load(std::memory_order_relaxed);
             s.right[i] = cfg.slotSpellFormIDRight[static_cast<std::size_t>(i)].load(std::memory_order_relaxed);
@@ -44,11 +42,9 @@ namespace {
     void ApplySlotsToConfig(const IntegratedMagic::SaveSpellSlots& s) {
         auto& cfg = IntegratedMagic::GetMagicConfig();
         const auto n = cfg.SlotCount();
-
         for (std::uint32_t i = 0; i < n; ++i) {
             const std::uint32_t l = (i < s.left.size()) ? s.left[i] : 0u;
             const std::uint32_t r = (i < s.right.size()) ? s.right[i] : 0u;
-
             cfg.slotSpellFormIDLeft[static_cast<std::size_t>(i)].store(l, std::memory_order_relaxed);
             cfg.slotSpellFormIDRight[static_cast<std::size_t>(i)].store(r, std::memory_order_relaxed);
         }
@@ -56,24 +52,19 @@ namespace {
 
     std::string ExtractKey(std::string s) {
         if (auto pos = s.find_last_of("\\/"); pos != std::string::npos) s = s.substr(pos + 1);
-
         if (s.size() >= 4) {
             auto tail = s.substr(s.size() - 4);
             for (auto& c : tail) c = (char)std::tolower((unsigned char)c);
             if (tail == ".ess") s.resize(s.size() - 4);
         }
-
         return s;
     }
 
     std::string GetSaveKeyFromMsg(const SKSE::MessagingInterface::Message* msg) {
         if (!msg || !msg->data || msg->dataLen <= 0) return {};
-
         auto* p = reinterpret_cast<const char*>(msg->data);
-
         std::size_t n = 0;
         while (n < (std::size_t)msg->dataLen && p[n] != '\0') ++n;
-
         std::string raw(p, n);
         std::string key = ExtractKey(std::move(raw));
         return IntegratedMagic::SaveSpellDB::NormalizeKey(std::move(key));
@@ -83,15 +74,12 @@ namespace {
         if (!message) {
             return true;
         }
-
         if (const auto raw = reinterpret_cast<std::uintptr_t>(message->data); raw == 0u || raw == 1u) {
             return raw != 0u;
         }
-
         if (message->data && message->dataLen == sizeof(bool)) {
             return *reinterpret_cast<const bool*>(message->data);  // NOSONAR
         }
-
         return message->data != nullptr;
     }
 
@@ -109,7 +97,6 @@ namespace {
 
     void GlobalMessageHandler(SKSE::MessagingInterface::Message* message) {
         if (!message) return;
-
         switch (message->type) {
             case SKSE::MessagingInterface::kPreLoadGame: {
                 g_pendingEssPath = GetSaveKeyFromMsg(message);
@@ -132,7 +119,6 @@ namespace {
                 if (const bool ok = ReadPostLoadOk(message); ok && !g_pendingEssPath.empty()) {
                     EnsureSaveSpellDBLoaded();
                     g_currentEssPath = g_pendingEssPath;
-
                     IntegratedMagic::SaveSpellSlots slots{};
                     if (IntegratedMagic::SaveSpellDB::Get().TryGet(g_currentEssPath, slots)) {
                         ApplySlotsToConfig(slots);
@@ -140,7 +126,6 @@ namespace {
                         ApplySlotsToConfig(IntegratedMagic::SaveSpellSlots{});
                     }
                 }
-
                 g_pendingEssPath.clear();
                 break;
             }
@@ -149,7 +134,6 @@ namespace {
                 if (key.empty()) {
                     key = g_currentEssPath;
                 }
-
                 if (!key.empty()) {
                     EnsureSaveSpellDBLoaded();
                     IntegratedMagic::SaveSpellDB::Get().Upsert(key, ReadSlotsFromConfig());
@@ -157,7 +141,6 @@ namespace {
                 }
                 break;
             }
-
             case SKSE::MessagingInterface::kDeleteGame: {
                 std::string key = GetSaveKeyFromMsg(message);
                 if (key.empty()) {
@@ -182,10 +165,8 @@ namespace {
 extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* skse) {
     SKSE::Init(skse);
     InitializeLogger();
-
     if (const auto mi = SKSE::GetMessagingInterface()) {
         mi->RegisterListener(GlobalMessageHandler);
     }
-
     return true;
 }

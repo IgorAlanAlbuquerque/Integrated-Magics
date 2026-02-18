@@ -30,23 +30,19 @@ namespace IntegratedMagic::Hooks {
                 if (!caster) {
                     return;
                 }
-
                 auto* actor = caster->actor;
                 if (auto const* player = RE::PlayerCharacter::GetSingleton(); !actor || !player || actor != player) {
                     _orig(caster);
                     return;
                 }
-
                 const auto src = static_cast<std::size_t>(std::to_underlying(caster->castingSource));
                 auto const& rd = actor->GetActorRuntimeData();
                 if (src >= std::size(rd.selectedSpells)) {
                     _orig(caster);
                     return;
                 }
-
                 _orig(caster);
                 RE::MagicItem* afterItem = rd.selectedSpells[src];
-
                 if (auto* afterSpell = afterItem ? afterItem->As<RE::SpellItem>() : nullptr; afterSpell) {
                     const auto handOpt = ToHand(caster->castingSource);
                     if (handOpt.has_value()) {
@@ -70,25 +66,20 @@ namespace IntegratedMagic::Hooks {
                 if (!caster) {
                     return;
                 }
-
                 auto* actor = caster->actor;
                 if (auto const* player = RE::PlayerCharacter::GetSingleton(); !actor || !player || actor != player) {
                     _orig(caster);
                     return;
                 }
-
                 const auto src = static_cast<std::size_t>(std::to_underlying(caster->castingSource));
                 auto const& rd = actor->GetActorRuntimeData();
                 if (src >= std::size(rd.selectedSpells)) {
                     _orig(caster);
                     return;
                 }
-
                 RE::MagicItem* beforeItem = rd.selectedSpells[src];
                 auto* beforeSpell = beforeItem ? beforeItem->As<RE::SpellItem>() : nullptr;
-
                 _orig(caster);
-
                 if (beforeSpell) {
                     const auto handOpt = ToHand(caster->castingSource);
                     if (handOpt.has_value()) {
@@ -111,11 +102,9 @@ namespace IntegratedMagic::Hooks {
             static void thunk(RE::BSTEventSource<RE::InputEvent*>* a_dispatcher, RE::InputEvent* const* a_events) {
                 RE::InputEvent* headBefore = a_events ? *a_events : nullptr;
                 RE::InputEvent* headAfter = IntegratedMagic::detail::FlushSyntheticInput(headBefore);
-
                 if (func == 0) {
                     return;
                 }
-
                 RE::InputEvent* const arr[2]{headAfter, nullptr};  // NOSONAR
                 auto* original = reinterpret_cast<Fn*>(func);      // NOSONAR
                 original(a_dispatcher, arr);
@@ -131,7 +120,6 @@ namespace IntegratedMagic::Hooks {
             using Fn = RE::BSEventNotifyControl (*)(RE::BSTEventSink<RE::BSAnimationGraphEvent>*,
                                                     const RE::BSAnimationGraphEvent*,
                                                     RE::BSTEventSource<RE::BSAnimationGraphEvent>*);
-
             static inline Fn _orig{nullptr};
 
             static RE::BSEventNotifyControl thunk(RE::BSTEventSink<RE::BSAnimationGraphEvent>* a_this,
