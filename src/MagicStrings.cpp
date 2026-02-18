@@ -15,40 +15,32 @@ namespace IntegratedMagic::Strings {
 
         void _ensureLoaded() {
             if (g_loaded) return;
-
             g_loaded = true;
             g_strings.clear();
-
             auto path = StringsPath();
             std::ifstream in(path);
             if (!in.is_open()) {
                 return;
             }
-
             auto trim = [](std::string& s) {
                 while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) s.pop_back();
                 std::size_t i = 0;
                 while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i]))) ++i;
                 if (i > 0) s.erase(0, i);
             };
-
             std::string line;
             while (std::getline(in, line)) {
                 if (auto posComment = line.find('#'); posComment != std::string::npos) {
                     line.erase(posComment);
                 }
-
                 trim(line);
                 if (line.empty()) continue;
-
                 auto posEq = line.find('=');
                 if (posEq == std::string::npos) continue;
-
                 std::string key = line.substr(0, posEq);
                 std::string value = line.substr(posEq + 1);
                 trim(key);
                 trim(value);
-
                 if (!key.empty()) {
                     g_strings[std::move(key)] = std::move(value);
                 }

@@ -31,7 +31,6 @@ namespace IntegratedMagic::MagicAction {
             if (!aeMan || !pc || !spell) {
                 return;
             }
-
             using func_t = void (RE::ActorEquipManager::*)(RE::Actor*, RE::SpellItem*, int);
             REL::Relocation<func_t> func{RELOCATION_ID(37947, 38903)};
             func(aeMan, pc, spell, hand);
@@ -95,15 +94,12 @@ namespace IntegratedMagic::MagicAction {
         if (!player || !spell) {
             return;
         }
-
         IntegratedMagic::MagicSelect::ScopedSuppressSelection suppress{};
         auto* mgr = RE::ActorEquipManager::GetSingleton();
         if (!mgr) {
             return;
         }
-
         auto* caster = GetCaster(player, ToCastingSource(hand));
-
         SetCasterDual(caster, false);
 
         auto const& cfg = IntegratedMagic::GetMagicConfig();
@@ -112,7 +108,7 @@ namespace IntegratedMagic::MagicAction {
         if (cfg.skipEquipAnimationPatch) {
             token = g_skipToken.fetch_add(1, std::memory_order_relaxed) + 1;
             SetSkipEquipVars(player, true, /*LoadBoundObjectDelay*/ 0, /*Skip3DLoading*/ false);
-            ScheduleDisableSkipEquip(token, /*delayMs*/ 1000);
+            ScheduleDisableSkipEquip(token, /*delayMs*/ 500);
         }
 
         const auto* equipSlot = ToEquipSlot(hand);
@@ -123,12 +119,9 @@ namespace IntegratedMagic::MagicAction {
         if (!player || !spell) {
             return;
         }
-
         IntegratedMagic::MagicSelect::ScopedSuppressSelection suppress{};
-
         auto* caster = GetCaster(player, ToCastingSource(hand));
         SetCasterDual(caster, false);
-
         UnEquipSpell(player, spell, ToUnEquipHandInt(hand));
     }
 
@@ -136,13 +129,11 @@ namespace IntegratedMagic::MagicAction {
         if (!player) {
             return;
         }
-
         auto* caster = GetCaster(player, ToCastingSource(hand));
         auto* cur = GetEquippedSpellFromCaster(caster);
         if (!cur) {
             return;
         }
-
         ClearHandSpell(player, cur, hand);
     }
 
@@ -151,18 +142,13 @@ namespace IntegratedMagic::MagicAction {
         if (!player) {
             return;
         }
-
         const auto rightID = IntegratedMagic::MagicSlots::GetSlotSpell(slot, Right);
         const auto leftID = IntegratedMagic::MagicSlots::GetSlotSpell(slot, Left);
-
         RE::SpellItem* rightSpell = rightID ? RE::TESForm::LookupByID<RE::SpellItem>(rightID) : nullptr;
         RE::SpellItem* leftSpell = leftID ? RE::TESForm::LookupByID<RE::SpellItem>(leftID) : nullptr;
-
         if (rightSpell) EquipSpellInHand(player, rightSpell, Right);
         if (leftSpell) EquipSpellInHand(player, leftSpell, Left);
-
         const bool wantDual = (rightSpell && leftSpell && rightID == leftID);
-
         auto* leftCaster = GetCaster(player, RE::MagicSystem::CastingSource::kLeftHand);
         auto* rightCaster = GetCaster(player, RE::MagicSystem::CastingSource::kRightHand);
         SetCasterDual(leftCaster, wantDual);
