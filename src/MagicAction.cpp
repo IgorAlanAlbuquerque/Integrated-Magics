@@ -107,8 +107,8 @@ namespace IntegratedMagic::MagicAction {
 
         if (cfg.skipEquipAnimationPatch) {
             token = g_skipToken.fetch_add(1, std::memory_order_relaxed) + 1;
-            SetSkipEquipVars(player, true, /*LoadBoundObjectDelay*/ 0, /*Skip3DLoading*/ false);
-            ScheduleDisableSkipEquip(token, /*delayMs*/ 500);
+            SetSkipEquipVars(player, true);
+            ScheduleDisableSkipEquip(token, 500);
         }
 
         const auto* equipSlot = ToEquipSlot(hand);

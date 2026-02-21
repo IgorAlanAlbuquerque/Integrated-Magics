@@ -80,10 +80,11 @@ namespace IntegratedMagic {
         inline RE::PlayerCharacter* GetPlayer() { return RE::PlayerCharacter::GetSingleton(); }
 
         RE::ExtraDataList* GetWornExtraForHand(RE::InventoryEntryData const* entry, bool leftHand) {
+            using enum RE::ExtraDataType;
             if (!entry || !entry->extraLists) {
                 return nullptr;
             }
-            const auto preferred = leftHand ? RE::ExtraDataType::kWornLeft : RE::ExtraDataType::kWorn;
+            const auto preferred = leftHand ? kWornLeft : kWorn;
             RE::ExtraDataList* firstNonNull = nullptr;
             RE::ExtraDataList* anyWorn = nullptr;
             for (auto* x : *entry->extraLists) {
@@ -96,7 +97,7 @@ namespace IntegratedMagic {
                 if (x->HasType(preferred)) {
                     return x;
                 }
-                if (!anyWorn && (x->HasType(RE::ExtraDataType::kWorn) || x->HasType(RE::ExtraDataType::kWornLeft))) {
+                if (!anyWorn && (x->HasType(kWorn) || x->HasType(kWornLeft))) {
                     anyWorn = x;
                 }
             }
@@ -512,7 +513,14 @@ namespace IntegratedMagic {
                 hm.holdActive = true;
                 if (hm.wantAutoAttack) {
                     hm.waitingAutoAfterEquip = true;
+                    hm.waitingEnableBumperSecs = 0.0f;
+                    hm.waitingBeginCast = false;
+                    hm.beginCastWaitSecs = 0.f;
+                    hm.beginCastRetries = 0;
                     _attackEnabled = false;
+                    if (IntegratedMagic::GetMagicConfig().skipEquipAnimationPatch) {
+                        _pendingSkipFirstCastStop = true;
+                    }
                 }
                 break;
             case Automatic:
@@ -522,7 +530,13 @@ namespace IntegratedMagic {
                 hm.chargeComplete = false;
                 hm.wantAutoAttack = true;
                 hm.waitingEnableBumperSecs = 0.0f;
+                hm.waitingBeginCast = false;
+                hm.beginCastWaitSecs = 0.f;
+                hm.beginCastRetries = 0;
                 _attackEnabled = false;
+                if (IntegratedMagic::GetMagicConfig().skipEquipAnimationPatch) {
+                    _pendingSkipFirstCastStop = true;
+                }
                 break;
             case Press:
                 hm.pressActive = true;
@@ -549,7 +563,11 @@ namespace IntegratedMagic {
         hm.waitingAutoAfterEquip = false;
         hm.waitingChargeComplete = false;
         hm.holdFiredAndWaitingCastStop = false;
+        hm.waitingBeginCast = false;
+        hm.beginCastWaitSecs = 0.f;
+        hm.beginCastRetries = 0;
         StopAutoAttack(hand);
+        CancelDelayedStart(hand);
     }
 
     void MagicState::OnSlotPressed(int slot) {
@@ -755,18 +773,27 @@ namespace IntegratedMagic {
             _left.waitingAutoAfterEquip = false;
             if ((_left.autoActive || _left.wantAutoAttack) && !_aaHeldLeft) {
                 StartAutoAttack(Left);
+                if (_left.autoActive || (_left.holdActive && _left.wantAutoAttack)) {
+                    _left.waitingBeginCast = true;
+                    _left.beginCastWaitSecs = 0.f;
+                }
             }
         }
         if (_right.waitingAutoAfterEquip) {
             _right.waitingAutoAfterEquip = false;
             if ((_right.autoActive || _right.wantAutoAttack) && !_aaHeldRight) {
                 StartAutoAttack(Right);
+                if (_right.autoActive || (_right.holdActive && _right.wantAutoAttack)) {
+                    _right.waitingBeginCast = true;
+                    _right.beginCastWaitSecs = 0.f;
+                }
             }
         }
     }
 
     void MagicState::PumpAutomatic(float dt) {
         using enum IntegratedMagic::MagicSlots::Hand;
+        PumpDelayedStarts(dt);
         PumpAutoStartFallback(Left, dt);
         PumpAutoStartFallback(Right, dt);
         PumpAutomaticHand(Left);
@@ -775,19 +802,49 @@ namespace IntegratedMagic {
 
     void MagicState::PumpAutoStartFallback(IntegratedMagic::MagicSlots::Hand hand, float dt) {
         using enum IntegratedMagic::MagicSlots::Hand;
+        using enum IntegratedMagic::ActivationMode;
         auto& hm = ModeFor(hand);
-        if (!_active || !hm.autoActive || !hm.waitingAutoAfterEquip) {
+        if (!_active) {
             return;
         }
-        hm.waitingEnableBumperSecs += (dt > 0.0f ? dt : 0.0f);
-        constexpr float kFallbackDelay = 0.25f;
-        if (hm.waitingEnableBumperSecs >= kFallbackDelay) {
-            hm.waitingAutoAfterEquip = false;
-            if (hand == Left) {
-                if (!_aaHeldLeft) StartAutoAttack(Left);
-            } else {
-                if (!_aaHeldRight) StartAutoAttack(Right);
+
+        if (hm.waitingAutoAfterEquip) {
+            hm.waitingEnableBumperSecs += (dt > 0.0f ? dt : 0.0f);
+            if (constexpr float kFallbackDelay = 0.25f; hm.waitingEnableBumperSecs >= kFallbackDelay) {
+                hm.waitingAutoAfterEquip = false;
+                bool const& aaHeld = (hand == Left) ? _aaHeldLeft : _aaHeldRight;
+                if (!aaHeld) {
+                    StartAutoAttack(hand);
+                    hm.waitingBeginCast = true;
+                    hm.beginCastWaitSecs = 0.f;
+                }
             }
+            return;
+        }
+
+        if (!hm.waitingBeginCast) {
+            return;
+        }
+        constexpr float kBeginCastTimeout = 0.1f;
+        constexpr int kMaxRetries = 3;
+        hm.beginCastWaitSecs += (dt > 0.0f ? dt : 0.0f);
+        if (hm.beginCastWaitSecs < kBeginCastTimeout) {
+            return;
+        }
+
+        hm.beginCastWaitSecs = 0.f;
+
+        const bool hasLimit = (hm.mode == Automatic);
+        if (!hasLimit || hm.beginCastRetries < kMaxRetries) {
+            ++hm.beginCastRetries;
+            auto& d = DelayFor(hand);
+            if (!d.pending) {
+                StopAutoAttack(hand);
+                ScheduleDelayedStart(hand);
+            }
+        } else {
+            hm.waitingBeginCast = false;
+            FinishHand(hand);
         }
     }
 
@@ -880,6 +937,7 @@ namespace IntegratedMagic {
             return;
         }
         StopAllAutoAttack();
+        CancelAllDelayedStarts();
         if (_firstInterrupt > 1) {
             _pendingRestore = true;
         } else {
@@ -901,14 +959,42 @@ namespace IntegratedMagic {
             _modeSpellRight = nullptr;
             _snap.valid = false;
             _firstInterrupt = 0;
+            _pendingSkipFirstCastStop = false;
         }
     }
 
     void MagicState::OnCastStop() {
+        using enum IntegratedMagic::MagicSlots::Hand;
         if (!_active) {
             return;
         }
-        using enum IntegratedMagic::MagicSlots::Hand;
+        spdlog::info("Received cast stop event in MagicState");
+        if (_pendingSkipFirstCastStop) {
+            _pendingSkipFirstCastStop = false;
+
+            auto stopAndDelayStart = [&](IntegratedMagic::MagicSlots::Hand h) {
+                auto& hm = ModeFor(h);
+                if ((hm.autoActive || (hm.holdActive && hm.wantAutoAttack)) && !hm.finished) {
+                    // Cancela qualquer start pendente anterior (evita empilhar)
+                    CancelDelayedStart(h);
+
+                    // Stop agora
+                    StopAutoAttack(h);
+
+                    // Rearma retry loop (se você usa isso)
+                    hm.waitingBeginCast = true;
+                    hm.beginCastWaitSecs = 0.f;
+                    hm.beginCastRetries = 0;
+
+                    // Start só daqui 50ms
+                    ScheduleDelayedStart(h);
+                }
+            };
+
+            stopAndDelayStart(Left);
+            stopAndDelayStart(Right);
+            return;
+        }
         if (_isDualCasting) {
             if (_left.autoActive && !_left.finished) {
                 FinishHand(Left);
@@ -924,6 +1010,7 @@ namespace IntegratedMagic {
             FinishHand(Left);
         }
         if (_right.autoActive && !_right.finished && _right.chargeComplete) {
+            spdlog::info("Finishing right hand due to cast stop during auto-attack with charge complete");
             FinishHand(Right);
         }
         if (_left.holdFiredAndWaitingCastStop && !_left.finished) {
@@ -1035,8 +1122,56 @@ namespace IntegratedMagic {
                 _modeSpellRight = nullptr;
                 _snap.valid = false;
                 _firstInterrupt = 0;
+                _pendingSkipFirstCastStop = false;
             }
             _pendingRestore = false;
         }
+    }
+
+    void MagicState::OnBeginCast(IntegratedMagic::MagicSlots::Hand hand) {
+        auto& mode = ModeFor(hand);
+        if (!mode.waitingBeginCast) return;
+
+        mode.waitingBeginCast = false;
+        mode.beginCastWaitSecs = 0.f;
+        mode.beginCastRetries = 0;
+
+        CancelDelayedStart(hand);
+    }
+
+    void MagicState::PumpDelayedStarts(float dt) {
+        if (!_active) {
+            CancelAllDelayedStarts();
+            return;
+        }
+
+        auto pumpOne = [&](IntegratedMagic::MagicSlots::Hand h) {
+            auto& d = DelayFor(h);
+            if (!d.pending) return;
+
+            d.secs += (dt > 0.f ? dt : 0.f);
+            if (d.secs < kDelayedStartSec) return;
+
+            // hora de startar
+            d.pending = false;
+            d.secs = 0.f;
+
+            auto& hm = ModeFor(h);
+            if ((hm.autoActive || (hm.holdActive && hm.wantAutoAttack)) && !hm.finished) {
+                // Start "de verdade" agora
+                StartAutoAttack(h);
+
+                // E (opcional) rearma a lógica de begin-cast retry
+                hm.waitingBeginCast = true;
+                hm.beginCastWaitSecs = 0.f;
+                // NÃO zere beginCastRetries aqui se você quer contar retries.
+                // Se você quer que esse delayed start seja "tentativa 1", pode zerar:
+                // hm.beginCastRetries = 0;
+            }
+        };
+
+        using enum IntegratedMagic::MagicSlots::Hand;
+        pumpOne(Left);
+        pumpOne(Right);
     }
 }
