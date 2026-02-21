@@ -12,7 +12,7 @@
 using namespace std::string_literals;
 
 namespace {
-    int _getInt(CSimpleIniA& ini, const char* sec, const char* k, int defVal) {
+    int _getInt(CSimpleIniA const& ini, const char* sec, const char* k, int defVal) {
         const char* v = ini.GetValue(sec, k, nullptr);
         if (!v) {
             return defVal;
@@ -25,7 +25,7 @@ namespace {
         return static_cast<int>(r);
     }
 
-    bool _getBool(CSimpleIniA& ini, const char* sec, const char* k, bool defVal) {
+    bool _getBool(CSimpleIniA const& ini, const char* sec, const char* k, bool defVal) {
         const char* v = ini.GetValue(sec, k, nullptr);
         if (!v) {
             return defVal;
@@ -33,7 +33,7 @@ namespace {
         return (_stricmp(v, "true") == 0 || std::strcmp(v, "1") == 0);
     }
 
-    void _loadInput(CSimpleIniA& ini, const char* sec, IntegratedMagic::InputConfig& out) {
+    void _loadInput(CSimpleIniA const& ini, const char* sec, IntegratedMagic::InputConfig& out) {
         out.KeyboardScanCode1.store(_getInt(ini, sec, "KeyboardScanCode1", -1), std::memory_order_relaxed);
         out.KeyboardScanCode2.store(_getInt(ini, sec, "KeyboardScanCode2", -1), std::memory_order_relaxed);
         out.KeyboardScanCode3.store(_getInt(ini, sec, "KeyboardScanCode3", -1), std::memory_order_relaxed);

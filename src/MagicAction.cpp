@@ -1,5 +1,10 @@
 #include "MagicAction.h"
 
+#include <atomic>
+#include <chrono>
+#include <thread>
+
+#include "MagicConfig.h"
 #include "MagicEquipSlots.h"
 
 namespace IntegratedMagic::MagicAction {
@@ -37,6 +42,44 @@ namespace IntegratedMagic::MagicAction {
             }
             return caster->currentSpell->As<RE::SpellItem>();
         }
+
+        const RE::BSFixedString kVarSkipEquip("SkipEquipAnimation");
+        const RE::BSFixedString kVarLoadDelay("LoadBoundObjectDelay");
+        const RE::BSFixedString kVarSkip3D("Skip3DLoading");
+
+        inline void SetSkipEquipVars(RE::PlayerCharacter* pc, bool enable, int loadDelayMs = 0, bool skip3D = false) {
+            if (!pc) {
+                return;
+            }
+            (void)pc->SetGraphVariableBool(kVarSkipEquip, enable);
+
+            if (enable) {
+                (void)pc->SetGraphVariableInt(kVarLoadDelay, loadDelayMs);
+                (void)pc->SetGraphVariableBool(kVarSkip3D, skip3D);
+            }
+        }
+
+        inline std::atomic<std::uint64_t> g_skipToken{0};
+
+        inline void ScheduleDisableSkipEquip(std::uint64_t token, int delayMs) {
+            std::thread([token, delayMs]() {
+                std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
+
+                if (g_skipToken.load(std::memory_order_relaxed) != token) {
+                    return;
+                }
+
+                if (auto* task = SKSE::GetTaskInterface()) {
+                    task->AddTask([token]() {
+                        if (g_skipToken.load(std::memory_order_relaxed) != token) {
+                            return;
+                        }
+                        auto* pc = RE::PlayerCharacter::GetSingleton();
+                        SetSkipEquipVars(pc, false);
+                    });
+                }
+            }).detach();
+        }
     }
 
     RE::ActorMagicCaster* GetCaster(RE::PlayerCharacter* player, RE::MagicSystem::CastingSource source) {
@@ -58,6 +101,16 @@ namespace IntegratedMagic::MagicAction {
         }
         auto* caster = GetCaster(player, ToCastingSource(hand));
         SetCasterDual(caster, false);
+
+        auto const& cfg = IntegratedMagic::GetMagicConfig();
+        std::uint64_t token = 0;
+
+        if (cfg.skipEquipAnimationPatch) {
+            token = g_skipToken.fetch_add(1, std::memory_order_relaxed) + 1;
+            SetSkipEquipVars(player, true);
+            ScheduleDisableSkipEquip(token, 500);
+        }
+
         const auto* equipSlot = ToEquipSlot(hand);
         mgr->EquipSpell(player, spell, equipSlot);
     }

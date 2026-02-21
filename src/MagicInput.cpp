@@ -556,15 +556,25 @@ void MagicInput::HandleAnimEvent(const RE::BSAnimationGraphEvent* ev, RE::BSTEve
     if (!ev || !ev->holder) return;
     auto* actor = ev->holder->As<RE::Actor>();
     if (auto const* player = RE::PlayerCharacter::GetSingleton(); !actor || actor != player) return;
+    using Hand = IntegratedMagic::MagicSlots::Hand;
+    auto& state = IntegratedMagic::MagicState::Get();
     std::string_view tag{ev->tag.c_str(), ev->tag.size()};
+
+    spdlog::info("AnimEvent: {}", tag);
+
     if (tag == "EnableBumper"sv) {
-        IntegratedMagic::MagicState::Get().NotifyAttackEnabled();
-        IntegratedMagic::MagicState::Get().OnStaggerStop();
+        state.NotifyAttackEnabled();
+        state.OnStaggerStop();
     }
     if (tag == "CastStop"sv) {
-        IntegratedMagic::MagicState::Get().OnCastStop();
+        state.OnCastStop();
     }
     if (tag == "InterruptCast"sv) {
-        IntegratedMagic::MagicState::Get().OnCastInterrupt();
+        state.OnCastInterrupt();
+    }
+    if (ev->tag == "BeginCastRight") {
+        state.OnBeginCast(Hand::Right);
+    } else if (ev->tag == "BeginCastLeft") {
+        state.OnBeginCast(Hand::Left);
     }
 }

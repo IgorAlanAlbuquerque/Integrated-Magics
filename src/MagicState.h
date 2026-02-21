@@ -66,6 +66,9 @@ namespace IntegratedMagic {
         bool holdFiredAndWaitingCastStop{false};
         bool finished{false};
         float waitingEnableBumperSecs{0.0f};
+        bool waitingBeginCast{false};
+        float beginCastWaitSecs{0.f};
+        int beginCastRetries{0};
     };
 
     class MagicState {
@@ -89,11 +92,45 @@ namespace IntegratedMagic {
         void PumpAutoAttack(float dt);
         void NotifyAttackEnabled();
         void PumpAutomatic(float dt);
+        void OnBeginCast(IntegratedMagic::MagicSlots::Hand hand);
         const HandMode& LeftMode() const noexcept { return _left; }
         const HandMode& RightMode() const noexcept { return _right; }
 
     private:
         MagicState() = default;
+        struct DelayedStart {
+            bool pending{false};
+            float secs{0.f};
+        };
+
+        DelayedStart _delayStartLeft{};
+        DelayedStart _delayStartRight{};
+
+        static constexpr float kDelayedStartSec = 0.050f;
+
+        DelayedStart& DelayFor(IntegratedMagic::MagicSlots::Hand hand) {
+            using enum IntegratedMagic::MagicSlots::Hand;
+            return (hand == Left) ? _delayStartLeft : _delayStartRight;
+        }
+
+        void ScheduleDelayedStart(IntegratedMagic::MagicSlots::Hand hand) {
+            auto& d = DelayFor(hand);
+            d.pending = true;
+            d.secs = 0.f;
+        }
+
+        void CancelDelayedStart(IntegratedMagic::MagicSlots::Hand hand) {
+            auto& d = DelayFor(hand);
+            d.pending = false;
+            d.secs = 0.f;
+        }
+
+        void CancelAllDelayedStarts() {
+            _delayStartLeft = {};
+            _delayStartRight = {};
+        }
+
+        void PumpDelayedStarts(float dt);
         static inline RE::PlayerCharacter* GetPlayer() { return RE::PlayerCharacter::GetSingleton(); }
         HandMode& ModeFor(IntegratedMagic::MagicSlots::Hand hand) noexcept {
             return (hand == IntegratedMagic::MagicSlots::Hand::Left) ? _left : _right;
@@ -159,6 +196,7 @@ namespace IntegratedMagic {
         bool _dirtyRight{false};
         int _firstInterrupt = 0;
         bool _pendingRestore{false};
+        bool _pendingSkipFirstCastStop{false};
     };
 
     template <class Fn>
