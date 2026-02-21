@@ -43,9 +43,9 @@ namespace IntegratedMagic::MagicAction {
             return caster->currentSpell->As<RE::SpellItem>();
         }
 
-        static const RE::BSFixedString kVarSkipEquip("SkipEquipAnimation");
-        static const RE::BSFixedString kVarLoadDelay("LoadBoundObjectDelay");
-        static const RE::BSFixedString kVarSkip3D("Skip3DLoading");
+        const RE::BSFixedString kVarSkipEquip("SkipEquipAnimation");
+        const RE::BSFixedString kVarLoadDelay("LoadBoundObjectDelay");
+        const RE::BSFixedString kVarSkip3D("Skip3DLoading");
 
         inline void SetSkipEquipVars(RE::PlayerCharacter* pc, bool enable, int loadDelayMs = 0, bool skip3D = false) {
             if (!pc) {
@@ -62,7 +62,7 @@ namespace IntegratedMagic::MagicAction {
         inline std::atomic<std::uint64_t> g_skipToken{0};
 
         inline void ScheduleDisableSkipEquip(std::uint64_t token, int delayMs) {
-            std::jthread([token, delayMs]() {
+            std::thread([token, delayMs]() {
                 std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
 
                 if (g_skipToken.load(std::memory_order_relaxed) != token) {

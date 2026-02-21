@@ -968,7 +968,6 @@ namespace IntegratedMagic {
         if (!_active) {
             return;
         }
-        spdlog::info("Received cast stop event in MagicState");
         if (_pendingSkipFirstCastStop) {
             _pendingSkipFirstCastStop = false;
 
@@ -1010,7 +1009,6 @@ namespace IntegratedMagic {
             FinishHand(Left);
         }
         if (_right.autoActive && !_right.finished && _right.chargeComplete) {
-            spdlog::info("Finishing right hand due to cast stop during auto-attack with charge complete");
             FinishHand(Right);
         }
         if (_left.holdFiredAndWaitingCastStop && !_left.finished) {
