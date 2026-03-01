@@ -19,6 +19,7 @@ namespace IntegratedMagic {
     struct SaveSpellSlots {
         std::vector<std::uint32_t> left;
         std::vector<std::uint32_t> right;
+        std::vector<std::uint32_t> shout;
         inline std::size_t Size() const noexcept { return std::max(left.size(), right.size()); }
     };
 
@@ -35,6 +36,7 @@ namespace IntegratedMagic {
         static std::string NormalizeKeyCopy(std::string_view key);
         static std::filesystem::path JsonPath();
         static std::string NormalizeKey(std::string key);
+
     private:
         SaveSpellDB() = default;
         mutable std::mutex _mtx;

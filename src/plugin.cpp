@@ -1,11 +1,12 @@
-#include "MagicConfig.h"
-#include "MagicHooks.h"
-#include "MagicInput.h"
-#include "MagicStrings.h"
+#include "Config/Config.h"
+#include "Hooks.h"
+#include "Input/Input.h"
 #include "PCH.h"
-#include "SaveSpellDB.h"
-#include "SpellSettingsDB.h"
-#include "UI_IntegratedMagic.h"
+#include "Persistence/SaveSpellDB.h"
+#include "Persistence/SpellSettingsDB.h"
+#include "UI/MENU_IntegratedMagic.h"
+#include "UI/Strings.h"
+#include "UI/StyleConfig.h"
 
 #ifndef DLLEXPORT
     #include "REL/Relocation.h"
@@ -32,9 +33,11 @@ namespace {
         const auto n = cfg.SlotCount();
         s.left.resize(n, 0u);
         s.right.resize(n, 0u);
+        s.shout.resize(n, 0u);
         for (std::uint32_t i = 0; i < n; ++i) {
             s.left[i] = cfg.slotSpellFormIDLeft[static_cast<std::size_t>(i)].load(std::memory_order_relaxed);
             s.right[i] = cfg.slotSpellFormIDRight[static_cast<std::size_t>(i)].load(std::memory_order_relaxed);
+            s.shout[i] = cfg.slotShoutFormID[static_cast<std::size_t>(i)].load(std::memory_order_relaxed);
         }
         return s;
     }
@@ -43,10 +46,13 @@ namespace {
         auto& cfg = IntegratedMagic::GetMagicConfig();
         const auto n = cfg.SlotCount();
         for (std::uint32_t i = 0; i < n; ++i) {
+            const auto idx = static_cast<std::size_t>(i);
             const std::uint32_t l = (i < s.left.size()) ? s.left[i] : 0u;
             const std::uint32_t r = (i < s.right.size()) ? s.right[i] : 0u;
-            cfg.slotSpellFormIDLeft[static_cast<std::size_t>(i)].store(l, std::memory_order_relaxed);
-            cfg.slotSpellFormIDRight[static_cast<std::size_t>(i)].store(r, std::memory_order_relaxed);
+            const std::uint32_t sh = (i < s.shout.size()) ? s.shout[i] : 0u;
+            cfg.slotSpellFormIDLeft[idx].store(l, std::memory_order_relaxed);
+            cfg.slotSpellFormIDRight[idx].store(r, std::memory_order_relaxed);
+            cfg.slotShoutFormID[idx].store(sh, std::memory_order_relaxed);
         }
     }
 
@@ -95,23 +101,22 @@ namespace {
         }
     }
 
-    void GlobalMessageHandler(SKSE::MessagingInterface::Message* message) {
+    void GlobalMessageHandler(SKSE::MessagingInterface::Message* message) {  // NOSONAR: No const definition
         if (!message) return;
         switch (message->type) {
             case SKSE::MessagingInterface::kPreLoadGame: {
                 g_pendingEssPath = GetSaveKeyFromMsg(message);
                 break;
             }
-            case SKSE::MessagingInterface::kInputLoaded: {
-                MagicInput::RegisterInputHandler();
-                break;
-            }
             case SKSE::MessagingInterface::kDataLoaded: {
                 IntegratedMagic::Strings::Load();
                 IntegratedMagic::GetMagicConfig().Load();
                 IntegratedMagic::SpellSettingsDB::Get().Load();
-                IntegratedMagic_UI::Register();
-                MagicInput::OnConfigChanged();
+                IntegratedMagic::StyleConfig::Get().Load();
+                IntegratedMagic::MENU::Register();
+                IntegratedMagic::HUD::Register();
+                IntegratedMagic::TextureManager::Init();
+                Input::OnConfigChanged();
                 IntegratedMagic::Hooks::Install_Hooks();
                 break;
             }

@@ -2,8 +2,10 @@
 #include <cstdint>
 #include <optional>
 
-namespace MagicInput {
-    void RegisterInputHandler();
+#include "RE/I/InputEvent.h"
+
+namespace Input {
+    void ProcessAndFilter(RE::InputEvent** a_evns);
     void OnConfigChanged();
     std::optional<int> GetDownSlotForSelection();
     bool IsSlotHotkeyDown(int slot);
@@ -11,5 +13,5 @@ namespace MagicInput {
     int PollCapturedHotkey();
     std::optional<int> ConsumePressedSlot();
     std::optional<int> ConsumeReleasedSlot();
-    void HandleAnimEvent(const RE::BSAnimationGraphEvent* ev, RE::BSTEventSource<RE::BSAnimationGraphEvent>*);
+    bool ConsumeHudToggle();
 }

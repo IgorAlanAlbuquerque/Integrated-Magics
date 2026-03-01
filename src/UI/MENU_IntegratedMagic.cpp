@@ -1,27 +1,28 @@
-#include "UI_IntegratedMagic.h"
+#include "MENU_IntegratedMagic.h"
 
 #include <array>
 #include <cstdint>
 #include <format>
 
-#include "MagicConfig.h"
-#include "MagicInput.h"
-#include "MagicStrings.h"
+#include "Config/Config.h"
+#include "Input/Input.h"
 #include "PCH.h"
+#include "Persistence/SpellSettingsDB.h"
 #include "SKSEMenuFramework.h"
-#include "SpellSettingsDB.h"
+#include "Strings.h"
 
-static const char* GetSpellNameByFormID(std::uint32_t formID) {
-    if (formID == 0) {
-        return "None";
+static const char* GetFormNameByID(std::uint32_t formID) {
+    if (formID == 0) return "None";
+    auto const* form = RE::TESForm::LookupByID(formID);
+    if (!form) return "Invalid/Not loaded";
+    const char* name = nullptr;
+    if (auto const* shout = form->As<RE::TESShout>()) {
+        name = shout->GetName();
+    } else if (auto const* spell = form->As<RE::SpellItem>()) {
+        name = spell->GetName();
+    } else {
+        return "Unknown type";
     }
-
-    auto const* spell = RE::TESForm::LookupByID<RE::SpellItem>(formID);
-    if (!spell) {
-        return "Invalid/Not loaded";
-    }
-
-    const char* name = spell->GetName();
     return (name && name[0] != '\0') ? name : "<unnamed>";
 }
 
@@ -30,15 +31,16 @@ namespace ImGui = ImGuiMCP;
 namespace {
     bool g_pending = false;          // NOSONAR
     bool g_capturingHotkey = false;  // NOSONAR
-    int g_captureSlot = -1;          // NOSONAR
+    int g_captureSlot = -1;          // NOSONAR — >=0: slot, -2: hud popup
+    bool g_capturingHud = false;     // NOSONAR
 
     IntegratedMagic::InputConfig& SlotInput(IntegratedMagic::MagicConfig& cfg, int slot) {
         return cfg.slotInput[static_cast<std::size_t>(slot)];
     }
 
     std::atomic<std::uint32_t>& SlotSpell(IntegratedMagic::MagicConfig& cfg, int slot,
-                                          IntegratedMagic::MagicSlots::Hand hand) {
-        if (hand == IntegratedMagic::MagicSlots::Hand::Left) {
+                                          IntegratedMagic::Slots::Hand hand) {
+        if (hand == IntegratedMagic::Slots::Hand::Left) {
             return cfg.slotSpellFormIDLeft[static_cast<std::size_t>(slot)];
         }
         return cfg.slotSpellFormIDRight[static_cast<std::size_t>(slot)];
@@ -83,7 +85,7 @@ namespace {
     }
 
     void ClearSlotData(IntegratedMagic::MagicConfig& cfg, int slot) {
-        using Hand = IntegratedMagic::MagicSlots::Hand;
+        using Hand = IntegratedMagic::Slots::Hand;
         cfg.slotSpellFormIDLeft[static_cast<std::size_t>(slot)].store(0u, std::memory_order_relaxed);
         cfg.slotSpellFormIDRight[static_cast<std::size_t>(slot)].store(0u, std::memory_order_relaxed);
         auto& icfg = cfg.slotInput[static_cast<std::size_t>(slot)];
@@ -119,7 +121,7 @@ namespace {
                         .c_str())) {
                 g_capturingHotkey = true;
                 g_captureSlot = slot;
-                MagicInput::RequestHotkeyCapture();
+                Input::RequestHotkeyCapture();
             }
             return;
         }
@@ -127,7 +129,7 @@ namespace {
                                       "Item_CaptureHotkey_Waiting",
                                       "Press ESC to close the menu then press a keyboard key or gamepad button...")
                                       .c_str());
-        const int encoded = MagicInput::PollCapturedHotkey();
+        const int encoded = Input::PollCapturedHotkey();
         if (encoded == -1) {
             return;
         }
@@ -156,8 +158,59 @@ namespace {
         ImGui::PopID();
     }
 
+    void DrawHudPopupInputConfig(IntegratedMagic::MagicConfig& cfg, bool& dirty) {
+        auto& icfg = cfg.hudPopupInput;
+        ImGui::PushID("HudPopup");
+
+        ImGui::TextUnformatted(IntegratedMagic::Strings::Get("Item_KeyboardKey", "Keyboard keys (scan codes)").c_str());
+        DrawAtomicIntInput(IntegratedMagic::Strings::Get("Item_Key1", "Key 1"), icfg.KeyboardScanCode1, dirty);
+        DrawAtomicIntInput(IntegratedMagic::Strings::Get("Item_Key2", "Key 2"), icfg.KeyboardScanCode2, dirty);
+        DrawAtomicIntInput(IntegratedMagic::Strings::Get("Item_Key3", "Key 3"), icfg.KeyboardScanCode3, dirty);
+        ImGui::Spacing();
+
+        ImGui::TextUnformatted(IntegratedMagic::Strings::Get("Item_GamepadButton", "Gamepad buttons").c_str());
+        DrawAtomicIntInput(IntegratedMagic::Strings::Get("Item_Btn1", "Btn 1"), icfg.GamepadButton1, dirty);
+        DrawAtomicIntInput(IntegratedMagic::Strings::Get("Item_Btn2", "Btn 2"), icfg.GamepadButton2, dirty);
+        DrawAtomicIntInput(IntegratedMagic::Strings::Get("Item_Btn3", "Btn 3"), icfg.GamepadButton3, dirty);
+        ImGui::Spacing();
+
+        constexpr int kHudSlotSentinel = -2;
+        if (!g_capturingHud) {
+            if (ImGui::Button(
+                    IntegratedMagic::Strings::Get("Item_CaptureHotkey", "Capture next key/button after press esc")
+                        .c_str())) {
+                g_capturingHud = true;
+                g_captureSlot = kHudSlotSentinel;
+                Input::RequestHotkeyCapture();
+            }
+        } else {
+            ImGui::TextDisabled("%s", IntegratedMagic::Strings::Get(
+                                          "Item_CaptureHotkey_Waiting",
+                                          "Press ESC to close the menu then press a keyboard key or gamepad button...")
+                                          .c_str());
+            const int encoded = Input::PollCapturedHotkey();
+            if (encoded != -1) {
+                if (encoded >= 0) {
+                    icfg.KeyboardScanCode1.store(encoded, std::memory_order_relaxed);
+                    icfg.KeyboardScanCode2.store(-1, std::memory_order_relaxed);
+                    icfg.KeyboardScanCode3.store(-1, std::memory_order_relaxed);
+                } else {
+                    const int btn = -(encoded + 1);
+                    icfg.GamepadButton1.store(btn, std::memory_order_relaxed);
+                    icfg.GamepadButton2.store(-1, std::memory_order_relaxed);
+                    icfg.GamepadButton3.store(-1, std::memory_order_relaxed);
+                }
+                dirty = true;
+                g_capturingHud = false;
+                g_captureSlot = -1;
+            }
+        }
+
+        ImGui::PopID();
+    }
+
     void DrawOneSpellSettings(const char* title, std::uint32_t formID, bool& dirty) {
-        ImGui::Text("%s: %s", title, GetSpellNameByFormID(formID));
+        ImGui::Text("%s: %s", title, GetFormNameByID(formID));  // ← era GetSpellNameByFormID
         ImGui::Text("FormID: 0x%08X", formID);
         if (formID == 0u) {
             ImGui::TextDisabled("%s",
@@ -185,7 +238,7 @@ namespace {
             dirty = true;
         }
         ImGui::SameLine();
-        ImGui::TextUnformatted(IntegratedMagic::Strings::Get("Item_AutoAttack", "Auto-attack while holding").c_str());
+        ImGui::TextUnformatted(IntegratedMagic::Strings::Get("Item_AutoCast", "Autocast while holding").c_str());
         if (disableAA) ImGui::EndDisabled();
     }
 
@@ -221,13 +274,32 @@ namespace {
             ImGui::TextUnformatted(title.c_str());
             DrawInputConfig(cfg, slot, dirty);
         }
+
+        ImGui::Separator();
+        ImGui::TextUnformatted(IntegratedMagic::Strings::Get("Hotkeys_HudPopup", "HUD Popup hotkey").c_str());
+        ImGui::TextDisabled("%s",
+                            IntegratedMagic::Strings::Get("Hotkeys_HudPopup_Desc",
+                                                          "Opens the spell assignment popup while Magic Menu is open.")
+                                .c_str());
+        DrawHudPopupInputConfig(cfg, dirty);
     }
 
     void DrawMagicTab(IntegratedMagic::MagicConfig& cfg, int slot, bool& dirty) {
+        const auto idx = static_cast<std::size_t>(slot);
+        const std::uint32_t shoutID = cfg.slotShoutFormID[idx].load(std::memory_order_relaxed);
+
+        if (shoutID != 0u) {
+            ImGui::PushID("ShoutSlot");
+            DrawOneSpellSettings(IntegratedMagic::Strings::Get("Item_Shout_Voice", "Voice (Shout/Power)").c_str(),
+                                 shoutID, dirty);
+            ImGui::PopID();
+            return;
+        }
+
         const std::uint32_t rightID =
-            SlotSpell(cfg, slot, IntegratedMagic::MagicSlots::Hand::Right).load(std::memory_order_relaxed);
+            SlotSpell(cfg, slot, IntegratedMagic::Slots::Hand::Right).load(std::memory_order_relaxed);
         const std::uint32_t leftID =
-            SlotSpell(cfg, slot, IntegratedMagic::MagicSlots::Hand::Left).load(std::memory_order_relaxed);
+            SlotSpell(cfg, slot, IntegratedMagic::Slots::Hand::Left).load(std::memory_order_relaxed);
         if (ImGui::BeginTable("SlotSpellsTable", 2)) {
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
@@ -260,7 +332,7 @@ namespace {
     }
 }
 
-void __stdcall IntegratedMagic_UI::DrawSettings() {
+void __stdcall IntegratedMagic::MENU::DrawSettings() {
     auto& cfg = IntegratedMagic::GetMagicConfig();
     bool dirty = false;
     if (ImGui::BeginTabBar("IMAGIC_TABS")) {
@@ -299,13 +371,13 @@ void __stdcall IntegratedMagic_UI::DrawSettings() {
             IntegratedMagic::SpellSettingsDB::Get().Save();
             IntegratedMagic::SpellSettingsDB::Get().ClearDirty();
         }
-        MagicInput::OnConfigChanged();
+        Input::OnConfigChanged();
         g_pending = false;
     }
     ImGui::EndDisabled();
 }
 
-void IntegratedMagic_UI::Register() {
+void IntegratedMagic::MENU::Register() {
     if (!SKSEMenuFramework::IsInstalled()) {
         return;
     }
