@@ -36,6 +36,16 @@ namespace IntegratedMagic::MagicAction {
             func(aeMan, pc, spell, hand);
         }
 
+        void UnEquipShout(RE::Actor* a_actor, RE::TESShout* a_shout) {
+            auto aeMan = RE::ActorEquipManager::GetSingleton();
+            if (!aeMan || !a_actor || !a_shout) {
+                return;
+            }
+            using func_t = void (RE::ActorEquipManager::*)(RE::Actor*, RE::TESShout*);
+            REL::Relocation<func_t> func{RELOCATION_ID(37948, 38904)};
+            func(aeMan, a_actor, a_shout);
+        }
+
         RE::SpellItem* GetEquippedSpellFromCaster(RE::ActorMagicCaster* caster) {
             if (!caster || !caster->currentSpell) {
                 return nullptr;
@@ -79,6 +89,13 @@ namespace IntegratedMagic::MagicAction {
                     });
                 }
             }).detach();
+        }
+
+        bool IsPowerSpell(RE::TESForm* form) {
+            auto const* spell = form ? form->As<RE::SpellItem>() : nullptr;
+            if (!spell) return false;
+            using ST = RE::MagicSystem::SpellType;
+            return spell->GetSpellType() == ST::kPower || spell->GetSpellType() == ST::kLesserPower;
         }
     }
 
@@ -137,9 +154,40 @@ namespace IntegratedMagic::MagicAction {
         ClearHandSpell(player, cur, hand);
     }
 
-    void EquipSlotSpells(RE::PlayerCharacter* player, int slot) {
+    void EquipShoutInVoice(RE::PlayerCharacter* player, RE::TESForm* shoutOrPower) {
+        if (!player || !shoutOrPower) return;
+        auto* mgr = RE::ActorEquipManager::GetSingleton();
+        if (!mgr) return;
+
+        if (auto* shout = shoutOrPower->As<RE::TESShout>()) {
+            mgr->EquipShout(player, shout);
+        } else if (auto* spell = shoutOrPower->As<RE::SpellItem>(); spell && IsPowerSpell(shoutOrPower)) {
+            if (auto const* dom = RE::BGSDefaultObjectManager::GetSingleton(); !dom) return;
+            mgr->EquipSpell(player, spell, nullptr);
+        }
+    }
+
+    void ClearVoiceShout(RE::PlayerCharacter* player) {
+        if (!player) return;
+        if (auto* shout = player->GetCurrentShout()) {
+            UnEquipShout(player, shout);
+            return;
+        }
+        auto const& rd = player->GetActorRuntimeData();
+        if (auto* power = rd.selectedPower ? rd.selectedPower->As<RE::SpellItem>() : nullptr) {
+            if (IsPowerSpell(power)) {
+                UnEquipSpell(player, power, 2);
+            }
+        }
+    }
+
+    void EquipSlotContent(RE::PlayerCharacter* player, int slot) {
         using enum IntegratedMagic::MagicSlots::Hand;
-        if (!player) {
+        if (!player) return;
+
+        if (IntegratedMagic::MagicSlots::IsShoutSlot(slot)) {
+            const auto shoutID = IntegratedMagic::MagicSlots::GetSlotShout(slot);
+            if (auto* form = shoutID ? RE::TESForm::LookupByID(shoutID) : nullptr) EquipShoutInVoice(player, form);
             return;
         }
         const auto rightID = IntegratedMagic::MagicSlots::GetSlotSpell(slot, Right);

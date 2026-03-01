@@ -11,17 +11,18 @@
 #include "SKSEMenuFramework.h"
 #include "SpellSettingsDB.h"
 
-static const char* GetSpellNameByFormID(std::uint32_t formID) {
-    if (formID == 0) {
-        return "None";
+static const char* GetFormNameByID(std::uint32_t formID) {
+    if (formID == 0) return "None";
+    auto const* form = RE::TESForm::LookupByID(formID);
+    if (!form) return "Invalid/Not loaded";
+    const char* name = nullptr;
+    if (auto const* shout = form->As<RE::TESShout>()) {
+        name = shout->GetName();
+    } else if (auto const* spell = form->As<RE::SpellItem>()) {
+        name = spell->GetName();
+    } else {
+        return "Unknown type";
     }
-
-    auto const* spell = RE::TESForm::LookupByID<RE::SpellItem>(formID);
-    if (!spell) {
-        return "Invalid/Not loaded";
-    }
-
-    const char* name = spell->GetName();
     return (name && name[0] != '\0') ? name : "<unnamed>";
 }
 
@@ -83,10 +84,11 @@ namespace {
     }
 
     void ClearSlotData(IntegratedMagic::MagicConfig& cfg, int slot) {
-        using Hand = IntegratedMagic::MagicSlots::Hand;
-        cfg.slotSpellFormIDLeft[static_cast<std::size_t>(slot)].store(0u, std::memory_order_relaxed);
-        cfg.slotSpellFormIDRight[static_cast<std::size_t>(slot)].store(0u, std::memory_order_relaxed);
-        auto& icfg = cfg.slotInput[static_cast<std::size_t>(slot)];
+        const auto idx = static_cast<std::size_t>(slot);
+        cfg.slotSpellFormIDLeft[idx].store(0u, std::memory_order_relaxed);
+        cfg.slotSpellFormIDRight[idx].store(0u, std::memory_order_relaxed);
+        cfg.slotShoutFormID[idx].store(0u, std::memory_order_relaxed);  // NOVO
+        auto& icfg = cfg.slotInput[idx];
         icfg.KeyboardScanCode1.store(-1, std::memory_order_relaxed);
         icfg.KeyboardScanCode2.store(-1, std::memory_order_relaxed);
         icfg.KeyboardScanCode3.store(-1, std::memory_order_relaxed);
@@ -157,7 +159,7 @@ namespace {
     }
 
     void DrawOneSpellSettings(const char* title, std::uint32_t formID, bool& dirty) {
-        ImGui::Text("%s: %s", title, GetSpellNameByFormID(formID));
+        ImGui::Text("%s: %s", title, GetFormNameByID(formID));  // ← era GetSpellNameByFormID
         ImGui::Text("FormID: 0x%08X", formID);
         if (formID == 0u) {
             ImGui::TextDisabled("%s",
@@ -185,7 +187,7 @@ namespace {
             dirty = true;
         }
         ImGui::SameLine();
-        ImGui::TextUnformatted(IntegratedMagic::Strings::Get("Item_AutoAttack", "Auto-attack while holding").c_str());
+        ImGui::TextUnformatted(IntegratedMagic::Strings::Get("Item_AutoCast", "Autocast while holding").c_str());
         if (disableAA) ImGui::EndDisabled();
     }
 
@@ -224,6 +226,17 @@ namespace {
     }
 
     void DrawMagicTab(IntegratedMagic::MagicConfig& cfg, int slot, bool& dirty) {
+        const auto idx = static_cast<std::size_t>(slot);
+        const std::uint32_t shoutID = cfg.slotShoutFormID[idx].load(std::memory_order_relaxed);
+
+        if (shoutID != 0u) {
+            ImGui::PushID("ShoutSlot");
+            DrawOneSpellSettings(IntegratedMagic::Strings::Get("Item_Shout_Voice", "Voice (Shout/Power)").c_str(),
+                                 shoutID, dirty);
+            ImGui::PopID();
+            return;
+        }
+
         const std::uint32_t rightID =
             SlotSpell(cfg, slot, IntegratedMagic::MagicSlots::Hand::Right).load(std::memory_order_relaxed);
         const std::uint32_t leftID =

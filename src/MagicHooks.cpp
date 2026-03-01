@@ -138,6 +138,62 @@ namespace IntegratedMagic::Hooks {
                 _orig = reinterpret_cast<Fn>(orig);  // NOSONAR - interop
             }
         };
+
+        struct EquipShoutHook {
+            using Fn = void (*)(RE::ActorEquipManager*, RE::Actor*, RE::TESShout*);
+            static inline Fn func{nullptr};
+
+            static void thunk(RE::ActorEquipManager* mgr, RE::Actor* actor, RE::TESShout* shout) {
+                func(mgr, actor, shout);
+                if (!actor || !shout) return;
+                if (auto const* player = RE::PlayerCharacter::GetSingleton(); actor != player) return;
+                (void)IntegratedMagic::MagicSelect::TrySelectShoutFromEquip(shout);
+            }
+
+            static void Install() { Hook::stl::write_detour<EquipShoutHook>(REL::RelocationID(37941, 38897)); }
+        };
+
+        struct UnequipShoutHook {
+            using Fn = void (*)(RE::ActorEquipManager*, RE::Actor*, RE::TESShout*);
+            static inline Fn func{nullptr};
+
+            static void thunk(RE::ActorEquipManager* mgr, RE::Actor* actor, RE::TESShout* shout) {
+                func(mgr, actor, shout);
+                if (!actor || !shout) return;
+                if (auto const* player = RE::PlayerCharacter::GetSingleton(); actor != player) return;
+                (void)IntegratedMagic::MagicSelect::TryClearSlotShoutFromUnequip(shout);
+            }
+
+            static void Install() { Hook::stl::write_detour<UnequipShoutHook>(REL::RelocationID(37948, 38904)); }
+        };
+
+        struct EquipSpellHook {
+            using Fn = void (*)(RE::ActorEquipManager*, RE::Actor*, RE::SpellItem*, const RE::BGSEquipSlot*);
+            static inline Fn func{nullptr};
+
+            static void thunk(RE::ActorEquipManager* mgr, RE::Actor* actor, RE::SpellItem* spell,
+                              const RE::BGSEquipSlot* slot) {
+                                spdlog::info("[IMAGIC][EquipSpellHook] Entering - actor='{}' formID=0x{:08X}, spell='{}' formID=0x{:08X}, slot={}",
+                                             actor ? actor->GetName() : "null", actor ? actor->GetFormID() : 0,
+                                             spell ? spell->GetName() : "null", spell ? spell->GetFormID() : 0,
+                                             slot ? slot->GetName() : "null");
+                func(mgr, actor, spell, slot);
+                if (!actor || !spell) return;
+                if (auto const* player = RE::PlayerCharacter::GetSingleton(); actor != player) return;
+
+                using ST = RE::MagicSystem::SpellType;
+                const auto spType = spell->GetSpellType();
+                if (spType == ST::kPower || spType == ST::kLesserPower) {
+                    spdlog::info("[IMAGIC][EquipSpellHook] power='{}' formID=0x{:08X}", spell->GetName(),
+                                 spell->GetFormID());
+                    (void)IntegratedMagic::MagicSelect::TrySelectShoutFromEquip(spell);
+                }
+            }
+
+            static void Install() {
+                Hook::stl::write_detour<EquipSpellHook>(REL::RelocationID(37939, 38895));
+            }
+        };
     }
 
     void Install_Hooks() {
@@ -146,5 +202,8 @@ namespace IntegratedMagic::Hooks {
         DeselectSpellImplHook::Install();
         PollInputDevicesHook::Install();
         PlayerAnimGraphProcessEventHook::Install();
+        EquipShoutHook::Install();
+        UnequipShoutHook::Install();
+        EquipSpellHook::Install();
     }
 }

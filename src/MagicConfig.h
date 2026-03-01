@@ -21,6 +21,7 @@ namespace IntegratedMagic {
         std::atomic<std::uint32_t> slotCount{4};
         std::array<std::atomic<std::uint32_t>, kMaxSlots> slotSpellFormIDLeft;
         std::array<std::atomic<std::uint32_t>, kMaxSlots> slotSpellFormIDRight;
+        std::array<std::atomic<std::uint32_t>, kMaxSlots> slotShoutFormID;
         std::array<InputConfig, kMaxSlots> slotInput;
         bool skipEquipAnimationPatch = false;
         bool requireExclusiveHotkeyPatch = false;

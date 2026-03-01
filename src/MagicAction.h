@@ -7,5 +7,7 @@ namespace IntegratedMagic::MagicAction {
     void EquipSpellInHand(RE::PlayerCharacter* player, RE::SpellItem* spell, MagicSlots::Hand hand);
     void ClearHandSpell(RE::PlayerCharacter* player, MagicSlots::Hand hand);
     void ClearHandSpell(RE::PlayerCharacter* player, RE::SpellItem* spell, MagicSlots::Hand hand);
-    void EquipSlotSpells(RE::PlayerCharacter* player, int slot);
+    void EquipShoutInVoice(RE::PlayerCharacter* player, RE::TESForm* shoutOrPower);
+    void ClearVoiceShout(RE::PlayerCharacter* player);
+    void EquipSlotContent(RE::PlayerCharacter* player, int slot);
 }

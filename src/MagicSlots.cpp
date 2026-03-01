@@ -37,6 +37,7 @@ namespace IntegratedMagic::MagicSlots {
         auto& arr = SlotArrForHand(cfg, hand);
         arr[static_cast<std::size_t>(slot)].store(spellFormID, std::memory_order_relaxed);
         if (spellFormID != 0u) {
+            cfg.slotShoutFormID[static_cast<std::size_t>(slot)].store(0u, std::memory_order_relaxed);
             (void)IntegratedMagic::SpellSettingsDB::Get().GetOrCreate(spellFormID);
         }
         if (saveNow) {
@@ -47,4 +48,36 @@ namespace IntegratedMagic::MagicSlots {
             }
         }
     }
+
+    std::uint32_t GetSlotShout(int slot) {
+        auto& cfg = IntegratedMagic::GetMagicConfig();
+        if (slot < 0 || static_cast<std::uint32_t>(slot) >= cfg.SlotCount()) return 0u;
+        return cfg.slotShoutFormID[static_cast<std::size_t>(slot)].load(std::memory_order_relaxed);
+    }
+
+    void SetSlotShout(int slot, std::uint32_t shoutFormID, bool saveNow) {
+        auto& cfg = IntegratedMagic::GetMagicConfig();
+        if (slot < 0 || static_cast<std::uint32_t>(slot) >= cfg.SlotCount()) return;
+
+        const auto idx = static_cast<std::size_t>(slot);
+        cfg.slotShoutFormID[idx].store(shoutFormID, std::memory_order_relaxed);
+
+        if (shoutFormID != 0u) {
+            cfg.slotSpellFormIDLeft[idx].store(0u, std::memory_order_relaxed);
+            cfg.slotSpellFormIDRight[idx].store(0u, std::memory_order_relaxed);
+        }
+
+        if (shoutFormID != 0u) {
+            (void)IntegratedMagic::SpellSettingsDB::Get().GetOrCreate(shoutFormID);
+        }
+        if (saveNow) {
+            cfg.Save();
+            if (IntegratedMagic::SpellSettingsDB::Get().IsDirty()) {
+                IntegratedMagic::SpellSettingsDB::Get().Save();
+                IntegratedMagic::SpellSettingsDB::Get().ClearDirty();
+            }
+        }
+    }
+
+    bool IsShoutSlot(int slot) { return GetSlotShout(slot) != 0u; }
 }

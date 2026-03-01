@@ -13,6 +13,8 @@ namespace IntegratedMagic::MagicSelect {
     bool TrySelectSpellFromEquip(RE::SpellItem* spell, MagicSlots::Hand src);
     bool TryClearSlotSpellFromUnequip(RE::SpellItem* spell, MagicSlots::Hand hand);
     bool IsSelectionSuppressed() noexcept;
+    bool TrySelectShoutFromEquip(RE::TESForm* shoutOrPower);
+    bool TryClearSlotShoutFromUnequip(RE::TESForm* shoutOrPower);
     class ScopedSuppressSelection {
     public:
         ScopedSuppressSelection() noexcept;

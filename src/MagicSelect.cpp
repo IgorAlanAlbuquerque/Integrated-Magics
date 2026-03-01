@@ -46,6 +46,18 @@ namespace IntegratedMagic::MagicSelect {
         return true;
     }
 
+    bool TrySelectShoutFromEquip(RE::TESForm* shoutOrPower) {
+        if (IsSelectionSuppressed()) return false;
+        const auto slotOpt = MagicInput::GetDownSlotForSelection();
+        if (!slotOpt.has_value() || !shoutOrPower) return false;
+        const auto formID = shoutOrPower->GetFormID();
+        if (formID == 0) return false;
+
+        ScopedSuppressSelection guard;
+        IntegratedMagic::MagicSlots::SetSlotShout(*slotOpt, formID, true);
+        return true;
+    }
+
     bool TryClearSlotSpellFromUnequip(RE::SpellItem* spell, MagicSlots::Hand hand) {
         if (IsSelectionSuppressed()) {
             return false;
@@ -63,6 +75,18 @@ namespace IntegratedMagic::MagicSelect {
         }
         ScopedSuppressSelection guard;
         IntegratedMagic::MagicSlots::SetSlotSpell(*slotOpt, hand, 0u, true);
+        return true;
+    }
+
+    bool TryClearSlotShoutFromUnequip(RE::TESForm* shoutOrPower) {
+        if (IsSelectionSuppressed()) return false;
+        const auto slotOpt = MagicInput::GetDownSlotForSelection();
+        if (!slotOpt.has_value() || !shoutOrPower) return false;
+        const auto id = shoutOrPower->GetFormID();
+        if (id == 0) return false;
+        if (const auto cur = IntegratedMagic::MagicSlots::GetSlotShout(*slotOpt); cur != id) return false;
+        ScopedSuppressSelection guard;
+        IntegratedMagic::MagicSlots::SetSlotShout(*slotOpt, 0u, true);
         return true;
     }
 }
