@@ -9,7 +9,7 @@
 #include <optional>
 #include <ranges>
 
-#include "MagicConfig.h"
+#include "Config/MagicConfig.h"
 #include "PCH.h"
 
 #ifdef _WIN32

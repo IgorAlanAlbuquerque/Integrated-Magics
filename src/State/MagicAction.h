@@ -1,5 +1,5 @@
 #pragma once
-#include "MagicSlots.h"
+#include "Config/MagicSlots.h"
 #include "PCH.h"
 
 namespace IntegratedMagic::MagicAction {

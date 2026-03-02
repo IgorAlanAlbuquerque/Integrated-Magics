@@ -5,10 +5,10 @@
 #include <utility>
 
 #include "MagicAction.h"
-#include "MagicEquipSlots.h"
+#include "Config/MagicEquipSlots.h"
 #include "MagicSelect.h"
 #include "PCH.h"
-#include "SpellSettingsDB.h"
+#include "Persistence/SpellSettingsDB.h"
 
 namespace IntegratedMagic {
     namespace detail {

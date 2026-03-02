@@ -2,7 +2,7 @@
 
 #include "MagicConfig.h"
 #include "PCH.h"
-#include "SpellSettingsDB.h"
+#include "Persistence/SpellSettingsDB.h"
 
 namespace IntegratedMagic::MagicSlots {
     namespace {

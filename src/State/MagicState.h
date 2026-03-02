@@ -6,7 +6,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "MagicSlots.h"
+#include "Config/MagicSlots.h"
 #include "PCH.h"
 
 namespace IntegratedMagic {

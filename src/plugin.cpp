@@ -1,11 +1,12 @@
-#include "MagicConfig.h"
-#include "MagicHooks.h"
-#include "MagicInput.h"
-#include "MagicStrings.h"
+#include "Config/MagicConfig.h"
+#include "Hooks.h"
+#include "Input/MagicInput.h"
+#include "UI/MagicStrings.h"
+#include "UI/MENU_IntegratedMagic.h"
 #include "PCH.h"
-#include "SaveSpellDB.h"
-#include "SpellSettingsDB.h"
-#include "UI_IntegratedMagic.h"
+#include "Persistence/SaveSpellDB.h"
+#include "Persistence/SpellSettingsDB.h"
+#include "UI/MENU_IntegratedMagic.h"
 
 #ifndef DLLEXPORT
     #include "REL/Relocation.h"
@@ -110,7 +111,8 @@ namespace {
                 IntegratedMagic::Strings::Load();
                 IntegratedMagic::GetMagicConfig().Load();
                 IntegratedMagic::SpellSettingsDB::Get().Load();
-                IntegratedMagic_UI::Register();
+                IntegratedMagic::MENU::Register();
+                IntegratedMagic::HUD::Register();
                 MagicInput::OnConfigChanged();
                 IntegratedMagic::Hooks::Install_Hooks();
                 break;

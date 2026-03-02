@@ -3,9 +3,8 @@
 #include <RE/P/PlayerCharacter.h>
 #include <RE/S/SpellItem.h>
 
-#include "MagicInput.h"
-#include "MagicSlots.h"
-#include "MagicStrings.h"
+#include "Input/MagicInput.h"
+#include "Config/MagicSlots.h"
 #include "PCH.h"
 
 namespace IntegratedMagic::MagicSelect {

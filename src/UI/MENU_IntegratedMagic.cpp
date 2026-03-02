@@ -1,15 +1,15 @@
-#include "UI_IntegratedMagic.h"
+#include "MENU_IntegratedMagic.h"
 
 #include <array>
 #include <cstdint>
 #include <format>
 
-#include "MagicConfig.h"
-#include "MagicInput.h"
+#include "Config/MagicConfig.h"
+#include "Input/MagicInput.h"
 #include "MagicStrings.h"
 #include "PCH.h"
 #include "SKSEMenuFramework.h"
-#include "SpellSettingsDB.h"
+#include "Persistence/SpellSettingsDB.h"
 
 static const char* GetSpellNameByFormID(std::uint32_t formID) {
     if (formID == 0) {
@@ -260,7 +260,7 @@ namespace {
     }
 }
 
-void __stdcall IntegratedMagic_UI::DrawSettings() {
+void __stdcall IntegratedMagic::MENU::DrawSettings() {
     auto& cfg = IntegratedMagic::GetMagicConfig();
     bool dirty = false;
     if (ImGui::BeginTabBar("IMAGIC_TABS")) {
@@ -305,7 +305,7 @@ void __stdcall IntegratedMagic_UI::DrawSettings() {
     ImGui::EndDisabled();
 }
 
-void IntegratedMagic_UI::Register() {
+void IntegratedMagic::MENU::Register() {
     if (!SKSEMenuFramework::IsInstalled()) {
         return;
     }

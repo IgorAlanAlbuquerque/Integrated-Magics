@@ -1,11 +1,11 @@
-#include "MagicHooks.h"
+#include "Hooks.h"
 
 #include <utility>
 
 #include "HookUtil.hpp"
-#include "MagicInput.h"
-#include "MagicSelect.h"
-#include "MagicState.h"
+#include "Input/MagicInput.h"
+#include "State/MagicSelect.h"
+#include "State/MagicState.h"
 #include "PCH.h"
 
 namespace IntegratedMagic::Hooks {
