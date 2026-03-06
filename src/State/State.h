@@ -6,7 +6,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "Config/MagicSlots.h"
+#include "Config/Slots.h"
 #include "PCH.h"
 
 namespace IntegratedMagic {
@@ -26,9 +26,12 @@ namespace IntegratedMagic {
 
         void EnqueueSyntheticAttack(RE::ButtonEvent* ev);
 
+        void EnqueueRetainedEvent(RE::INPUT_DEVICE dev, std::uint32_t idCode, const RE::BSFixedString& userEvent,
+                                  float value, float heldSecs);
+
         RE::InputEvent* FlushSyntheticInput(RE::InputEvent* head);
 
-        void DispatchAttack(IntegratedMagic::MagicSlots::Hand hand, float value, float heldSecs);
+        void DispatchAttack(IntegratedMagic::Slots::Hand hand, float value, float heldSecs);
     }
 
     struct SpellSettings;
@@ -86,13 +89,13 @@ namespace IntegratedMagic {
         void TryFinalizeExit();
         bool IsActive() const noexcept { return _active; }
         int ActiveSlot() const noexcept { return _activeSlot; }
-        void StartAutoAttack(IntegratedMagic::MagicSlots::Hand hand);
-        void StopAutoAttack(IntegratedMagic::MagicSlots::Hand hand);
+        void StartAutoAttack(IntegratedMagic::Slots::Hand hand);
+        void StopAutoAttack(IntegratedMagic::Slots::Hand hand);
         void StopAllAutoAttack();
         void PumpAutoAttack(float dt);
         void NotifyAttackEnabled();
         void PumpAutomatic(float dt);
-        void OnBeginCast(IntegratedMagic::MagicSlots::Hand hand);
+        void OnBeginCast(IntegratedMagic::Slots::Hand hand);
         const HandMode& LeftMode() const noexcept { return _left; }
         const HandMode& RightMode() const noexcept { return _right; }
 
@@ -108,18 +111,18 @@ namespace IntegratedMagic {
 
         static constexpr float kDelayedStartSec = 0.050f;
 
-        DelayedStart& DelayFor(IntegratedMagic::MagicSlots::Hand hand) {
-            using enum IntegratedMagic::MagicSlots::Hand;
+        DelayedStart& DelayFor(IntegratedMagic::Slots::Hand hand) {
+            using enum IntegratedMagic::Slots::Hand;
             return (hand == Left) ? _delayStartLeft : _delayStartRight;
         }
 
-        void ScheduleDelayedStart(IntegratedMagic::MagicSlots::Hand hand) {
+        void ScheduleDelayedStart(IntegratedMagic::Slots::Hand hand) {
             auto& d = DelayFor(hand);
             d.pending = true;
             d.secs = 0.f;
         }
 
-        void CancelDelayedStart(IntegratedMagic::MagicSlots::Hand hand) {
+        void CancelDelayedStart(IntegratedMagic::Slots::Hand hand) {
             auto& d = DelayFor(hand);
             d.pending = false;
             d.secs = 0.f;
@@ -132,22 +135,22 @@ namespace IntegratedMagic {
 
         void PumpDelayedStarts(float dt);
         static inline RE::PlayerCharacter* GetPlayer() { return RE::PlayerCharacter::GetSingleton(); }
-        HandMode& ModeFor(IntegratedMagic::MagicSlots::Hand hand) noexcept {
-            return (hand == IntegratedMagic::MagicSlots::Hand::Left) ? _left : _right;
+        HandMode& ModeFor(IntegratedMagic::Slots::Hand hand) noexcept {
+            return (hand == IntegratedMagic::Slots::Hand::Left) ? _left : _right;
         }
-        const HandMode& ModeFor(IntegratedMagic::MagicSlots::Hand hand) const noexcept {
-            return (hand == IntegratedMagic::MagicSlots::Hand::Left) ? _left : _right;
+        const HandMode& ModeFor(IntegratedMagic::Slots::Hand hand) const noexcept {
+            return (hand == IntegratedMagic::Slots::Hand::Left) ? _left : _right;
         }
         void EnsureActiveWithSnapshot(RE::PlayerCharacter const* player, int slot);
         void CaptureSnapshot(RE::PlayerCharacter const* player);
         void RestoreSnapshot(RE::PlayerCharacter* player);
-        bool HandIsRelevant(IntegratedMagic::MagicSlots::Hand h) const;
+        bool HandIsRelevant(IntegratedMagic::Slots::Hand h) const;
         bool AllRelevantHandsFinished() const;
         void ExitAllNow();
         bool CanOverwriteNow() const;
         void PrepareForOverwriteToSlot(int newSlot);
-        void PumpAutoStartFallback(IntegratedMagic::MagicSlots::Hand hand, float dt);
-        void DisableHand(IntegratedMagic::MagicSlots::Hand hand);
+        void PumpAutoStartFallback(IntegratedMagic::Slots::Hand hand, float dt);
+        void DisableHand(IntegratedMagic::Slots::Hand hand);
         struct SlotEntry {
             RE::PlayerCharacter* player{nullptr};
             std::uint32_t leftID{0};
@@ -160,15 +163,15 @@ namespace IntegratedMagic {
             bool hasRight{false};
         };
         bool PrepareSlotEntry(int slot, SlotEntry& out);
-        void EnterHand(IntegratedMagic::MagicSlots::Hand hand, const SpellSettings& ss);
-        void TogglePressHand(IntegratedMagic::MagicSlots::Hand hand, const SpellSettings& ss);
-        void FinishHand(IntegratedMagic::MagicSlots::Hand hand);
-        void PumpAutomaticHand(IntegratedMagic::MagicSlots::Hand hand);
-        void SetModeSpellsFromHand(IntegratedMagic::MagicSlots::Hand hand, RE::SpellItem* spell);
-        static inline bool IsLeft(IntegratedMagic::MagicSlots::Hand h) {
-            return h == IntegratedMagic::MagicSlots::Hand::Left;
+        void EnterHand(IntegratedMagic::Slots::Hand hand, const SpellSettings& ss);
+        void TogglePressHand(IntegratedMagic::Slots::Hand hand, const SpellSettings& ss);
+        void FinishHand(IntegratedMagic::Slots::Hand hand);
+        void PumpAutomaticHand(IntegratedMagic::Slots::Hand hand);
+        void SetModeSpellsFromHand(IntegratedMagic::Slots::Hand hand, RE::SpellItem* spell);
+        static inline bool IsLeft(IntegratedMagic::Slots::Hand h) {
+            return h == IntegratedMagic::Slots::Hand::Left;
         }
-        void MarkDirty(IntegratedMagic::MagicSlots::Hand h) {
+        void MarkDirty(IntegratedMagic::Slots::Hand h) {
             if (IsLeft(h))
                 _dirtyLeft = true;
             else

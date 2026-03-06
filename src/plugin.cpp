@@ -1,12 +1,11 @@
-#include "Config/MagicConfig.h"
+#include "Config/Config.h"
 #include "Hooks.h"
-#include "Input/MagicInput.h"
-#include "UI/MagicStrings.h"
-#include "UI/MENU_IntegratedMagic.h"
+#include "Input/Input.h"
 #include "PCH.h"
 #include "Persistence/SaveSpellDB.h"
 #include "Persistence/SpellSettingsDB.h"
 #include "UI/MENU_IntegratedMagic.h"
+#include "UI/Strings.h"
 
 #ifndef DLLEXPORT
     #include "REL/Relocation.h"
@@ -103,17 +102,13 @@ namespace {
                 g_pendingEssPath = GetSaveKeyFromMsg(message);
                 break;
             }
-            case SKSE::MessagingInterface::kInputLoaded: {
-                MagicInput::RegisterInputHandler();
-                break;
-            }
             case SKSE::MessagingInterface::kDataLoaded: {
                 IntegratedMagic::Strings::Load();
                 IntegratedMagic::GetMagicConfig().Load();
                 IntegratedMagic::SpellSettingsDB::Get().Load();
                 IntegratedMagic::MENU::Register();
                 IntegratedMagic::HUD::Register();
-                MagicInput::OnConfigChanged();
+                Input::OnConfigChanged();
                 IntegratedMagic::Hooks::Install_Hooks();
                 break;
             }

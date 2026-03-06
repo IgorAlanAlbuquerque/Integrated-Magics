@@ -22,18 +22,18 @@ add_commonlibsse_plugin(${PROJECT_NAME}
   SOURCES
     src/plugin.cpp
     src/Hooks.cpp
-    src/UI/MagicStrings.cpp
+    src/UI/Strings.cpp
     src/UI/MENU_IntegratedMagic.cpp
-    src/UI/HUD_IntegratedMagic.cpp
-    src/Config/MagicConfig.cpp
-    src/Config/MagicSlots.cpp
+    src/UI/HUD.cpp
+    src/Config/Config.cpp
+    src/Config/Slots.cpp
     src/Persistence/SpellSettingsDB.cpp
     src/Persistence/SaveSpellDB.cpp
-    src/Input/MagicInput.cpp
-    src/Input/MagicEquipListener.cpp
-    src/State/MagicSelect.cpp
-    src/State/MagicState.cpp
+    src/Input/Input.cpp
+    src/Input/Assign.cpp
+    src/State/State.cpp
     src/State/MagicAction.cpp
+    src/State/AnimListener.cpp
     src/Detours/detours.cpp
     src/Detours/disasm.cpp
     src/Detours/disolx64.cpp
@@ -54,20 +54,20 @@ target_precompile_headers(${PROJECT_NAME}
   PRIVATE
     src/PCH.h
     src/Hooks.h
-    src/UI/MagicStrings.h
+    src/UI/Strings.h
     src/UI/MENU_IntegratedMagic.h
-    src/UI/HUD_IntegratedMagic.h
-    src/Config/MagicConfigPath.h
-    src/Config/MagicConfig.h
-    src/Config/MagicSlots.h
-    src/Config/MagicEquipSlots.h
+    src/UI/HUD.h
+    src/Config/ConfigPath.h
+    src/Config/Config.h
+    src/Config/Slots.h
+    src/Config/EquipSlots.h
     src/Persistence/SpellSettingsDB.h
     src/Persistence/SaveSpellDB.h
-    src/Input/MagicEquipListener.h
-    src/Input/MagicInput.h
-    src/State/MagicSelect.h
-    src/State/MagicState.h
+    src/Input/Assign.h
+    src/Input/Input.h
+    src/State/State.h
     src/State/MagicAction.h
+    src/State/AnimListener.h
 ) 
 
 set_source_files_properties(

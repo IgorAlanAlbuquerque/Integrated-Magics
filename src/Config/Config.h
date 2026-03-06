@@ -22,7 +22,9 @@ namespace IntegratedMagic {
         std::array<std::atomic<std::uint32_t>, kMaxSlots> slotSpellFormIDLeft;
         std::array<std::atomic<std::uint32_t>, kMaxSlots> slotSpellFormIDRight;
         std::array<InputConfig, kMaxSlots> slotInput;
+        InputConfig hudPopupInput;
         bool skipEquipAnimationPatch = false;
+        bool skipEquipAnimationOnReturnPatch = false;
         bool requireExclusiveHotkeyPatch = false;
         MagicConfig();
         void Load();

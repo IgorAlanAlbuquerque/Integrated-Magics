@@ -1,18 +1,22 @@
-#include "MagicState.h"
+#include "State.h"
 
 #include <algorithm>
 #include <cctype>
 #include <utility>
 
+#include "Config/EquipSlots.h"
 #include "MagicAction.h"
-#include "Config/MagicEquipSlots.h"
-#include "MagicSelect.h"
 #include "PCH.h"
 #include "Persistence/SpellSettingsDB.h"
 
 namespace IntegratedMagic {
     namespace detail {
         static SyntheticInputState& GetSynth() {
+            static SyntheticInputState s;  // NOSONAR
+            return s;
+        }
+
+        static SyntheticInputState& GetRetain() {
             static SyntheticInputState s;  // NOSONAR
             return s;
         }
@@ -32,8 +36,8 @@ namespace IntegratedMagic {
             st.pending.push(ev);
         }
 
-        void DispatchAttack(IntegratedMagic::MagicSlots::Hand hand, float value, float heldSecs) {
-            using enum IntegratedMagic::MagicSlots::Hand;
+        void DispatchAttack(IntegratedMagic::Slots::Hand hand, float value, float heldSecs) {
+            using enum IntegratedMagic::Slots::Hand;
             if (hand == Left) {
                 EnqueueSyntheticAttack(MakeAttackButtonEvent(true, value, heldSecs));
             } else {
@@ -41,24 +45,19 @@ namespace IntegratedMagic {
             }
         }
 
-        RE::InputEvent* FlushSyntheticInput(RE::InputEvent* head) {
-            auto& st = GetSynth();
+        static RE::InputEvent* DrainQueue(SyntheticInputState& st, RE::InputEvent* head) {
             std::queue<RE::ButtonEvent*> local;
             {
                 std::scoped_lock lk(st.mutex);
                 local.swap(st.pending);
             }
-            if (local.empty()) {
-                return head;
-            }
+            if (local.empty()) return head;
             RE::InputEvent* synthHead = nullptr;
             RE::InputEvent* synthTail = nullptr;
             while (!local.empty()) {
                 auto* ev = local.front();
                 local.pop();
-                if (!ev) {
-                    continue;
-                }
+                if (!ev) continue;
                 ev->next = nullptr;
                 if (!synthHead) {
                     synthHead = ev;
@@ -68,11 +67,24 @@ namespace IntegratedMagic {
                     synthTail = ev;
                 }
             }
-            if (!head) {
-                return synthHead;
-            }
+            if (!head) return synthHead;
             synthTail->next = head;
             return synthHead;
+        }
+
+        RE::InputEvent* FlushSyntheticInput(RE::InputEvent* head) {
+            head = DrainQueue(GetSynth(), head);
+            head = DrainQueue(GetRetain(), head);
+            return head;
+        }
+
+        void EnqueueRetainedEvent(RE::INPUT_DEVICE dev, std::uint32_t idCode, const RE::BSFixedString& userEvent,
+                                  float value, float heldSecs) {
+            auto* ev = RE::ButtonEvent::Create(dev, userEvent, idCode, value, heldSecs);
+            if (!ev) return;
+            auto& st = GetRetain();
+            std::scoped_lock lk(st.mutex);
+            st.pending.push(ev);
         }
     }
 
@@ -263,7 +275,7 @@ namespace IntegratedMagic {
         }
 
         inline void ClearHandSpellIfNoSnapshot(RE::PlayerCharacter* player, RE::SpellItem const* snapSpell,
-                                               RE::SpellItem* modeSpell, IntegratedMagic::MagicSlots::Hand hand) {
+                                               RE::SpellItem* modeSpell, IntegratedMagic::Slots::Hand hand) {
             if (snapSpell) {
                 return;
             }
@@ -275,7 +287,7 @@ namespace IntegratedMagic {
         }
 
         inline void EquipSpellIfPresent(RE::PlayerCharacter* player, RE::SpellItem* spell,
-                                        IntegratedMagic::MagicSlots::Hand hand) {
+                                        IntegratedMagic::Slots::Hand hand) {
             if (spell) {
                 IntegratedMagic::MagicAction::EquipSpellInHand(player, spell, hand);
             }
@@ -411,7 +423,7 @@ namespace IntegratedMagic {
     }
 
     void MagicState::RestoreSnapshot(RE::PlayerCharacter* player) {
-        using enum IntegratedMagic::MagicSlots::Hand;
+        using enum IntegratedMagic::Slots::Hand;
         if (!player || !_snap.valid) {
             return;
         }
@@ -449,13 +461,13 @@ namespace IntegratedMagic {
         if (!player) {
             return false;
         }
-        if (!IntegratedMagic::MagicSlots::IsValidSlot(slot)) {
+        if (!IntegratedMagic::Slots::IsValidSlot(slot)) {
             return false;
         }
-        using enum IntegratedMagic::MagicSlots::Hand;
+        using enum IntegratedMagic::Slots::Hand;
         out.player = player;
-        out.rightID = IntegratedMagic::MagicSlots::GetSlotSpell(slot, Right);
-        out.leftID = IntegratedMagic::MagicSlots::GetSlotSpell(slot, Left);
+        out.rightID = IntegratedMagic::Slots::GetSlotSpell(slot, Right);
+        out.leftID = IntegratedMagic::Slots::GetSlotSpell(slot, Left);
         out.rightSpell = out.rightID ? RE::TESForm::LookupByID<RE::SpellItem>(out.rightID) : nullptr;
         out.leftSpell = out.leftID ? RE::TESForm::LookupByID<RE::SpellItem>(out.leftID) : nullptr;
         out.hasRight = (out.rightSpell != nullptr);
@@ -487,8 +499,8 @@ namespace IntegratedMagic {
         return true;
     }
 
-    void MagicState::SetModeSpellsFromHand(IntegratedMagic::MagicSlots::Hand hand, RE::SpellItem* spell) {
-        using enum IntegratedMagic::MagicSlots::Hand;
+    void MagicState::SetModeSpellsFromHand(IntegratedMagic::Slots::Hand hand, RE::SpellItem* spell) {
+        using enum IntegratedMagic::Slots::Hand;
         if (hand == Left) {
             _modeSpellLeft = spell;
         } else {
@@ -496,7 +508,7 @@ namespace IntegratedMagic {
         }
     }
 
-    void MagicState::EnterHand(IntegratedMagic::MagicSlots::Hand hand, const SpellSettings& ss) {
+    void MagicState::EnterHand(IntegratedMagic::Slots::Hand hand, const SpellSettings& ss) {
         auto& hm = ModeFor(hand);
         hm.finished = false;
         hm.mode = ss.mode;
@@ -544,7 +556,7 @@ namespace IntegratedMagic {
         }
     }
 
-    void MagicState::TogglePressHand(IntegratedMagic::MagicSlots::Hand hand, const SpellSettings& ss) {
+    void MagicState::TogglePressHand(IntegratedMagic::Slots::Hand hand, const SpellSettings& ss) {
         auto& hm = ModeFor(hand);
         hm.mode = ss.mode;
         hm.wantAutoAttack = ss.autoAttack;
@@ -554,7 +566,7 @@ namespace IntegratedMagic {
         }
     }
 
-    void MagicState::FinishHand(IntegratedMagic::MagicSlots::Hand hand) {
+    void MagicState::FinishHand(IntegratedMagic::Slots::Hand hand) {
         auto& hm = ModeFor(hand);
         hm.finished = true;
         hm.holdActive = false;
@@ -572,7 +584,7 @@ namespace IntegratedMagic {
 
     void MagicState::OnSlotPressed(int slot) {
         if (_active && slot == _activeSlot) {
-            using enum IntegratedMagic::MagicSlots::Hand;
+            using enum IntegratedMagic::Slots::Hand;
             const bool needL = (_modeSpellLeft != nullptr);
             const bool needR = (_modeSpellRight != nullptr);
             const bool pressL = needL && (_left.mode == IntegratedMagic::ActivationMode::Press) && _left.pressActive;
@@ -606,11 +618,11 @@ namespace IntegratedMagic {
         if (!PrepareSlotEntry(slot, e)) {
             return;
         }
-        using enum IntegratedMagic::MagicSlots::Hand;
+        using enum IntegratedMagic::Slots::Hand;
         if (e.hasRight && e.rightSettings.mode == IntegratedMagic::ActivationMode::Automatic &&
             !HasEnoughMagickaForSpell(e.player, e.rightSpell)) {
             e.hasRight = false;
-            DisableHand(IntegratedMagic::MagicSlots::Hand::Right);
+            DisableHand(IntegratedMagic::Slots::Hand::Right);
         }
         if (e.hasLeft && e.leftSettings.mode == IntegratedMagic::ActivationMode::Automatic) {
             float magickaAvailable = GetPlayerMagicka(e.player);
@@ -621,21 +633,21 @@ namespace IntegratedMagic {
                     const float totalDualCost = baseCostRight * dualMultiplier;
                     if (totalDualCost > 0.0f && (magickaAvailable + 1e-2f) < totalDualCost) {
                         e.hasLeft = false;
-                        DisableHand(IntegratedMagic::MagicSlots::Hand::Left);
+                        DisableHand(IntegratedMagic::Slots::Hand::Left);
                     }
                 } else {
                     magickaAvailable -= baseCostRight;
                     const float costLeft = GetSpellMagickaCost(e.player, e.leftSpell);
                     if (costLeft > 0.0f && (magickaAvailable + 1e-2f) < costLeft) {
                         e.hasLeft = false;
-                        DisableHand(IntegratedMagic::MagicSlots::Hand::Left);
+                        DisableHand(IntegratedMagic::Slots::Hand::Left);
                     }
                 }
             } else {
                 const float costLeft = GetSpellMagickaCost(e.player, e.leftSpell);
                 if (costLeft > 0.0f && (magickaAvailable + 1e-2f) < costLeft) {
                     e.hasLeft = false;
-                    DisableHand(IntegratedMagic::MagicSlots::Hand::Left);
+                    DisableHand(IntegratedMagic::Slots::Hand::Left);
                 }
             }
         }
@@ -688,13 +700,13 @@ namespace IntegratedMagic {
         if (!_active || slot != _activeSlot) {
             return;
         }
-        using Hand = IntegratedMagic::MagicSlots::Hand;
-        using enum IntegratedMagic::MagicSlots::Hand;
+        using Hand = IntegratedMagic::Slots::Hand;
+        using enum IntegratedMagic::Slots::Hand;
         auto handleHoldRelease = [&](Hand hand) {
             auto& hm = ModeFor(hand);
             if (!hm.holdActive) return;
             hm.holdActive = false;
-            const std::uint32_t id = IntegratedMagic::MagicSlots::GetSlotSpell(_activeSlot, hand);
+            const std::uint32_t id = IntegratedMagic::Slots::GetSlotSpell(_activeSlot, hand);
             const auto* spell = id ? RE::TESForm::LookupByID<RE::SpellItem>(id) : nullptr;
             if (const float charge = spell ? spell->GetChargeTime() : 0.0f; charge <= 0.0f) {
                 FinishHand(hand);
@@ -719,8 +731,8 @@ namespace IntegratedMagic {
         TryFinalizeExit();
     }
 
-    void MagicState::StartAutoAttack(IntegratedMagic::MagicSlots::Hand hand) {
-        using enum IntegratedMagic::MagicSlots::Hand;
+    void MagicState::StartAutoAttack(IntegratedMagic::Slots::Hand hand) {
+        using enum IntegratedMagic::Slots::Hand;
         if (hand == Left) {
             _aaHeldLeft = true;
             _aaSecsLeft = 0.0f;
@@ -731,8 +743,8 @@ namespace IntegratedMagic {
         IntegratedMagic::detail::DispatchAttack(hand, 1.0f, 0.0f);
     }
 
-    void MagicState::StopAutoAttack(IntegratedMagic::MagicSlots::Hand hand) {
-        using enum IntegratedMagic::MagicSlots::Hand;
+    void MagicState::StopAutoAttack(IntegratedMagic::Slots::Hand hand) {
+        using enum IntegratedMagic::Slots::Hand;
         bool& held = (hand == Left) ? _aaHeldLeft : _aaHeldRight;
         float& secs = (hand == Left) ? _aaSecsLeft : _aaSecsRight;
         if (!held) {
@@ -745,13 +757,13 @@ namespace IntegratedMagic {
     }
 
     void MagicState::StopAllAutoAttack() {
-        using enum IntegratedMagic::MagicSlots::Hand;
+        using enum IntegratedMagic::Slots::Hand;
         StopAutoAttack(Left);
         StopAutoAttack(Right);
     }
 
     void MagicState::PumpAutoAttack(float dt) {
-        using enum IntegratedMagic::MagicSlots::Hand;
+        using enum IntegratedMagic::Slots::Hand;
         const float add = (dt > 0.0f) ? dt : 0.0f;
         if (_aaHeldLeft) {
             _aaSecsLeft += add;
@@ -768,7 +780,7 @@ namespace IntegratedMagic {
             return;
         }
         _attackEnabled = true;
-        using enum IntegratedMagic::MagicSlots::Hand;
+        using enum IntegratedMagic::Slots::Hand;
         if (_left.waitingAutoAfterEquip) {
             _left.waitingAutoAfterEquip = false;
             if ((_left.autoActive || _left.wantAutoAttack) && !_aaHeldLeft) {
@@ -792,7 +804,7 @@ namespace IntegratedMagic {
     }
 
     void MagicState::PumpAutomatic(float dt) {
-        using enum IntegratedMagic::MagicSlots::Hand;
+        using enum IntegratedMagic::Slots::Hand;
         PumpDelayedStarts(dt);
         PumpAutoStartFallback(Left, dt);
         PumpAutoStartFallback(Right, dt);
@@ -800,8 +812,8 @@ namespace IntegratedMagic {
         PumpAutomaticHand(Right);
     }
 
-    void MagicState::PumpAutoStartFallback(IntegratedMagic::MagicSlots::Hand hand, float dt) {
-        using enum IntegratedMagic::MagicSlots::Hand;
+    void MagicState::PumpAutoStartFallback(IntegratedMagic::Slots::Hand hand, float dt) {
+        using enum IntegratedMagic::Slots::Hand;
         using enum IntegratedMagic::ActivationMode;
         auto& hm = ModeFor(hand);
         if (!_active) {
@@ -848,7 +860,7 @@ namespace IntegratedMagic {
         }
     }
 
-    void MagicState::PumpAutomaticHand(IntegratedMagic::MagicSlots::Hand hand) {
+    void MagicState::PumpAutomaticHand(IntegratedMagic::Slots::Hand hand) {
         auto& hm = ModeFor(hand);
         if (!hm.autoActive || !hm.waitingChargeComplete) {
             return;
@@ -862,7 +874,7 @@ namespace IntegratedMagic {
             FinishHand(hand);
             return;
         }
-        const std::uint32_t id = IntegratedMagic::MagicSlots::GetSlotSpell(_activeSlot, hand);
+        const std::uint32_t id = IntegratedMagic::Slots::GetSlotSpell(_activeSlot, hand);
         if (id == 0u) {
             FinishHand(hand);
             return;
@@ -872,7 +884,7 @@ namespace IntegratedMagic {
             FinishHand(hand);
             return;
         }
-        const auto src = (hand == IntegratedMagic::MagicSlots::Hand::Left) ? RE::MagicSystem::CastingSource::kLeftHand
+        const auto src = (hand == IntegratedMagic::Slots::Hand::Left) ? RE::MagicSystem::CastingSource::kLeftHand
                                                                            : RE::MagicSystem::CastingSource::kRightHand;
         auto const* caster = IntegratedMagic::MagicAction::GetCaster(player, src);
         const float charge = spell->GetChargeTime();
@@ -900,13 +912,13 @@ namespace IntegratedMagic {
         StopAutoAttack(hand);
     }
 
-    bool MagicState::HandIsRelevant(IntegratedMagic::MagicSlots::Hand h) const {
-        using enum IntegratedMagic::MagicSlots::Hand;
+    bool MagicState::HandIsRelevant(IntegratedMagic::Slots::Hand h) const {
+        using enum IntegratedMagic::Slots::Hand;
         return (h == Left) ? (_modeSpellLeft != nullptr) : (_modeSpellRight != nullptr);
     }
 
     bool MagicState::AllRelevantHandsFinished() const {
-        using enum IntegratedMagic::MagicSlots::Hand;
+        using enum IntegratedMagic::Slots::Hand;
         const bool needL = HandIsRelevant(Left);
         const bool needR = HandIsRelevant(Right);
         const bool okL = !needL || _left.finished;
@@ -964,28 +976,24 @@ namespace IntegratedMagic {
     }
 
     void MagicState::OnCastStop() {
-        using enum IntegratedMagic::MagicSlots::Hand;
+        using enum IntegratedMagic::Slots::Hand;
         if (!_active) {
             return;
         }
         if (_pendingSkipFirstCastStop) {
             _pendingSkipFirstCastStop = false;
 
-            auto stopAndDelayStart = [&](IntegratedMagic::MagicSlots::Hand h) {
+            auto stopAndDelayStart = [&](IntegratedMagic::Slots::Hand h) {
                 auto& hm = ModeFor(h);
                 if ((hm.autoActive || (hm.holdActive && hm.wantAutoAttack)) && !hm.finished) {
-                    // Cancela qualquer start pendente anterior (evita empilhar)
                     CancelDelayedStart(h);
 
-                    // Stop agora
                     StopAutoAttack(h);
 
-                    // Rearma retry loop (se você usa isso)
                     hm.waitingBeginCast = true;
                     hm.beginCastWaitSecs = 0.f;
                     hm.beginCastRetries = 0;
 
-                    // Start só daqui 50ms
                     ScheduleDelayedStart(h);
                 }
             };
@@ -1029,7 +1037,7 @@ namespace IntegratedMagic {
             return;
         }
         _firstInterrupt++;
-        using enum IntegratedMagic::MagicSlots::Hand;
+        using enum IntegratedMagic::Slots::Hand;
         bool anyFinished = false;
         if (_left.autoActive && !_left.finished) {
             FinishHand(Left);
@@ -1048,7 +1056,7 @@ namespace IntegratedMagic {
         if (!_active || _activeSlot < 0) {
             return false;
         }
-        using enum IntegratedMagic::MagicSlots::Hand;
+        using enum IntegratedMagic::Slots::Hand;
         const bool needL = (_modeSpellLeft != nullptr);
         const bool needR = (_modeSpellRight != nullptr);
         if (!needL && !needR) {
@@ -1091,7 +1099,7 @@ namespace IntegratedMagic {
         _modeSpellRight = nullptr;
     }
 
-    void MagicState::DisableHand(IntegratedMagic::MagicSlots::Hand hand) {
+    void MagicState::DisableHand(IntegratedMagic::Slots::Hand hand) {
         auto& hm = ModeFor(hand);
         StopAutoAttack(hand);
         hm = {};
@@ -1126,7 +1134,7 @@ namespace IntegratedMagic {
         }
     }
 
-    void MagicState::OnBeginCast(IntegratedMagic::MagicSlots::Hand hand) {
+    void MagicState::OnBeginCast(IntegratedMagic::Slots::Hand hand) {
         auto& mode = ModeFor(hand);
         if (!mode.waitingBeginCast) return;
 
@@ -1143,32 +1151,26 @@ namespace IntegratedMagic {
             return;
         }
 
-        auto pumpOne = [&](IntegratedMagic::MagicSlots::Hand h) {
+        auto pumpOne = [&](IntegratedMagic::Slots::Hand h) {
             auto& d = DelayFor(h);
             if (!d.pending) return;
 
             d.secs += (dt > 0.f ? dt : 0.f);
             if (d.secs < kDelayedStartSec) return;
 
-            // hora de startar
             d.pending = false;
             d.secs = 0.f;
 
             auto& hm = ModeFor(h);
             if ((hm.autoActive || (hm.holdActive && hm.wantAutoAttack)) && !hm.finished) {
-                // Start "de verdade" agora
                 StartAutoAttack(h);
 
-                // E (opcional) rearma a lógica de begin-cast retry
                 hm.waitingBeginCast = true;
                 hm.beginCastWaitSecs = 0.f;
-                // NÃO zere beginCastRetries aqui se você quer contar retries.
-                // Se você quer que esse delayed start seja "tentativa 1", pode zerar:
-                // hm.beginCastRetries = 0;
             }
         };
 
-        using enum IntegratedMagic::MagicSlots::Hand;
+        using enum IntegratedMagic::Slots::Hand;
         pumpOne(Left);
         pumpOne(Right);
     }

@@ -1,9 +1,9 @@
-#include "MagicStrings.h"
+#include "Strings.h"
 
 #include <fstream>
 #include <unordered_map>
 
-#include "Config/MagicConfigPath.h"
+#include "Config/ConfigPath.h"
 #include "PCH.h"
 
 namespace IntegratedMagic::Strings {

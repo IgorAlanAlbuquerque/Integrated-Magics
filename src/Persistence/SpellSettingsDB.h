@@ -7,7 +7,7 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "Config/MagicConfigPath.h"
+#include "Config/ConfigPath.h"
 
 namespace IntegratedMagic {
 

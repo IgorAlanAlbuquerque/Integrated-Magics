@@ -2,5 +2,6 @@
 
 namespace IntegratedMagic::HUD {
     void Register();
-    void Draw();
+    void ToggleDetailPopup();
+    void CloseDetailPopup();
 }

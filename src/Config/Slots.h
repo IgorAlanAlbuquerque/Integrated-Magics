@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 
-namespace IntegratedMagic::MagicSlots {
+namespace IntegratedMagic::Slots {
     enum class Hand : std::uint8_t { Left, Right };
     std::uint32_t GetSlotCount();
     bool IsValidSlot(int slot);
