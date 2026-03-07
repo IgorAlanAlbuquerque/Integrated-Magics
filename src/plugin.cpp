@@ -108,6 +108,7 @@ namespace {
                 IntegratedMagic::SpellSettingsDB::Get().Load();
                 IntegratedMagic::MENU::Register();
                 IntegratedMagic::HUD::Register();
+                IntegratedMagic::TextureManager::Init();
                 Input::OnConfigChanged();
                 IntegratedMagic::Hooks::Install_Hooks();
                 break;

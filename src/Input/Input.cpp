@@ -251,7 +251,6 @@ namespace {
         return ComboDown(hk.kb, g_kbDown) || ComboDown(hk.gp, g_gpDown);
     }
 
-    // Verifica se alguma tecla do combo esta pressionada (qualquer uma, nao todas)
     template <class DownArr>
     bool AnyComboKeyDown(const std::array<int, 3>& combo, const DownArr& down) {
         return std::ranges::any_of(combo, [&](int code) {
@@ -265,7 +264,6 @@ namespace {
         const auto s = static_cast<std::size_t>(slot);
         const bool isMulti = g_slotIsMultiKey[s];
 
-        // Ler prev ANTES de sobrescrever — a deteccao de edge usa esses valores
         const bool kbPrev = g_prevRawKbDown[s];
         const bool gpPrev = g_prevRawGpDown[s];
         g_prevRawKbDown[s] = kbNow;
@@ -280,7 +278,6 @@ namespace {
             const auto src = g_exclusivePendingSrc[s];
             const bool stillDown = (src == PendingSrc::Kb) ? kbNow : gpNow;
 
-            // Verifica exclusividade — cancela se tecla nao pertencente ao combo foi pressionada
             const bool stillExcl = (src == PendingSrc::Kb)
                                        ? ComboExclusiveNow(hk.kb, g_kbDown, IsAllowedExtra_Keyboard_MoveOrCamera)
                                        : ComboExclusiveNow(hk.gp, g_gpDown, IsAllowedExtra_Gamepad_MoveOrCamera);
@@ -290,46 +287,39 @@ namespace {
             }
 
             if (isMulti) {
-                // Combo completo detectado pela primeira vez — inicia janela de exclusividade
                 if (stillDown && !g_slotFullComboSeen[s]) {
                     g_slotFullComboSeen[s] = true;
                     g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;
                 }
 
                 if (!stillDown) {
-                    // Combo completo ja foi visto → ativa (usuario soltou uma tecla apos combo)
                     if (g_slotFullComboSeen[s]) {
                         DiscardExclusivePending(s);
                         return true;
                     }
-                    // Combo completo nunca visto — verifica se ainda parcialmente pressionado
+
                     const bool anyHeld =
                         (src == PendingSrc::Gp) ? AnyComboKeyDown(hk.gp, g_gpDown) : AnyComboKeyDown(hk.kb, g_kbDown);
                     if (anyHeld) {
-                        // Parcial: decrementa timeout de espera pela segunda tecla
                         g_exclusivePendingTimer[s] -= dt;
                         if (g_exclusivePendingTimer[s] <= 0.0f) {
-                            // Tempo esgotado sem combo completo → cancela, repassa teclas retidas
                             ClearExclusivePending(s, ClearReason::Cancelled);
                         }
                         return false;
                     }
-                    // Todas as teclas soltas sem combo completo → cancela
+
                     ClearExclusivePending(s, ClearReason::Cancelled);
                     return false;
                 }
 
-                // stillDown=true (combo completo pressionado): decrementa janela de exclusividade
                 g_exclusivePendingTimer[s] -= dt;
                 if (g_exclusivePendingTimer[s] <= 0.0f) {
-                    // Janela passou sem tecla estranha → ativa, descarta teclas retidas
                     ClearExclusivePending(s, ClearReason::Success);
                     return true;
                 }
                 return false;
 
             } else {
-                // Single-key: logica original
                 if (!stillDown) {
                     DiscardExclusivePending(s);
                     return true;
@@ -343,20 +333,19 @@ namespace {
             }
         }
 
-        // Sem pending ativo — detecta edge do combo completo (single-key ou multi-key juntos)
         const bool kbEdge = kbNow && !kbPrev;
         const bool gpEdge = gpNow && !gpPrev;
 
         if (kbEdge && ComboExclusiveNow(hk.kb, g_kbDown, IsAllowedExtra_Keyboard_MoveOrCamera)) {
             g_exclusivePendingSrc[s] = PendingSrc::Kb;
             g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;
-            if (isMulti) g_slotFullComboSeen[s] = true;  // combo completo chegou de uma vez
+            if (isMulti) g_slotFullComboSeen[s] = true;
             return false;
         }
         if (gpEdge && ComboExclusiveNow(hk.gp, g_gpDown, IsAllowedExtra_Gamepad_MoveOrCamera)) {
             g_exclusivePendingSrc[s] = PendingSrc::Gp;
             g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;
-            if (isMulti) g_slotFullComboSeen[s] = true;  // combo completo chegou de uma vez
+            if (isMulti) g_slotFullComboSeen[s] = true;
             return false;
         }
         return false;
@@ -374,7 +363,6 @@ namespace {
             const bool prevAcc = g_slotDown[s].load(std::memory_order_relaxed);
             bool accNow = false;
             if (cfg.requireExclusiveHotkeyPatch || g_slotIsMultiKey[s]) {
-                // Multi-key sempre usa o modo exclusivo para evitar vazamento de teclas modificadoras
                 accNow = ComputeAcceptedExclusive(slot, hk, prevAcc, kbNow, gpNow, rawNow, dt);
             } else {
                 g_prevRawKbDown[s] = kbNow;
@@ -386,7 +374,7 @@ namespace {
                 g_slotDown[s].store(accNow, std::memory_order_relaxed);
                 AtomicFetchOrU64(accNow ? g_pressedMask : g_releasedMask, (1uLL << slot));
             }
-            // wasAccepted permanece true ate rawNow=false (todos os botoes soltos)
+
             if (accNow)
                 g_slotWasAccepted[s] = true;
             else if (!rawNow)
@@ -520,23 +508,17 @@ namespace {
                 return true;
             }
 
-            // Filtra enquanto wasAccepted=true (teclas ainda pressionadas apos combo ativo)
             if (g_slotWasAccepted[s]) return true;
 
-            // Race guard: combo completo ja esta down mas accepted ainda nao propagou neste frame
             if (inKb && ComboDown(hk.kb, g_kbDown)) return true;
             if (inGp && ComboDown(hk.gp, g_gpDown)) return true;
 
-            // Multi-key: inicia pending na PRIMEIRA tecla do combo para evitar que o modificador
-            // (ex: R2) vaze para o jogo antes do combo completo ser detectado.
             if (g_slotIsMultiKey[s] && !HasExclusivePending(s)) {
                 const PendingSrc src = inGp ? PendingSrc::Gp : PendingSrc::Kb;
                 g_exclusivePendingSrc[s] = src;
-                g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;  // timeout parcial
-                // Cai no bloco HasExclusivePending abaixo para reter o evento
+                g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;
             }
 
-            // Re-verifica pending (pode ter sido iniciado acima)
             if (HasExclusivePending(s)) {
                 if (const bool isHeld = (value > 0.5f && heldSecs > 0.0f); !isHeld) {
                     g_retainedEvents[s].emplace_back(dev, rawIdCode, userEvent, value, heldSecs);

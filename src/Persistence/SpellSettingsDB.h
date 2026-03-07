@@ -35,6 +35,7 @@ namespace IntegratedMagic {
         bool IsDirty() const;
         void ClearDirty();
         static std::filesystem::path JsonPath();
+
     private:
         mutable std::mutex _mtx{};
         std::unordered_map<std::string, IntegratedMagic::SpellSettings, TransparentStringHash, std::equal_to<>>

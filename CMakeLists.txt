@@ -25,6 +25,7 @@ add_commonlibsse_plugin(${PROJECT_NAME}
     src/UI/Strings.cpp
     src/UI/MENU_IntegratedMagic.cpp
     src/UI/HUD.cpp
+    src/UI/TextureManager.cpp
     src/Config/Config.cpp
     src/Config/Slots.cpp
     src/Persistence/SpellSettingsDB.cpp
@@ -57,6 +58,7 @@ target_precompile_headers(${PROJECT_NAME}
     src/UI/Strings.h
     src/UI/MENU_IntegratedMagic.h
     src/UI/HUD.h
+    src/UI/TextureManager.h
     src/Config/ConfigPath.h
     src/Config/Config.h
     src/Config/Slots.h

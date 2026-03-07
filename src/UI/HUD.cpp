@@ -14,6 +14,7 @@
 #include "RE/U/UI.h"
 #include "SKSEMenuFramework.h"
 #include "State/State.h"
+#include "UI/TextureManager.h"
 
 namespace ImGui = ImGuiMCP;
 namespace DL = ImGuiMCP::ImDrawListManager;
@@ -42,7 +43,7 @@ namespace IntegratedMagic::HUD {
 
         static ImVec2 g_mousePos = {0.f, 0.f};
         static std::atomic_bool g_mouseClicked{false};
-        static std::atomic_bool g_mouseRightClicked{false}; // edge de down do RMB
+        static std::atomic_bool g_mouseRightClicked{false};
         static std::atomic_bool g_popupJustOpened{false};
 
         bool IsHardBlocked() {
@@ -138,6 +139,16 @@ namespace IntegratedMagic::HUD {
             }
         }
 
+        void DrawSpellIcon(ImDrawList* dl, const RE::SpellItem* spell, float cx, float cy, float iconSize) {
+            const auto& img = TextureManager::GetSpellIcon(spell);
+            if (!img.valid()) return;
+            const float half = iconSize * 0.5f;
+            const ImVec2 p0{cx - half, cy - half};
+            const ImVec2 p1{cx + half, cy + half};
+            DL::AddImage(dl, reinterpret_cast<ImTextureID>(img.texture), p0, p1, {0.f, 0.f}, {1.f, 1.f},
+                         IM_COL32(255, 255, 255, 220));
+        }
+
         void DrawSlotVisual(ImDrawList* dl, ImVec2 center, float r, bool isActive, RE::SpellItem const* rSpell,
                             RE::SpellItem const* lSpell) {
             const auto rPal = SpellPalette(rSpell);
@@ -150,11 +161,10 @@ namespace IntegratedMagic::HUD {
 
             DL::AddCircleFilled(dl, center, r, isActive ? IM_COL32(30, 22, 15, 230) : IM_COL32(12, 12, 12, 200), 48);
 
-            FillSector(dl, center, r - 2.f, -kPI * 0.5f, kPI * 0.5f, rPal.fill);
-            FillSector(dl, center, r - 2.f, kPI * 0.5f, kPI * 1.5f, lPal.fill);
-
-            DL::AddLine(dl, {center.x, center.y - r + 3.f}, {center.x, center.y + r - 3.f}, IM_COL32(0, 0, 0, 180),
-                        kDivWidth);
+            const float iconSize = r * 0.90f;
+            const float iconOffset = r * 0.28f;
+            if (rSpell) DrawSpellIcon(dl, rSpell, center.x + iconOffset, center.y, iconSize);
+            if (lSpell) DrawSpellIcon(dl, lSpell, center.x - iconOffset, center.y, iconSize);
 
             if (isActive) {
                 const double t = ImGui::GetTime();
@@ -174,8 +184,6 @@ namespace IntegratedMagic::HUD {
             }
         }
 
-        // Raio minimo para que n slots de raio slotR nao se sobreponham.
-        // Corda entre adjacentes = 2R*sin(pi/n) >= 2*slotR + gap
         inline float DynamicRingRadius(int n, float slotR, float baseR, float gap = 8.f) {
             if (n <= 1) return baseR;
             const float minR = (slotR + gap * 0.5f) / std::sin(kPI / static_cast<float>(n));
@@ -327,7 +335,7 @@ namespace IntegratedMagic::HUD {
             DrawRingCenter(dl, ringCenter);
 
             for (int i = 0; i < n; ++i) {
-                const float  dynR   = DynamicRingRadius(n, kSlotRadius, kRingRadius);
+                const float dynR = DynamicRingRadius(n, kSlotRadius, kRingRadius);
                 const ImVec2 center = SlotCenter(ringCenter, dynR, i, n);
                 const auto rID = Slots::GetSlotSpell(i, Slots::Hand::Right);
                 const auto lID = Slots::GetSlotSpell(i, Slots::Hand::Left);
@@ -347,10 +355,9 @@ namespace IntegratedMagic::HUD {
                 g_mousePos = {io->DisplaySize.x * 0.5f, io->DisplaySize.y * 0.5f};
             }
 
-            const bool clicked      = g_mouseClicked.exchange(false, std::memory_order_relaxed);
+            const bool clicked = g_mouseClicked.exchange(false, std::memory_order_relaxed);
             const bool rightClicked = g_mouseRightClicked.exchange(false, std::memory_order_relaxed);
 
-            // n declarado aqui para que dynPopupR possa usá-lo antes do Begin
             const int n = static_cast<int>(Slots::GetSlotCount());
             const float dynPopupR = DynamicRingRadius(n, kPopupSlotRadius, kPopupRingRadius);
             const float popupHalf = dynPopupR + kPopupSlotRadius + kGlowPad + kModeWidgetW + 12.f;
@@ -414,7 +421,8 @@ namespace IntegratedMagic::HUD {
                             else
                                 FillSector(dl, center, kPopupSlotRadius - 1.f, kPI * 0.5f, kPI * 1.5f, hlColor);
 
-                            const char* tip = hoverRight ? "LMB assign  |  RMB clear  [Right]" : "LMB assign  |  RMB clear  [Left]";
+                            const char* tip =
+                                hoverRight ? "LMB assign  |  RMB clear  [Right]" : "LMB assign  |  RMB clear  [Left]";
                             ImGui::SetCursorScreenPos({g_mousePos.x + 14.f, g_mousePos.y + 4.f});
                             ImGui::TextDisabled("%s", tip);
 
@@ -464,7 +472,7 @@ namespace IntegratedMagic::HUD {
         g_mousePos.y = std::clamp(g_mousePos.y + dy, 0.f, io->DisplaySize.y);
     }
 
-    void FeedMouseClick()      { g_mouseClicked.store(true, std::memory_order_relaxed); }
+    void FeedMouseClick() { g_mouseClicked.store(true, std::memory_order_relaxed); }
     void FeedMouseRightClick() { g_mouseRightClicked.store(true, std::memory_order_relaxed); }
 
     void ToggleDetailPopup() {
