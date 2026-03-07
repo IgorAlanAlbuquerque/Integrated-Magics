@@ -9,4 +9,5 @@ namespace IntegratedMagic::HUD {
     bool IsDetailPopupOpen();
     void FeedMouseDelta(float dx, float dy);
     void FeedMouseClick();
+    void FeedMouseRightClick();
 }

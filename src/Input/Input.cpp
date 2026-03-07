@@ -31,9 +31,12 @@ namespace {
     std::array<std::atomic_bool, kMaxCode> g_kbDown{};       // NOSONAR
     std::array<std::atomic_bool, kMaxCode> g_gpDown{};       // NOSONAR
     std::array<std::atomic_bool, kMaxSlots> g_slotDown{};    // NOSONAR
+    std::array<bool, kMaxSlots> g_slotWasAccepted{};         // NOSONAR — filtra releases após combo aceito
     std::atomic<std::uint64_t> g_pressedMask{0ull};          // NOSONAR
     std::atomic<std::uint64_t> g_releasedMask{0ull};         // NOSONAR
     std::array<bool, kMaxSlots> g_prevRawKbDown{};           // NOSONAR
+    std::array<bool, kMaxSlots> g_slotIsMultiKey{};          // NOSONAR — combo com 2+ teclas
+    std::array<bool, kMaxSlots> g_slotFullComboSeen{};       // NOSONAR — combo completo visto no pending atual
     std::array<bool, kMaxSlots> g_prevRawGpDown{};           // NOSONAR
     std::array<float, kMaxSlots> g_exclusivePendingTimer{};  // NOSONAR
 
@@ -164,12 +167,14 @@ namespace {
         g_retainedEvents[s].clear();
         g_exclusivePendingSrc[s] = PendingSrc::None;
         g_exclusivePendingTimer[s] = 0.0f;
+        g_slotFullComboSeen[s] = false;
     }
 
     void DiscardExclusivePending(std::size_t s) {
         g_retainedEvents[s].clear();
         g_exclusivePendingSrc[s] = PendingSrc::None;
         g_exclusivePendingTimer[s] = 0.0f;
+        g_slotFullComboSeen[s] = false;
     }
 
     void ClearEdgeStateOnly() {
@@ -177,6 +182,9 @@ namespace {
         for (int slot = 0; slot < n; ++slot) {
             const auto s = static_cast<std::size_t>(slot);
             g_slotDown[s].store(false, std::memory_order_relaxed);
+            g_slotWasAccepted[s] = false;
+            g_slotFullComboSeen[s] = false;
+            g_slotFullComboSeen[s] = false;
             g_prevRawKbDown[s] = false;
             g_prevRawGpDown[s] = false;
             DiscardExclusivePending(s);
@@ -220,6 +228,7 @@ namespace {
             g_prevRawGpDown[s] = false;
             DiscardExclusivePending(s);
             g_slotDown[s].store(false, std::memory_order_relaxed);
+            g_slotWasAccepted[s] = false;
         }
         g_pressedMask.store(0uLL, std::memory_order_relaxed);
         g_releasedMask.store(0uLL, std::memory_order_relaxed);
@@ -242,13 +251,23 @@ namespace {
         return ComboDown(hk.kb, g_kbDown) || ComboDown(hk.gp, g_gpDown);
     }
 
+    // Verifica se alguma tecla do combo esta pressionada (qualquer uma, nao todas)
+    template <class DownArr>
+    bool AnyComboKeyDown(const std::array<int, 3>& combo, const DownArr& down) {
+        return std::ranges::any_of(combo, [&](int code) {
+            if (code < 0 || code >= kMaxCode) return false;
+            return down[static_cast<std::size_t>(code)].load(std::memory_order_relaxed);
+        });
+    }
+
     bool ComputeAcceptedExclusive(int slot, const SlotHotkeys& hk, bool prevAccepted, bool kbNow, bool gpNow,
                                   bool rawNow, float dt) {
         const auto s = static_cast<std::size_t>(slot);
+        const bool isMulti = g_slotIsMultiKey[s];
+
+        // Ler prev ANTES de sobrescrever — a deteccao de edge usa esses valores
         const bool kbPrev = g_prevRawKbDown[s];
         const bool gpPrev = g_prevRawGpDown[s];
-        const bool kbEdge = kbNow && !kbPrev;
-        const bool gpEdge = gpNow && !gpPrev;
         g_prevRawKbDown[s] = kbNow;
         g_prevRawGpDown[s] = gpNow;
 
@@ -260,33 +279,84 @@ namespace {
         if (HasExclusivePending(s)) {
             const auto src = g_exclusivePendingSrc[s];
             const bool stillDown = (src == PendingSrc::Kb) ? kbNow : gpNow;
-            if (const bool stillExcl = (src == PendingSrc::Kb)
-                                           ? ComboExclusiveNow(hk.kb, g_kbDown, IsAllowedExtra_Keyboard_MoveOrCamera)
-                                           : ComboExclusiveNow(hk.gp, g_gpDown, IsAllowedExtra_Gamepad_MoveOrCamera);
-                !stillExcl) {
+
+            // Verifica exclusividade — cancela se tecla nao pertencente ao combo foi pressionada
+            const bool stillExcl = (src == PendingSrc::Kb)
+                                       ? ComboExclusiveNow(hk.kb, g_kbDown, IsAllowedExtra_Keyboard_MoveOrCamera)
+                                       : ComboExclusiveNow(hk.gp, g_gpDown, IsAllowedExtra_Gamepad_MoveOrCamera);
+            if (!stillExcl) {
                 ClearExclusivePending(s, ClearReason::Cancelled);
                 return false;
             }
-            if (!stillDown) {
-                DiscardExclusivePending(s);
-                return true;
+
+            if (isMulti) {
+                // Combo completo detectado pela primeira vez — inicia janela de exclusividade
+                if (stillDown && !g_slotFullComboSeen[s]) {
+                    g_slotFullComboSeen[s] = true;
+                    g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;
+                }
+
+                if (!stillDown) {
+                    // Combo completo ja foi visto → ativa (usuario soltou uma tecla apos combo)
+                    if (g_slotFullComboSeen[s]) {
+                        DiscardExclusivePending(s);
+                        return true;
+                    }
+                    // Combo completo nunca visto — verifica se ainda parcialmente pressionado
+                    const bool anyHeld =
+                        (src == PendingSrc::Gp) ? AnyComboKeyDown(hk.gp, g_gpDown) : AnyComboKeyDown(hk.kb, g_kbDown);
+                    if (anyHeld) {
+                        // Parcial: decrementa timeout de espera pela segunda tecla
+                        g_exclusivePendingTimer[s] -= dt;
+                        if (g_exclusivePendingTimer[s] <= 0.0f) {
+                            // Tempo esgotado sem combo completo → cancela, repassa teclas retidas
+                            ClearExclusivePending(s, ClearReason::Cancelled);
+                        }
+                        return false;
+                    }
+                    // Todas as teclas soltas sem combo completo → cancela
+                    ClearExclusivePending(s, ClearReason::Cancelled);
+                    return false;
+                }
+
+                // stillDown=true (combo completo pressionado): decrementa janela de exclusividade
+                g_exclusivePendingTimer[s] -= dt;
+                if (g_exclusivePendingTimer[s] <= 0.0f) {
+                    // Janela passou sem tecla estranha → ativa, descarta teclas retidas
+                    ClearExclusivePending(s, ClearReason::Success);
+                    return true;
+                }
+                return false;
+
+            } else {
+                // Single-key: logica original
+                if (!stillDown) {
+                    DiscardExclusivePending(s);
+                    return true;
+                }
+                g_exclusivePendingTimer[s] -= dt;
+                if (g_exclusivePendingTimer[s] <= 0.0f) {
+                    ClearExclusivePending(s, ClearReason::Success);
+                    return true;
+                }
+                return false;
             }
-            g_exclusivePendingTimer[s] -= dt;
-            if (g_exclusivePendingTimer[s] <= 0.0f) {
-                ClearExclusivePending(s, ClearReason::Timeout);
-                return true;
-            }
-            return false;
         }
+
+        // Sem pending ativo — detecta edge do combo completo (single-key ou multi-key juntos)
+        const bool kbEdge = kbNow && !kbPrev;
+        const bool gpEdge = gpNow && !gpPrev;
 
         if (kbEdge && ComboExclusiveNow(hk.kb, g_kbDown, IsAllowedExtra_Keyboard_MoveOrCamera)) {
             g_exclusivePendingSrc[s] = PendingSrc::Kb;
             g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;
+            if (isMulti) g_slotFullComboSeen[s] = true;  // combo completo chegou de uma vez
             return false;
         }
         if (gpEdge && ComboExclusiveNow(hk.gp, g_gpDown, IsAllowedExtra_Gamepad_MoveOrCamera)) {
             g_exclusivePendingSrc[s] = PendingSrc::Gp;
             g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;
+            if (isMulti) g_slotFullComboSeen[s] = true;  // combo completo chegou de uma vez
             return false;
         }
         return false;
@@ -303,7 +373,8 @@ namespace {
             const auto s = static_cast<std::size_t>(slot);
             const bool prevAcc = g_slotDown[s].load(std::memory_order_relaxed);
             bool accNow = false;
-            if (cfg.requireExclusiveHotkeyPatch) {
+            if (cfg.requireExclusiveHotkeyPatch || g_slotIsMultiKey[s]) {
+                // Multi-key sempre usa o modo exclusivo para evitar vazamento de teclas modificadoras
                 accNow = ComputeAcceptedExclusive(slot, hk, prevAcc, kbNow, gpNow, rawNow, dt);
             } else {
                 g_prevRawKbDown[s] = kbNow;
@@ -311,9 +382,15 @@ namespace {
                 DiscardExclusivePending(s);
                 accNow = rawNow;
             }
-            if (accNow == prevAcc) continue;
-            g_slotDown[s].store(accNow, std::memory_order_relaxed);
-            AtomicFetchOrU64(accNow ? g_pressedMask : g_releasedMask, (1uLL << slot));
+            if (accNow != prevAcc) {
+                g_slotDown[s].store(accNow, std::memory_order_relaxed);
+                AtomicFetchOrU64(accNow ? g_pressedMask : g_releasedMask, (1uLL << slot));
+            }
+            // wasAccepted permanece true ate rawNow=false (todos os botoes soltos)
+            if (accNow)
+                g_slotWasAccepted[s] = true;
+            else if (!rawNow)
+                g_slotWasAccepted[s] = false;
         }
     }
 
@@ -434,20 +511,36 @@ namespace {
             const auto s = static_cast<std::size_t>(slot);
             const auto& hk = g_cache[s];
             const bool inKb = dev == RE::INPUT_DEVICE::kKeyboard && ComboContains(hk.kb, convertedCode);
-            if (const bool inGp = dev == RE::INPUT_DEVICE::kGamepad && ComboContains(hk.gp, convertedCode);
-                !inKb && !inGp)
-                continue;
+            const bool inGp = dev == RE::INPUT_DEVICE::kGamepad && ComboContains(hk.gp, convertedCode);
+            if (!inKb && !inGp) continue;
 
             const bool accepted = g_slotDown[s].load(std::memory_order_relaxed);
 
-            if (const bool pending = HasExclusivePending(s); pending) {
-                if (const bool isHeld = (value > 0.5f && heldSecs > 0.0f); !isHeld) {
-                    g_retainedEvents[s].emplace_back(dev, rawIdCode, userEvent, value, heldSecs);
-                }
+            if (accepted) {
                 return true;
             }
 
-            if (accepted) {
+            // Filtra enquanto wasAccepted=true (teclas ainda pressionadas apos combo ativo)
+            if (g_slotWasAccepted[s]) return true;
+
+            // Race guard: combo completo ja esta down mas accepted ainda nao propagou neste frame
+            if (inKb && ComboDown(hk.kb, g_kbDown)) return true;
+            if (inGp && ComboDown(hk.gp, g_gpDown)) return true;
+
+            // Multi-key: inicia pending na PRIMEIRA tecla do combo para evitar que o modificador
+            // (ex: R2) vaze para o jogo antes do combo completo ser detectado.
+            if (g_slotIsMultiKey[s] && !HasExclusivePending(s)) {
+                const PendingSrc src = inGp ? PendingSrc::Gp : PendingSrc::Kb;
+                g_exclusivePendingSrc[s] = src;
+                g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;  // timeout parcial
+                // Cai no bloco HasExclusivePending abaixo para reter o evento
+            }
+
+            // Re-verifica pending (pode ter sido iniciado acima)
+            if (HasExclusivePending(s)) {
+                if (const bool isHeld = (value > 0.5f && heldSecs > 0.0f); !isHeld) {
+                    g_retainedEvents[s].emplace_back(dev, rawIdCode, userEvent, value, heldSecs);
+                }
                 return true;
             }
         }
@@ -481,8 +574,14 @@ namespace {
             out.gp[2] = in.GamepadButton3.load(std::memory_order_relaxed);
         };
         const int m = std::min(n, kMaxSlots);
-        for (int i = 0; i < m; ++i)
-            fill(g_cache[static_cast<std::size_t>(i)], cfg.slotInput[static_cast<std::size_t>(i)]);
+        for (int i = 0; i < m; ++i) {
+            const auto s = static_cast<std::size_t>(i);
+            fill(g_cache[s], cfg.slotInput[s]);
+            const auto& hk = g_cache[s];
+            const int kbKeys = std::count_if(hk.kb.begin(), hk.kb.end(), [](int c) { return c != -1; });
+            const int gpKeys = std::count_if(hk.gp.begin(), hk.gp.end(), [](int c) { return c != -1; });
+            g_slotIsMultiKey[s] = (kbKeys > 1) || (gpKeys > 1);
+        }
 
         g_hudCache = {};
         fill(g_hudCache, cfg.hudPopupInput);
@@ -544,6 +643,9 @@ namespace {
             } else if (const auto* btn = cur->AsButtonEvent()) {
                 if (btn->GetDevice() == RE::INPUT_DEVICE::kMouse && btn->GetIDCode() == 0) {
                     if (btn->IsDown()) IntegratedMagic::HUD::FeedMouseClick();
+                    remove = true;
+                } else if (btn->GetDevice() == RE::INPUT_DEVICE::kMouse && btn->GetIDCode() == 1) {
+                    if (btn->IsDown()) IntegratedMagic::HUD::FeedMouseRightClick();
                     remove = true;
                 }
             }

@@ -42,6 +42,7 @@ namespace IntegratedMagic::HUD {
 
         static ImVec2 g_mousePos = {0.f, 0.f};
         static std::atomic_bool g_mouseClicked{false};
+        static std::atomic_bool g_mouseRightClicked{false}; // edge de down do RMB
         static std::atomic_bool g_popupJustOpened{false};
 
         bool IsHardBlocked() {
@@ -171,6 +172,14 @@ namespace IntegratedMagic::HUD {
                 DL::AddLine(dl, {center.x - d, center.y - d}, {center.x + d, center.y + d}, xc, 1.f);
                 DL::AddLine(dl, {center.x + d, center.y - d}, {center.x - d, center.y + d}, xc, 1.f);
             }
+        }
+
+        // Raio minimo para que n slots de raio slotR nao se sobreponham.
+        // Corda entre adjacentes = 2R*sin(pi/n) >= 2*slotR + gap
+        inline float DynamicRingRadius(int n, float slotR, float baseR, float gap = 8.f) {
+            if (n <= 1) return baseR;
+            const float minR = (slotR + gap * 0.5f) / std::sin(kPI / static_cast<float>(n));
+            return std::max(baseR, minR);
         }
 
         ImVec2 SlotCenter(ImVec2 ringCenter, float ringRadius, int i, int n) {
@@ -318,7 +327,8 @@ namespace IntegratedMagic::HUD {
             DrawRingCenter(dl, ringCenter);
 
             for (int i = 0; i < n; ++i) {
-                const ImVec2 center = SlotCenter(ringCenter, kRingRadius, i, n);
+                const float  dynR   = DynamicRingRadius(n, kSlotRadius, kRingRadius);
+                const ImVec2 center = SlotCenter(ringCenter, dynR, i, n);
                 const auto rID = Slots::GetSlotSpell(i, Slots::Hand::Right);
                 const auto lID = Slots::GetSlotSpell(i, Slots::Hand::Left);
                 auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
@@ -337,9 +347,13 @@ namespace IntegratedMagic::HUD {
                 g_mousePos = {io->DisplaySize.x * 0.5f, io->DisplaySize.y * 0.5f};
             }
 
-            const bool clicked = g_mouseClicked.exchange(false, std::memory_order_relaxed);
+            const bool clicked      = g_mouseClicked.exchange(false, std::memory_order_relaxed);
+            const bool rightClicked = g_mouseRightClicked.exchange(false, std::memory_order_relaxed);
 
-            const float popupHalf = kPopupRingRadius + kPopupSlotRadius + kGlowPad + kModeWidgetW + 12.f;
+            // n declarado aqui para que dynPopupR possa usá-lo antes do Begin
+            const int n = static_cast<int>(Slots::GetSlotCount());
+            const float dynPopupR = DynamicRingRadius(n, kPopupSlotRadius, kPopupRingRadius);
+            const float popupHalf = dynPopupR + kPopupSlotRadius + kGlowPad + kModeWidgetW + 12.f;
             const ImVec2 popupSize = {popupHalf * 2.f, popupHalf * 2.f + 48.f};
             const ImVec2 popupPos = {io->DisplaySize.x * 0.5f - popupSize.x * 0.5f,
                                      io->DisplaySize.y * 0.5f - popupSize.y * 0.5f};
@@ -358,13 +372,12 @@ namespace IntegratedMagic::HUD {
                                  ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
                                  ImGuiWindowFlags_NoDecoration)) {
                 ImDrawList* dl = ImGui::GetWindowDrawList();
-                const auto n = static_cast<int>(Slots::GetSlotCount());
                 const int activeSlot = MagicState::Get().ActiveSlot();
 
                 DrawRingCenter(dl, ringCenter, 6.f);
 
                 for (int i = 0; i < n; ++i) {
-                    const ImVec2 center = SlotCenter(ringCenter, kPopupRingRadius, i, n);
+                    const ImVec2 center = SlotCenter(ringCenter, dynPopupR, i, n);
                     const auto rID = Slots::GetSlotSpell(i, Slots::Hand::Right);
                     const auto lID = Slots::GetSlotSpell(i, Slots::Hand::Left);
                     auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
@@ -401,7 +414,7 @@ namespace IntegratedMagic::HUD {
                             else
                                 FillSector(dl, center, kPopupSlotRadius - 1.f, kPI * 0.5f, kPI * 1.5f, hlColor);
 
-                            const char* tip = hoverRight ? "Click to assign Right hand" : "Click to assign Left hand";
+                            const char* tip = hoverRight ? "LMB assign  |  RMB clear  [Right]" : "LMB assign  |  RMB clear  [Left]";
                             ImGui::SetCursorScreenPos({g_mousePos.x + 14.f, g_mousePos.y + 4.f});
                             ImGui::TextDisabled("%s", tip);
 
@@ -410,6 +423,12 @@ namespace IntegratedMagic::HUD {
                                     MagicAssign::TryAssignHoveredSpellToSlot(i, Slots::Hand::Right);
                                 else
                                     MagicAssign::TryAssignHoveredSpellToSlot(i, Slots::Hand::Left);
+                            }
+                            if (rightClicked) {
+                                if (hoverRight)
+                                    MagicAssign::TryClearSlotHand(i, Slots::Hand::Right);
+                                else
+                                    MagicAssign::TryClearSlotHand(i, Slots::Hand::Left);
                             }
                         }
                     }
@@ -435,7 +454,6 @@ namespace IntegratedMagic::HUD {
 
             DrawOverlayAndCursor({io->DisplaySize.x, io->DisplaySize.y}, g_mousePos);
         }
-
     }
 
     bool IsDetailPopupOpen() { return g_popupWindow && g_popupWindow->IsOpen.load(std::memory_order_relaxed); }
@@ -446,7 +464,8 @@ namespace IntegratedMagic::HUD {
         g_mousePos.y = std::clamp(g_mousePos.y + dy, 0.f, io->DisplaySize.y);
     }
 
-    void FeedMouseClick() { g_mouseClicked.store(true, std::memory_order_relaxed); }
+    void FeedMouseClick()      { g_mouseClicked.store(true, std::memory_order_relaxed); }
+    void FeedMouseRightClick() { g_mouseRightClicked.store(true, std::memory_order_relaxed); }
 
     void ToggleDetailPopup() {
         if (!g_popupWindow) return;
@@ -501,6 +520,7 @@ namespace IntegratedMagic::HUD {
             [](SKSEMenuFramework::Model::EventType type) {
                 if (type == SKSEMenuFramework::Model::EventType::kCloseMenu) {
                     g_mouseClicked.store(false, std::memory_order_relaxed);
+                    g_mouseRightClicked.store(false, std::memory_order_relaxed);
                 }
             },
             0.f);

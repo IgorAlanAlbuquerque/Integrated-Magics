@@ -32,4 +32,15 @@ namespace IntegratedMagic::MagicAssign {
         cfg.Save();
         return true;
     }
+
+    bool TryClearSlotHand(int slot, Slots::Hand hand) {
+        auto& cfg = GetMagicConfig();
+        const auto s = static_cast<std::size_t>(slot);
+        if (hand == Slots::Hand::Right)
+            cfg.slotSpellFormIDRight[s].store(0, std::memory_order_relaxed);
+        else
+            cfg.slotSpellFormIDLeft[s].store(0, std::memory_order_relaxed);
+        cfg.Save();
+        return true;
+    }
 }
