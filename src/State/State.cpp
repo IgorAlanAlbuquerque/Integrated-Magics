@@ -582,112 +582,151 @@ namespace IntegratedMagic {
         CancelDelayedStart(hand);
     }
 
-    void MagicState::OnSlotPressed(int slot) {
-        if (_active && slot == _activeSlot) {
-            using enum IntegratedMagic::Slots::Hand;
-            const bool needL = (_modeSpellLeft != nullptr);
-            const bool needR = (_modeSpellRight != nullptr);
-            const bool pressL = needL && (_left.mode == IntegratedMagic::ActivationMode::Press) && _left.pressActive;
-            const bool pressR = needR && (_right.mode == IntegratedMagic::ActivationMode::Press) && _right.pressActive;
-            if (!pressL && !pressR) {
-                return;
-            }
-            if (pressL && pressR) {
-                FinishHand(Left);
-                FinishHand(Right);
-                ExitAllNow();
-                return;
-            }
-            if (pressL) {
-                FinishHand(Left);
-            }
-            if (pressR) {
-                FinishHand(Right);
-            }
-            TryFinalizeExit();
-            return;
-        }
-        if (_active && slot != _activeSlot) {
-            if (!CanOverwriteNow()) {
-                return;
-            }
-            _firstInterrupt = 0;
-            PrepareForOverwriteToSlot(slot);
-        }
-        SlotEntry e{};
-        if (!PrepareSlotEntry(slot, e)) {
-            return;
-        }
+    bool MagicState::HandleSameSlotPressed() {
         using enum IntegratedMagic::Slots::Hand;
+
+        const bool needL = (_modeSpellLeft != nullptr);
+        const bool needR = (_modeSpellRight != nullptr);
+
+        const bool pressL = needL && (_left.mode == IntegratedMagic::ActivationMode::Press) && _left.pressActive;
+        const bool pressR = needR && (_right.mode == IntegratedMagic::ActivationMode::Press) && _right.pressActive;
+
+        if (!pressL && !pressR) {
+            return true;
+        }
+
+        if (pressL && pressR) {
+            FinishHand(Left);
+            FinishHand(Right);
+            ExitAllNow();
+            return true;
+        }
+
+        if (pressL) {
+            FinishHand(Left);
+        }
+
+        if (pressR) {
+            FinishHand(Right);
+        }
+
+        TryFinalizeExit();
+        return true;
+    }
+
+    bool MagicState::HandleSlotOverwrite(int slot) {
+        if (!_active || slot == _activeSlot) {
+            return false;
+        }
+
+        if (!CanOverwriteNow()) {
+            return true;
+        }
+
+        _firstInterrupt = 0;
+        PrepareForOverwriteToSlot(slot);
+        return false;
+    }
+
+    void MagicState::ValidateMagickaForSlot(SlotEntry& e) {
+        using enum IntegratedMagic::Slots::Hand;
+
         if (e.hasRight && e.rightSettings.mode == IntegratedMagic::ActivationMode::Automatic &&
             !HasEnoughMagickaForSpell(e.player, e.rightSpell)) {
             e.hasRight = false;
-            DisableHand(IntegratedMagic::Slots::Hand::Right);
+            DisableHand(Right);
         }
-        if (e.hasLeft && e.leftSettings.mode == IntegratedMagic::ActivationMode::Automatic) {
-            float magickaAvailable = GetPlayerMagicka(e.player);
-            if (e.hasRight && e.rightSettings.mode == IntegratedMagic::ActivationMode::Automatic) {
-                const float baseCostRight = GetSpellMagickaCost(e.player, e.rightSpell);
-                if (e.rightID == e.leftID) {
-                    const float dualMultiplier = GetDualCastCostMultiplier(e.player, e.rightSpell);
-                    const float totalDualCost = baseCostRight * dualMultiplier;
-                    if (totalDualCost > 0.0f && (magickaAvailable + 1e-2f) < totalDualCost) {
-                        e.hasLeft = false;
-                        DisableHand(IntegratedMagic::Slots::Hand::Left);
-                    }
-                } else {
-                    magickaAvailable -= baseCostRight;
-                    const float costLeft = GetSpellMagickaCost(e.player, e.leftSpell);
-                    if (costLeft > 0.0f && (magickaAvailable + 1e-2f) < costLeft) {
-                        e.hasLeft = false;
-                        DisableHand(IntegratedMagic::Slots::Hand::Left);
-                    }
+
+        if (!e.hasLeft || e.leftSettings.mode != IntegratedMagic::ActivationMode::Automatic) {
+            return;
+        }
+
+        float magickaAvailable = GetPlayerMagicka(e.player);
+
+        if (e.hasRight && e.rightSettings.mode == IntegratedMagic::ActivationMode::Automatic) {
+            const float baseCostRight = GetSpellMagickaCost(e.player, e.rightSpell);
+
+            if (e.rightID == e.leftID) {
+                const float dualMultiplier = GetDualCastCostMultiplier(e.player, e.rightSpell);
+                const float totalDualCost = baseCostRight * dualMultiplier;
+
+                if (totalDualCost > 0.0f && (magickaAvailable + 1e-2f) < totalDualCost) {
+                    e.hasLeft = false;
+                    DisableHand(Left);
                 }
+
             } else {
+                magickaAvailable -= baseCostRight;
                 const float costLeft = GetSpellMagickaCost(e.player, e.leftSpell);
+
                 if (costLeft > 0.0f && (magickaAvailable + 1e-2f) < costLeft) {
                     e.hasLeft = false;
-                    DisableHand(IntegratedMagic::Slots::Hand::Left);
+                    DisableHand(Left);
                 }
             }
+
+        } else {
+            const float costLeft = GetSpellMagickaCost(e.player, e.leftSpell);
+
+            if (costLeft > 0.0f && (magickaAvailable + 1e-2f) < costLeft) {
+                e.hasLeft = false;
+                DisableHand(Left);
+            }
         }
+    }
+
+    void MagicState::ComputeDualCasting(const SlotEntry& e) {
         _isDualCasting = false;
+
         if (e.hasRight && e.hasLeft && e.rightSettings.mode == IntegratedMagic::ActivationMode::Automatic &&
             e.leftSettings.mode == IntegratedMagic::ActivationMode::Automatic && e.rightID == e.leftID) {
             const float dualMultiplier = GetDualCastCostMultiplier(e.player, e.rightSpell);
+
             if (dualMultiplier > 2.0f) {
                 _isDualCasting = true;
             }
         }
+    }
+
+    void MagicState::EquipSlotSpells(SlotEntry& e) {
+        using enum IntegratedMagic::Slots::Hand;
+
         if (!e.hasRight) {
             DisableHand(Right);
             SetModeSpellsFromHand(Right, nullptr);
         }
+
         if (!e.hasLeft) {
             DisableHand(Left);
             SetModeSpellsFromHand(Left, nullptr);
         }
+
         if (!e.hasLeft && !e.hasRight) {
             ExitAllNow();
             return;
         }
+
         auto* player = e.player;
+
         UpdatePrevExtraEquippedForOverlay([this, player, &e] {
             if (e.hasRight) {
                 IntegratedMagic::MagicAction::EquipSpellInHand(player, e.rightSpell, Right);
                 MarkDirty(Right);
             }
+
             if (e.hasLeft) {
                 IntegratedMagic::MagicAction::EquipSpellInHand(player, e.leftSpell, Left);
                 MarkDirty(Left);
             }
         });
+
         if (e.hasRight) {
             SetModeSpellsFromHand(Right, e.rightSpell);
             EnterHand(Right, e.rightSettings);
         } else {
             _right = {};
         }
+
         if (e.hasLeft) {
             SetModeSpellsFromHand(Left, e.leftSpell);
             EnterHand(Left, e.leftSettings);
@@ -696,38 +735,72 @@ namespace IntegratedMagic {
         }
     }
 
+    void MagicState::OnSlotPressed(int slot) {
+        if (_active && slot == _activeSlot && HandleSameSlotPressed()) {
+            return;
+        }
+
+        if (HandleSlotOverwrite(slot)) {
+            return;
+        }
+
+        SlotEntry e{};
+        if (!PrepareSlotEntry(slot, e)) {
+            return;
+        }
+
+        ValidateMagickaForSlot(e);
+
+        ComputeDualCasting(e);
+
+        EquipSlotSpells(e);
+    }
+
+    void MagicState::HandleHoldRelease(IntegratedMagic::Slots::Hand hand) {
+        using enum IntegratedMagic::Slots::Hand;
+
+        auto& hm = ModeFor(hand);
+
+        if (!hm.holdActive) return;
+
+        hm.holdActive = false;
+
+        const std::uint32_t id = IntegratedMagic::Slots::GetSlotSpell(_activeSlot, hand);
+        const auto* spell = id ? RE::TESForm::LookupByID<RE::SpellItem>(id) : nullptr;
+
+        if (const float charge = spell ? spell->GetChargeTime() : 0.0f; charge <= 0.0f) {
+            FinishHand(hand);
+            return;
+        }
+
+        const auto src =
+            (hand == Left) ? RE::MagicSystem::CastingSource::kLeftHand : RE::MagicSystem::CastingSource::kRightHand;
+
+        if (auto const* caster = IntegratedMagic::MagicAction::GetCaster(GetPlayer(), src);
+            !IsChargeComplete(caster, spell)) {
+            FinishHand(hand);
+            return;
+        }
+
+        if (!hm.wantAutoAttack) {
+            FinishHand(hand);
+            return;
+        }
+
+        StopAutoAttack(hand);
+        hm.holdFiredAndWaitingCastStop = true;
+    }
+
     void MagicState::OnSlotReleased(int slot) {
         if (!_active || slot != _activeSlot) {
             return;
         }
-        using Hand = IntegratedMagic::Slots::Hand;
+
         using enum IntegratedMagic::Slots::Hand;
-        auto handleHoldRelease = [&](Hand hand) {
-            auto& hm = ModeFor(hand);
-            if (!hm.holdActive) return;
-            hm.holdActive = false;
-            const std::uint32_t id = IntegratedMagic::Slots::GetSlotSpell(_activeSlot, hand);
-            const auto* spell = id ? RE::TESForm::LookupByID<RE::SpellItem>(id) : nullptr;
-            if (const float charge = spell ? spell->GetChargeTime() : 0.0f; charge <= 0.0f) {
-                FinishHand(hand);
-                return;
-            }
-            const auto src =
-                (hand == Left) ? RE::MagicSystem::CastingSource::kLeftHand : RE::MagicSystem::CastingSource::kRightHand;
-            auto const* caster = IntegratedMagic::MagicAction::GetCaster(GetPlayer(), src);
-            if (const bool chargedNow = IsChargeComplete(caster, spell); !chargedNow) {
-                FinishHand(hand);
-                return;
-            }
-            if (!hm.wantAutoAttack) {
-                FinishHand(hand);
-                return;
-            }
-            StopAutoAttack(hand);
-            hm.holdFiredAndWaitingCastStop = true;
-        };
-        handleHoldRelease(Left);
-        handleHoldRelease(Right);
+
+        HandleHoldRelease(Left);
+        HandleHoldRelease(Right);
+
         TryFinalizeExit();
     }
 
@@ -849,7 +922,7 @@ namespace IntegratedMagic {
         const bool hasLimit = (hm.mode == Automatic);
         if (!hasLimit || hm.beginCastRetries < kMaxRetries) {
             ++hm.beginCastRetries;
-            auto& d = DelayFor(hand);
+            auto const& d = DelayFor(hand);
             if (!d.pending) {
                 StopAutoAttack(hand);
                 ScheduleDelayedStart(hand);
@@ -885,7 +958,7 @@ namespace IntegratedMagic {
             return;
         }
         const auto src = (hand == IntegratedMagic::Slots::Hand::Left) ? RE::MagicSystem::CastingSource::kLeftHand
-                                                                           : RE::MagicSystem::CastingSource::kRightHand;
+                                                                      : RE::MagicSystem::CastingSource::kRightHand;
         auto const* caster = IntegratedMagic::MagicAction::GetCaster(player, src);
         const float charge = spell->GetChargeTime();
         auto charged = [&](RE::ActorMagicCaster const* c) {

@@ -1,16 +1,15 @@
 #include "AnimListener.h"
 
 #include "Config/Slots.h"
-#include "State.h"
 #include "PCH.h"
+#include "State.h"
 
 void AnimListener::HandleAnimEvent(const RE::BSAnimationGraphEvent* ev,
                                    RE::BSTEventSource<RE::BSAnimationGraphEvent>*) {
     if (!ev || !ev->holder) return;
 
     auto* actor = ev->holder->As<RE::Actor>();
-    auto* player = RE::PlayerCharacter::GetSingleton();
-    if (!actor || actor != player) return;
+    if (auto const* player = RE::PlayerCharacter::GetSingleton(); !actor || actor != player) return;
 
     using Hand = IntegratedMagic::Slots::Hand;
     auto& state = IntegratedMagic::MagicState::Get();

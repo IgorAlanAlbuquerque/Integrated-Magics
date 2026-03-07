@@ -95,7 +95,7 @@ namespace {
         }
     }
 
-    void GlobalMessageHandler(SKSE::MessagingInterface::Message* message) {
+    void GlobalMessageHandler(SKSE::MessagingInterface::Message* message) {  // NOSONAR: No const definition
         if (!message) return;
         switch (message->type) {
             case SKSE::MessagingInterface::kPreLoadGame: {

@@ -33,8 +33,10 @@ namespace IntegratedMagic::HUD {
         constexpr float kPopupRingRadius = 90.f;
         constexpr float kModeWidgetW = 58.f;
 
-        static constexpr const char* kDetailPopupID = "##IMAGIC_DETAIL";
-        static constexpr const char* kHudWindowID = "##IMAGIC_HUD";
+        constexpr const char* kDetailPopupID = "##IMAGIC_DETAIL";
+        constexpr const char* kHudWindowID = "##IMAGIC_HUD";
+
+        constexpr ImU32 kOverlayAlpha = 160;
 
         static SKSEMenuFramework::Model::WindowInterface* g_popupWindow = nullptr;
 
@@ -88,7 +90,8 @@ namespace IntegratedMagic::HUD {
         }
 
         struct Palette {
-            ImU32 fill, glow;
+            ImU32 fill;
+            ImU32 glow;
         };
 
         Palette SchoolPalette(RE::ActorValue av) {
@@ -181,10 +184,10 @@ namespace IntegratedMagic::HUD {
         }
 
         void DrawOverlayAndCursor(ImVec2 displaySize, ImVec2 cursorPos) {
+            ImDrawList* bg = ImGui::GetBackgroundDrawList();
+            DL::AddRectFilled(bg, {0.f, 0.f}, {displaySize.x, displaySize.y}, IM_COL32(0, 0, 0, kOverlayAlpha), 0.f, 0);
+
             ImDrawList* fg = ImGui::GetForegroundDrawList();
-
-            DL::AddRectFilled(fg, {0.f, 0.f}, {displaySize.x, displaySize.y}, IM_COL32(0, 0, 0, 160), 0.f, 0);
-
             const ImVec2 pts[3] = {{cursorPos.x, cursorPos.y},
                                    {cursorPos.x + 10.f, cursorPos.y + 4.f},
                                    {cursorPos.x + 4.f, cursorPos.y + 10.f}};
@@ -309,7 +312,7 @@ namespace IntegratedMagic::HUD {
                              ImGuiWindowFlags_NoInputs);
 
             ImDrawList* dl = ImGui::GetWindowDrawList();
-            const int n = static_cast<int>(Slots::GetSlotCount());
+            const auto n = static_cast<int>(Slots::GetSlotCount());
             const int activeSlot = MagicState::Get().ActiveSlot();
 
             DrawRingCenter(dl, ringCenter);
@@ -355,7 +358,7 @@ namespace IntegratedMagic::HUD {
                                  ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
                                  ImGuiWindowFlags_NoDecoration)) {
                 ImDrawList* dl = ImGui::GetWindowDrawList();
-                const int n = static_cast<int>(Slots::GetSlotCount());
+                const auto n = static_cast<int>(Slots::GetSlotCount());
                 const int activeSlot = MagicState::Get().ActiveSlot();
 
                 DrawRingCenter(dl, ringCenter, 6.f);
@@ -368,6 +371,15 @@ namespace IntegratedMagic::HUD {
                     auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
 
                     DrawSlotVisual(dl, center, kPopupSlotRadius, activeSlot == i, rSp, lSp);
+
+                    {
+                        const std::string slotLabel = "Slot " + std::to_string(i + 1);
+                        ImVec2 textSize{};
+                        ImGui::CalcTextSize(&textSize, slotLabel.c_str(), nullptr, false, -1.0f);
+                        ImGui::SetCursorScreenPos(
+                            {center.x - textSize.x * 0.5f, center.y - kPopupSlotRadius - textSize.y - 4.f});
+                        ImGui::TextDisabled("%s", slotLabel.c_str());
+                    }
 
                     if (rSp || lSp) {
                         const std::string label =
@@ -426,6 +438,16 @@ namespace IntegratedMagic::HUD {
 
     }
 
+    bool IsDetailPopupOpen() { return g_popupWindow && g_popupWindow->IsOpen.load(std::memory_order_relaxed); }
+
+    void FeedMouseDelta(float dx, float dy) {
+        auto const* io = ImGui::GetIO();
+        g_mousePos.x = std::clamp(g_mousePos.x + dx, 0.f, io->DisplaySize.x);
+        g_mousePos.y = std::clamp(g_mousePos.y + dy, 0.f, io->DisplaySize.y);
+    }
+
+    void FeedMouseClick() { g_mouseClicked.store(true, std::memory_order_relaxed); }
+
     void ToggleDetailPopup() {
         if (!g_popupWindow) return;
         const bool willOpen = !g_popupWindow->IsOpen.load();
@@ -474,29 +496,6 @@ namespace IntegratedMagic::HUD {
         (void)hudElement;
 
         g_popupWindow = SKSEMenuFramework::AddWindow(DrawWindowElement, false);
-
-        static auto* inputEv = SKSEMenuFramework::AddInputEvent([](RE::InputEvent* event) -> bool {
-            if (!event || !g_popupWindow || !g_popupWindow->IsOpen.load()) return false;
-
-            if (event->eventType == RE::INPUT_EVENT_TYPE::kMouseMove) {
-                auto* mm = static_cast<RE::MouseMoveEvent*>(event);
-                auto* io = ImGui::GetIO();
-                g_mousePos.x = std::clamp(g_mousePos.x + static_cast<float>(mm->mouseInputX), 0.f, io->DisplaySize.x);
-                g_mousePos.y = std::clamp(g_mousePos.y + static_cast<float>(mm->mouseInputY), 0.f, io->DisplaySize.y);
-            }
-
-            if (event->eventType == RE::INPUT_EVENT_TYPE::kButton) {
-                auto* btn = static_cast<RE::ButtonEvent*>(event);
-                if (btn->GetDevice() == RE::INPUT_DEVICE::kMouse && btn->GetIDCode() == 0) {
-                    if (btn->IsDown()) g_mouseClicked.store(true, std::memory_order_relaxed);
-
-                    return true;
-                }
-            }
-
-            return false;
-        });
-        (void)inputEv;
 
         static auto const* closeEvent = SKSEMenuFramework::AddEvent(
             [](SKSEMenuFramework::Model::EventType type) {

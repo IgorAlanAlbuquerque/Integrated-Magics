@@ -3,10 +3,10 @@
 #include <utility>
 
 #include "HookUtil.hpp"
-#include "State/AnimListener.h"
 #include "Input/Input.h"
-#include "State/State.h"
 #include "PCH.h"
+#include "State/AnimListener.h"
+#include "State/State.h"
 
 namespace IntegratedMagic::Hooks {
     namespace {
@@ -14,17 +14,16 @@ namespace IntegratedMagic::Hooks {
             using Fn = void(RE::BSTEventSource<RE::InputEvent*>*, RE::InputEvent* const*);
             static inline std::uintptr_t func{0};
 
-            static void thunk(RE::BSTEventSource<RE::InputEvent*>* a_dispatcher,
-                               RE::InputEvent* const*               a_events) {
+            static void thunk(RE::BSTEventSource<RE::InputEvent*>* a_dispatcher, RE::InputEvent* const* a_events) {
                 if (!a_events) return;
 
-                Input::ProcessAndFilter(const_cast<RE::InputEvent**>(a_events));
+                Input::ProcessAndFilter(const_cast<RE::InputEvent**>(a_events));  // NOSONAR
 
                 RE::InputEvent* head = IntegratedMagic::detail::FlushSyntheticInput(*a_events);
 
                 if (func == 0) return;
-                RE::InputEvent* const arr[2]{head, nullptr};    // NOSONAR
-                reinterpret_cast<Fn*>(func)(a_dispatcher, arr); // NOSONAR
+                RE::InputEvent* const arr[2]{head, nullptr};     // NOSONAR
+                reinterpret_cast<Fn*>(func)(a_dispatcher, arr);  // NOSONAR
             }
 
             static void Install() {
@@ -40,7 +39,7 @@ namespace IntegratedMagic::Hooks {
             static inline Fn _orig{nullptr};
 
             static RE::BSEventNotifyControl thunk(RE::BSTEventSink<RE::BSAnimationGraphEvent>* a_this,
-                                                  const RE::BSAnimationGraphEvent*             a_ev,
+                                                  const RE::BSAnimationGraphEvent* a_ev,
                                                   RE::BSTEventSource<RE::BSAnimationGraphEvent>* a_src) {
                 const auto ret = _orig ? _orig(a_this, a_ev, a_src) : RE::BSEventNotifyControl::kContinue;
                 if (a_ev) {

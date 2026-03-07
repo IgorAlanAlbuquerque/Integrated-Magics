@@ -106,6 +106,18 @@ namespace IntegratedMagic {
             float secs{0.f};
         };
 
+        struct SlotEntry {
+            RE::PlayerCharacter* player{nullptr};
+            std::uint32_t leftID{0};
+            std::uint32_t rightID{0};
+            RE::SpellItem* leftSpell{nullptr};
+            RE::SpellItem* rightSpell{nullptr};
+            SpellSettings leftSettings{};
+            SpellSettings rightSettings{};
+            bool hasLeft{false};
+            bool hasRight{false};
+        };
+
         DelayedStart _delayStartLeft{};
         DelayedStart _delayStartRight{};
 
@@ -150,27 +162,20 @@ namespace IntegratedMagic {
         bool CanOverwriteNow() const;
         void PrepareForOverwriteToSlot(int newSlot);
         void PumpAutoStartFallback(IntegratedMagic::Slots::Hand hand, float dt);
+        bool HandleSameSlotPressed();
+        bool HandleSlotOverwrite(int slot);
+        void HandleHoldRelease(IntegratedMagic::Slots::Hand hand);
+        void ValidateMagickaForSlot(SlotEntry& e);
+        void ComputeDualCasting(const SlotEntry& e);
         void DisableHand(IntegratedMagic::Slots::Hand hand);
-        struct SlotEntry {
-            RE::PlayerCharacter* player{nullptr};
-            std::uint32_t leftID{0};
-            std::uint32_t rightID{0};
-            RE::SpellItem* leftSpell{nullptr};
-            RE::SpellItem* rightSpell{nullptr};
-            SpellSettings leftSettings{};
-            SpellSettings rightSettings{};
-            bool hasLeft{false};
-            bool hasRight{false};
-        };
         bool PrepareSlotEntry(int slot, SlotEntry& out);
+        void EquipSlotSpells(SlotEntry& e);
         void EnterHand(IntegratedMagic::Slots::Hand hand, const SpellSettings& ss);
         void TogglePressHand(IntegratedMagic::Slots::Hand hand, const SpellSettings& ss);
         void FinishHand(IntegratedMagic::Slots::Hand hand);
         void PumpAutomaticHand(IntegratedMagic::Slots::Hand hand);
         void SetModeSpellsFromHand(IntegratedMagic::Slots::Hand hand, RE::SpellItem* spell);
-        static inline bool IsLeft(IntegratedMagic::Slots::Hand h) {
-            return h == IntegratedMagic::Slots::Hand::Left;
-        }
+        static inline bool IsLeft(IntegratedMagic::Slots::Hand h) { return h == IntegratedMagic::Slots::Hand::Left; }
         void MarkDirty(IntegratedMagic::Slots::Hand h) {
             if (IsLeft(h))
                 _dirtyLeft = true;
@@ -180,7 +185,6 @@ namespace IntegratedMagic {
         template <class Fn>
         void UpdatePrevExtraEquippedForOverlay(Fn&& equipFn);
 
-    private:
         std::vector<ExtraEquippedItem> _prevExtraEquipped;
         HandMode _left{};
         HandMode _right{};

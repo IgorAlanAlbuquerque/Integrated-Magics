@@ -17,7 +17,7 @@ namespace IntegratedMagic::MagicAction {
 
         RE::MagicSystem::CastingSource ToCastingSource(Slots::Hand hand) {
             return (hand == Slots::Hand::Left) ? RE::MagicSystem::CastingSource::kLeftHand
-                                                    : RE::MagicSystem::CastingSource::kRightHand;
+                                               : RE::MagicSystem::CastingSource::kRightHand;
         }
 
         const RE::BGSEquipSlot* ToEquipSlot(Slots::Hand hand) {

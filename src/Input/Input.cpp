@@ -13,6 +13,7 @@
 #include "Config/Config.h"
 #include "PCH.h"
 #include "State/State.h"
+#include "UI/HUD.h"
 
 namespace {
 
@@ -148,15 +149,14 @@ namespace {
     inline void AtomicFetchOrU64(std::atomic<std::uint64_t>& a, std::uint64_t bits,
                                  std::memory_order order = std::memory_order_relaxed) {
         std::uint64_t cur = a.load(order);
-        while (!a.compare_exchange_weak(cur, (cur | bits), order, order)) {
-        }
+        while (!a.compare_exchange_weak(cur, (cur | bits), order, order));
     }
 
     enum class ClearReason { Success, Timeout, Cancelled };
 
     void ClearExclusivePending(std::size_t s, ClearReason reason) {
         if (reason != ClearReason::Success) {
-            for (auto& ev : g_retainedEvents[s]) {
+            for (auto const& ev : g_retainedEvents[s]) {
                 IntegratedMagic::detail::EnqueueRetainedEvent(ev.dev, ev.rawIdCode, ev.userEvent, ev.value,
                                                               ev.heldSecs);
             }
@@ -260,11 +260,10 @@ namespace {
         if (HasExclusivePending(s)) {
             const auto src = g_exclusivePendingSrc[s];
             const bool stillDown = (src == PendingSrc::Kb) ? kbNow : gpNow;
-            const bool stillExcl = (src == PendingSrc::Kb)
-                                       ? ComboExclusiveNow(hk.kb, g_kbDown, IsAllowedExtra_Keyboard_MoveOrCamera)
-                                       : ComboExclusiveNow(hk.gp, g_gpDown, IsAllowedExtra_Gamepad_MoveOrCamera);
-
-            if (!stillExcl) {
+            if (const bool stillExcl = (src == PendingSrc::Kb)
+                                           ? ComboExclusiveNow(hk.kb, g_kbDown, IsAllowedExtra_Keyboard_MoveOrCamera)
+                                           : ComboExclusiveNow(hk.gp, g_gpDown, IsAllowedExtra_Gamepad_MoveOrCamera);
+                !stillExcl) {
                 ClearExclusivePending(s, ClearReason::Cancelled);
                 return false;
             }
@@ -376,14 +375,16 @@ namespace {
     }
 
     void DrainWhenBlocked() {
-        for (auto s = Input::ConsumePressedSlot(); s; s = Input::ConsumePressedSlot()) {
-        }
-        for (auto s = Input::ConsumeReleasedSlot(); s; s = Input::ConsumeReleasedSlot()) HandleSlotReleased(*s);
+        for (auto s = Input::ConsumePressedSlot(); s.has_value(); s = Input::ConsumePressedSlot());
+        for (auto s = Input::ConsumeReleasedSlot(); s.has_value(); s = Input::ConsumeReleasedSlot())
+            HandleSlotReleased(*s);
     }
 
     void DispatchSlots() {
-        for (auto s = Input::ConsumePressedSlot(); s; s = Input::ConsumePressedSlot()) HandleSlotPressed(*s);
-        for (auto s = Input::ConsumeReleasedSlot(); s; s = Input::ConsumeReleasedSlot()) HandleSlotReleased(*s);
+        for (auto s = Input::ConsumePressedSlot(); s.has_value(); s = Input::ConsumePressedSlot())
+            HandleSlotPressed(*s);
+        for (auto s = Input::ConsumeReleasedSlot(); s.has_value(); s = Input::ConsumeReleasedSlot())
+            HandleSlotReleased(*s);
     }
 
     int GamepadIdToIndex(int idCode) {
@@ -433,16 +434,15 @@ namespace {
             const auto s = static_cast<std::size_t>(slot);
             const auto& hk = g_cache[s];
             const bool inKb = dev == RE::INPUT_DEVICE::kKeyboard && ComboContains(hk.kb, convertedCode);
-            const bool inGp = dev == RE::INPUT_DEVICE::kGamepad && ComboContains(hk.gp, convertedCode);
-            if (!inKb && !inGp) continue;
+            if (const bool inGp = dev == RE::INPUT_DEVICE::kGamepad && ComboContains(hk.gp, convertedCode);
+                !inKb && !inGp)
+                continue;
 
             const bool accepted = g_slotDown[s].load(std::memory_order_relaxed);
-            const bool pending = HasExclusivePending(s);
 
-            if (pending) {
-                const bool isHeld = (value > 0.5f && heldSecs > 0.0f);
-                if (!isHeld) {
-                    g_retainedEvents[s].push_back({dev, rawIdCode, userEvent, value, heldSecs});
+            if (const bool pending = HasExclusivePending(s); pending) {
+                if (const bool isHeld = (value > 0.5f && heldSecs > 0.0f); !isHeld) {
+                    g_retainedEvents[s].emplace_back(dev, rawIdCode, userEvent, value, heldSecs);
                 }
                 return true;
             }
@@ -480,77 +480,74 @@ namespace {
             out.gp[1] = in.GamepadButton2.load(std::memory_order_relaxed);
             out.gp[2] = in.GamepadButton3.load(std::memory_order_relaxed);
         };
-        const int m = std::min(n, static_cast<int>(kMaxSlots));
+        const int m = std::min(n, kMaxSlots);
         for (int i = 0; i < m; ++i)
             fill(g_cache[static_cast<std::size_t>(i)], cfg.slotInput[static_cast<std::size_t>(i)]);
 
         g_hudCache = {};
         fill(g_hudCache, cfg.hudPopupInput);
     }
-}
 
-void Input::ProcessAndFilter(RE::InputEvent** a_evns) {
-    if (!a_evns) return;
+    void ProcessButtonEvents(RE::InputEvent** a_evns, CaptureState& cap, bool& wantCapture) {
+        for (auto* e = *a_evns; e; e = e->next) {
+            const auto* btn = e->AsButtonEvent();
+            if (!btn || (!btn->IsDown() && !btn->IsUp())) continue;
 
-    static bool prevBlocked = false;  // NOSONAR — game thread only
+            const auto dev = btn->GetDevice();
+            auto code = static_cast<int>(btn->idCode);
 
-    auto& cap = GetCaptureState();
-    bool wantCapture = cap.captureRequested.load(std::memory_order_relaxed);
-    const float dt = CalculateDeltaTime();
-    const bool blocked = IsInputBlockedByMenus();
+            if (dev == RE::INPUT_DEVICE::kGamepad) {
+                code = GamepadIdToIndex(code);
+            }
 
-    if (prevBlocked && !blocked) ClearLikelyStuckKeysAfterMenuClose();
-    prevBlocked = blocked;
+            if (code < 0 || code >= kMaxCode) continue;
 
-    for (auto* e = *a_evns; e; e = e->next) {
-        const auto* btn = e->AsButtonEvent();
-        if (!btn || (!btn->IsDown() && !btn->IsUp())) continue;
-        const auto dev = btn->GetDevice();
-        int code = static_cast<int>(btn->idCode);
-
-        if (dev == RE::INPUT_DEVICE::kGamepad) {
-            const int raw = code;
-            code = GamepadIdToIndex(code);
+            (void)TryHandleCapture(btn, cap, wantCapture, dev, code);
+            UpdateDownState(dev, code, btn->IsDown());
         }
-
-        if (code < 0 || code >= kMaxCode) continue;
-
-        (void)TryHandleCapture(btn, cap, wantCapture, dev, code);
-        UpdateDownState(dev, code, btn->IsDown());
     }
 
-    {
-        static bool prevHudDown = false;  // NOSONAR — game thread only
+    void UpdateHudToggleState() {
+        static bool prevHudDown = false;  // NOSONAR
+
         const bool hudDown = IsHudComboDown();
-        if (hudDown && !prevHudDown) g_hudTogglePending.store(true, std::memory_order_relaxed);
+        if (hudDown && !prevHudDown) {
+            g_hudTogglePending.store(true, std::memory_order_relaxed);
+        }
+
         prevHudDown = hudDown;
     }
 
-    if (!blocked) {
-        RecomputeSlotEdges(dt);
-    } else {
-        DrainWhenBlocked();
+    void UpdateSlotsIfAllowed(bool blocked, float dt) {
+        if (!blocked) {
+            RecomputeSlotEdges(dt);
+        } else {
+            DrainWhenBlocked();
+        }
     }
 
-    if (!wantCapture) {
+    void FilterMouseForPopup(RE::InputEvent** a_evns) {
+        if (!IntegratedMagic::HUD::IsDetailPopupOpen()) return;
+
         RE::InputEvent* prev = nullptr;
         RE::InputEvent* cur = *a_evns;
+
         while (cur) {
             RE::InputEvent* next = cur->next;
             bool remove = false;
-            if (const auto* btn = cur->AsButtonEvent()) {
-                const auto dev = btn->GetDevice();
-                int code = static_cast<int>(btn->idCode);
-                const auto rawCode = static_cast<std::uint32_t>(btn->idCode);
 
-                if (dev == RE::INPUT_DEVICE::kGamepad) code = GamepadIdToIndex(code);
-
-                if (code >= 0 && code < kMaxCode) {
-                    remove =
-                        ShouldFilterAndSave(dev, code, rawCode, btn->QUserEvent(), btn->Value(), btn->HeldDuration()) ||
-                        ShouldFilterHudToggle(dev, code);
+            if (cur->eventType == RE::INPUT_EVENT_TYPE::kMouseMove) {
+                auto const* mm = static_cast<RE::MouseMoveEvent*>(cur);
+                IntegratedMagic::HUD::FeedMouseDelta(static_cast<float>(mm->mouseInputX),
+                                                     static_cast<float>(mm->mouseInputY));
+                remove = true;
+            } else if (const auto* btn = cur->AsButtonEvent()) {
+                if (btn->GetDevice() == RE::INPUT_DEVICE::kMouse && btn->GetIDCode() == 0) {
+                    if (btn->IsDown()) IntegratedMagic::HUD::FeedMouseClick();
+                    remove = true;
                 }
             }
+
             if (remove) {
                 if (prev)
                     prev->next = next;
@@ -563,11 +560,82 @@ void Input::ProcessAndFilter(RE::InputEvent** a_evns) {
         }
     }
 
-    if (!blocked) {
-        DispatchSlots();
-        IntegratedMagic::MagicState::Get().PumpAutoAttack(dt);
-        IntegratedMagic::MagicState::Get().PumpAutomatic(dt);
+    void FilterEvents(RE::InputEvent** a_evns) {
+        RE::InputEvent* prev = nullptr;
+        RE::InputEvent* cur = *a_evns;
+
+        while (cur) {
+            RE::InputEvent* next = cur->next;
+            bool remove = false;
+
+            if (const auto* btn = cur->AsButtonEvent()) {
+                const auto dev = btn->GetDevice();
+                auto code = static_cast<int>(btn->idCode);
+                const auto rawCode = btn->idCode;
+
+                if (dev == RE::INPUT_DEVICE::kGamepad) {
+                    code = GamepadIdToIndex(code);
+                }
+
+                if (code >= 0 && code < kMaxCode) {
+                    remove =
+                        ShouldFilterAndSave(dev, code, rawCode, btn->QUserEvent(), btn->Value(), btn->HeldDuration()) ||
+                        ShouldFilterHudToggle(dev, code);
+                }
+            }
+
+            if (remove) {
+                if (prev)
+                    prev->next = next;
+                else
+                    *a_evns = next;
+            } else {
+                prev = cur;
+            }
+
+            cur = next;
+        }
     }
+
+    void DispatchIfAllowed(bool blocked, float dt) {
+        if (!blocked) {
+            DispatchSlots();
+            IntegratedMagic::MagicState::Get().PumpAutoAttack(dt);
+            IntegratedMagic::MagicState::Get().PumpAutomatic(dt);
+        }
+    }
+}
+
+void Input::ProcessAndFilter(RE::InputEvent** a_evns) {
+    if (!a_evns) return;
+
+    static bool prevBlocked = false;  // NOSONAR
+
+    auto& cap = GetCaptureState();
+    bool wantCapture = cap.captureRequested.load(std::memory_order_relaxed);
+
+    const float dt = CalculateDeltaTime();
+    const bool blocked = IsInputBlockedByMenus();
+
+    if (prevBlocked && !blocked) {
+        ClearLikelyStuckKeysAfterMenuClose();
+    }
+
+    prevBlocked = blocked;
+
+    ProcessButtonEvents(a_evns, cap, wantCapture);
+
+    UpdateHudToggleState();
+
+    UpdateSlotsIfAllowed(blocked, dt);
+
+    FilterMouseForPopup(a_evns);
+
+    if (!wantCapture) {
+        FilterEvents(a_evns);
+    }
+
+    DispatchIfAllowed(blocked, dt);
 }
 
 void Input::OnConfigChanged() {
