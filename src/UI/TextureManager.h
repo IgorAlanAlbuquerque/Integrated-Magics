@@ -40,6 +40,7 @@ namespace IntegratedMagic {
         static void Init();
 
         static const Image& GetSpellIcon(const RE::SpellItem* spell);
+        static const Image& GetIconForForm(RE::FormID formID);
 
         static const Image& GetIcon(SpellIconType type);
 

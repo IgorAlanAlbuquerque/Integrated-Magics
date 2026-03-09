@@ -30,4 +30,7 @@ void AnimListener::HandleAnimEvent(const RE::BSAnimationGraphEvent* ev,
     } else if (tag == "BeginCastLeft"sv) {
         state.OnBeginCast(Hand::Left);
     }
+    if (tag == "shoutStop"sv) {
+        state.OnShoutStop();
+    }
 }

@@ -4,8 +4,8 @@
 #include <cctype>
 #include <utility>
 
+#include "Action.h"
 #include "Config/EquipSlots.h"
-#include "MagicAction.h"
 #include "PCH.h"
 #include "Persistence/SpellSettingsDB.h"
 
@@ -43,6 +43,13 @@ namespace IntegratedMagic {
             } else {
                 EnqueueSyntheticAttack(MakeAttackButtonEvent(false, value, heldSecs));
             }
+        }
+
+        static const RE::BSFixedString kShoutUserEvent{"Shout"};
+
+        void DispatchShout(float value, float heldSecs) {
+            auto* ev = RE::ButtonEvent::Create(RE::INPUT_DEVICE::kKeyboard, kShoutUserEvent, 0, value, heldSecs);
+            if (ev) EnqueueSyntheticAttack(ev);
         }
 
         static RE::InputEvent* DrainQueue(SyntheticInputState& st, RE::InputEvent* head) {
@@ -376,6 +383,14 @@ namespace IntegratedMagic {
         _attackEnabled = false;
         _modeSpellLeft = nullptr;
         _modeSpellRight = nullptr;
+        _modeShoutID = 0;
+        _shoutFinished = false;
+        _dirtyShout = false;
+        _shoutHeld = false;
+        _shoutHeldSecs = 0.f;
+        _shoutIsPower = false;
+        _powerAutoSecs = 0.f;
+        _shoutWaitingStopEvent = false;
     }
 
     void MagicState::CaptureSnapshot(RE::PlayerCharacter const* player) {
@@ -412,12 +427,24 @@ namespace IntegratedMagic {
         if (player->GetEquippedEntryData(false)) {
             _snap.rightSpell = nullptr;
         } else {
-            _snap.rightSpell = GetEquippedSpellFromHand(player, /*leftHand*/ false);
+            _snap.rightSpell = GetEquippedSpellFromHand(player, false);
         }
         if (player->GetEquippedEntryData(true)) {
             _snap.leftSpell = nullptr;
         } else {
-            _snap.leftSpell = GetEquippedSpellFromHand(player, /*leftHand*/ true);
+            _snap.leftSpell = GetEquippedSpellFromHand(player, true);
+        }
+
+        _snap.snapShoutID = 0;
+        if (auto* shout = player->GetCurrentShout()) {
+            _snap.snapShoutID = shout->GetFormID();
+        } else {
+            auto const& rd = player->GetActorRuntimeData();
+            if (auto const* power = rd.selectedPower ? rd.selectedPower->As<RE::SpellItem>() : nullptr) {
+                using ST = RE::MagicSystem::SpellType;
+                if (power->GetSpellType() == ST::kPower || power->GetSpellType() == ST::kLesserPower)
+                    _snap.snapShoutID = power->GetFormID();
+            }
         }
         _snap.valid = true;
     }
@@ -431,6 +458,7 @@ namespace IntegratedMagic {
         if (!mgr) {
             return;
         }
+        MagicAction::ApplySkipEquipAnimReturn(player);
         const auto idx = BuildInventoryIndex(player);
         const auto* rightSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(Right);
         const auto* leftSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(Left);
@@ -446,6 +474,15 @@ namespace IntegratedMagic {
             RestoreOneHand(player, mgr, idx, true, _snap.leftObj, leftSlot);
             EquipSpellIfPresent(player, leftSnapSpell, Left);
         }
+
+        if (_dirtyShout) {
+            MagicAction::ClearVoiceShout(player);
+            if (_snap.snapShoutID) {
+                if (auto* form = RE::TESForm::LookupByID(_snap.snapShoutID)) {
+                    MagicAction::EquipShoutInVoice(player, form);
+                }
+            }
+        }
         auto idx2 = BuildInventoryIndex(player);
         ReequipPrevExtraEquipped(player, mgr, idx2, _prevExtraEquipped);
         _snap.valid = false;
@@ -453,6 +490,7 @@ namespace IntegratedMagic {
         _modeSpellRight = nullptr;
         _dirtyLeft = false;
         _dirtyRight = false;
+        _dirtyShout = false;
     }
 
     bool MagicState::PrepareSlotEntry(int slot, SlotEntry& out) {
@@ -464,8 +502,30 @@ namespace IntegratedMagic {
         if (!IntegratedMagic::Slots::IsValidSlot(slot)) {
             return false;
         }
-        using enum IntegratedMagic::Slots::Hand;
         out.player = player;
+
+        if (IntegratedMagic::Slots::IsShoutSlot(slot)) {
+            out.isShout = true;
+            out.shoutID = IntegratedMagic::Slots::GetSlotShout(slot);
+            out.shoutForm = out.shoutID ? RE::TESForm::LookupByID(out.shoutID) : nullptr;
+            if (!out.shoutForm) return false;
+            out.shoutSettings = SpellSettingsDB::Get().GetOrCreate(out.shoutID);
+            EnsureActiveWithSnapshot(player, slot);
+            _modeShoutID = out.shoutID;
+            _shoutFinished = false;
+            _shoutIsPower = (out.shoutForm->As<RE::SpellItem>() != nullptr);
+            _powerAutoSecs = 0.f;
+
+            _left = {};
+            _left.finished = true;
+            _right = {};
+            _right.finished = true;
+            _modeSpellLeft = nullptr;
+            _modeSpellRight = nullptr;
+            return true;
+        }
+
+        using enum IntegratedMagic::Slots::Hand;
         out.rightID = IntegratedMagic::Slots::GetSlotSpell(slot, Right);
         out.leftID = IntegratedMagic::Slots::GetSlotSpell(slot, Left);
         out.rightSpell = out.rightID ? RE::TESForm::LookupByID<RE::SpellItem>(out.rightID) : nullptr;
@@ -506,6 +566,20 @@ namespace IntegratedMagic {
         } else {
             _modeSpellRight = spell;
         }
+    }
+
+    void MagicState::StartShoutPress() {
+        _shoutHeld = true;
+        _shoutHeldSecs = 0.f;
+        detail::DispatchShout(1.0f, 0.0f);
+    }
+
+    void MagicState::StopShoutPress() {
+        if (!_shoutHeld) return;
+        const float held = (_shoutHeldSecs > 0.f) ? _shoutHeldSecs : 0.1f;
+        detail::DispatchShout(0.0f, held);
+        _shoutHeld = false;
+        _shoutHeldSecs = 0.f;
     }
 
     void MagicState::EnterHand(IntegratedMagic::Slots::Hand hand, const SpellSettings& ss) {
@@ -583,6 +657,47 @@ namespace IntegratedMagic {
     }
 
     void MagicState::OnSlotPressed(int slot) {
+        if (IntegratedMagic::Slots::IsShoutSlot(slot)) {
+            if (_active && slot == _activeSlot && _modeShoutID != 0) {
+                if (_shoutFinished) return;
+                const auto ss = SpellSettingsDB::Get().GetOrCreate(_modeShoutID);
+                if (ss.mode == IntegratedMagic::ActivationMode::Press) {
+                    StopShoutPress();
+                    _shoutFinished = true;
+                    TryFinalizeExit();
+                }
+
+                return;
+            }
+            if (_active && slot != _activeSlot) {
+                if (!CanOverwriteNow()) return;
+                _firstInterrupt = 0;
+                PrepareForOverwriteToSlot(slot);
+            }
+            SlotEntry e{};
+            if (!PrepareSlotEntry(slot, e)) return;
+            MagicAction::EquipShoutInVoice(e.player, e.shoutForm);
+            _dirtyShout = true;
+
+            using enum IntegratedMagic::ActivationMode;
+            switch (e.shoutSettings.mode) {
+                case Hold:
+                case Press:
+                    StartShoutPress();
+                    break;
+                case Automatic:
+                    if (!_shoutIsPower && e.player->GetVoiceRecoveryTime() > 0.0f) {
+                        _shoutFinished = true;
+                        TryFinalizeExit();
+                        return;
+                    }
+                    StartShoutPress();
+                    _powerAutoSecs = 0.f;
+                    break;
+            }
+            return;
+        }
+
         if (_active && slot == _activeSlot) {
             using enum IntegratedMagic::Slots::Hand;
             const bool needL = (_modeSpellLeft != nullptr);
@@ -700,6 +815,20 @@ namespace IntegratedMagic {
         if (!_active || slot != _activeSlot) {
             return;
         }
+
+        if (_modeShoutID != 0) {
+            if (const auto ss = SpellSettingsDB::Get().GetOrCreate(_modeShoutID);
+                ss.mode == IntegratedMagic::ActivationMode::Hold) {
+                StopShoutPress();
+                if (_shoutIsPower) {
+                    _shoutFinished = true;
+                    TryFinalizeExit();
+                } else {
+                    _shoutWaitingStopEvent = true;
+                }
+            }
+            return;
+        }
         using Hand = IntegratedMagic::Slots::Hand;
         using enum IntegratedMagic::Slots::Hand;
         auto handleHoldRelease = [&](Hand hand) {
@@ -773,6 +902,10 @@ namespace IntegratedMagic {
             _aaSecsRight += add;
             IntegratedMagic::detail::DispatchAttack(Right, 1.0f, _aaSecsRight);
         }
+        if (_shoutHeld) {
+            _shoutHeldSecs += add;
+            IntegratedMagic::detail::DispatchShout(1.0f, _shoutHeldSecs);
+        }
     }
 
     void MagicState::NotifyAttackEnabled() {
@@ -810,6 +943,19 @@ namespace IntegratedMagic {
         PumpAutoStartFallback(Right, dt);
         PumpAutomaticHand(Left);
         PumpAutomaticHand(Right);
+
+        if (_active && _modeShoutID != 0 && _shoutIsPower && _shoutHeld && !_shoutFinished) {
+            const auto ss = SpellSettingsDB::Get().GetOrCreate(_modeShoutID);
+            if (ss.mode == IntegratedMagic::ActivationMode::Automatic) {
+                constexpr float kPowerAutoDuration = 1.0f;
+                _powerAutoSecs += (dt > 0.f ? dt : 0.f);
+                if (_powerAutoSecs >= kPowerAutoDuration) {
+                    StopShoutPress();
+                    _shoutFinished = true;
+                    TryFinalizeExit();
+                }
+            }
+        }
     }
 
     void MagicState::PumpAutoStartFallback(IntegratedMagic::Slots::Hand hand, float dt) {
@@ -885,7 +1031,7 @@ namespace IntegratedMagic {
             return;
         }
         const auto src = (hand == IntegratedMagic::Slots::Hand::Left) ? RE::MagicSystem::CastingSource::kLeftHand
-                                                                           : RE::MagicSystem::CastingSource::kRightHand;
+                                                                      : RE::MagicSystem::CastingSource::kRightHand;
         auto const* caster = IntegratedMagic::MagicAction::GetCaster(player, src);
         const float charge = spell->GetChargeTime();
         auto charged = [&](RE::ActorMagicCaster const* c) {
@@ -914,11 +1060,15 @@ namespace IntegratedMagic {
 
     bool MagicState::HandIsRelevant(IntegratedMagic::Slots::Hand h) const {
         using enum IntegratedMagic::Slots::Hand;
+
+        if (_modeShoutID != 0) return false;
         return (h == Left) ? (_modeSpellLeft != nullptr) : (_modeSpellRight != nullptr);
     }
 
     bool MagicState::AllRelevantHandsFinished() const {
         using enum IntegratedMagic::Slots::Hand;
+
+        if (_modeShoutID != 0) return _shoutFinished;
         const bool needL = HandIsRelevant(Left);
         const bool needR = HandIsRelevant(Right);
         const bool okL = !needL || _left.finished;
@@ -945,10 +1095,19 @@ namespace IntegratedMagic {
             _right = {};
             _modeSpellLeft = nullptr;
             _modeSpellRight = nullptr;
+            _modeShoutID = 0;
+            _shoutFinished = false;
+            _dirtyShout = false;
+            _shoutHeld = false;
+            _shoutHeldSecs = 0.f;
+            _shoutIsPower = false;
+            _powerAutoSecs = 0.f;
+            _shoutWaitingStopEvent = false;
             _snap.valid = false;
             return;
         }
         StopAllAutoAttack();
+        StopShoutPress();
         CancelAllDelayedStarts();
         if (_firstInterrupt > 1) {
             _pendingRestore = true;
@@ -969,6 +1128,14 @@ namespace IntegratedMagic {
             _attackEnabled = false;
             _modeSpellLeft = nullptr;
             _modeSpellRight = nullptr;
+            _modeShoutID = 0;
+            _shoutFinished = false;
+            _dirtyShout = false;
+            _shoutHeld = false;
+            _shoutHeldSecs = 0.f;
+            _shoutIsPower = false;
+            _powerAutoSecs = 0.f;
+            _shoutWaitingStopEvent = false;
             _snap.valid = false;
             _firstInterrupt = 0;
             _pendingSkipFirstCastStop = false;
@@ -1056,6 +1223,12 @@ namespace IntegratedMagic {
         if (!_active || _activeSlot < 0) {
             return false;
         }
+
+        if (_modeShoutID != 0) {
+            if (_shoutFinished) return false;
+            const auto ss = SpellSettingsDB::Get().GetOrCreate(_modeShoutID);
+            return ss.mode == IntegratedMagic::ActivationMode::Press;
+        }
         using enum IntegratedMagic::Slots::Hand;
         const bool needL = (_modeSpellLeft != nullptr);
         const bool needR = (_modeSpellRight != nullptr);
@@ -1097,6 +1270,13 @@ namespace IntegratedMagic {
         _attackEnabled = false;
         _modeSpellLeft = nullptr;
         _modeSpellRight = nullptr;
+        _modeShoutID = 0;
+        _shoutFinished = false;
+        _shoutHeld = false;
+        _shoutHeldSecs = 0.f;
+        _shoutIsPower = false;
+        _powerAutoSecs = 0.f;
+        _shoutWaitingStopEvent = false;
     }
 
     void MagicState::DisableHand(IntegratedMagic::Slots::Hand hand) {
@@ -1110,6 +1290,7 @@ namespace IntegratedMagic {
     void MagicState::OnStaggerStop() {
         if (_pendingRestore) {
             if (auto* player = RE::PlayerCharacter::GetSingleton(); player) {
+                StopShoutPress();
                 RestoreSnapshot(player);
                 if (auto* mgr = RE::ActorEquipManager::GetSingleton(); mgr) {
                     auto idx = BuildInventoryIndex(player);
@@ -1126,11 +1307,31 @@ namespace IntegratedMagic {
                 _attackEnabled = false;
                 _modeSpellLeft = nullptr;
                 _modeSpellRight = nullptr;
+                _modeShoutID = 0;
+                _shoutFinished = false;
+                _dirtyShout = false;
+                _shoutHeld = false;
+                _shoutHeldSecs = 0.f;
+                _shoutIsPower = false;
+                _powerAutoSecs = 0.f;
+                _shoutWaitingStopEvent = false;
                 _snap.valid = false;
                 _firstInterrupt = 0;
                 _pendingSkipFirstCastStop = false;
             }
             _pendingRestore = false;
+        }
+    }
+
+    void MagicState::OnShoutStop() {
+        if (!_active || _modeShoutID == 0 || _shoutFinished) return;
+        if (_shoutIsPower) return;
+        const auto ss = SpellSettingsDB::Get().GetOrCreate(_modeShoutID);
+        const bool isAutomatic = (ss.mode == IntegratedMagic::ActivationMode::Automatic);
+        if (isAutomatic || _shoutWaitingStopEvent) {
+            _shoutWaitingStopEvent = false;
+            _shoutFinished = true;
+            TryFinalizeExit();
         }
     }
 

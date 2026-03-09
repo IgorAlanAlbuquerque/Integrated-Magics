@@ -20,7 +20,7 @@ namespace IntegratedMagic {
         std::vector<std::uint32_t> left;
         std::vector<std::uint32_t> right;
         std::vector<std::uint32_t> shout;
-        inline std::size_t Size() const noexcept { return std::max(left.size(), right.size()); }
+        inline std::size_t Size() const noexcept { return std::max(left.size(), std::max(right.size(), shout.size())); }
     };
 
     class SaveSpellDB {
