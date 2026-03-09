@@ -47,6 +47,7 @@ namespace IntegratedMagic {
         ObjSnapshot leftObj{};
         RE::MagicItem* rightSpell{nullptr};
         RE::MagicItem* leftSpell{nullptr};
+        RE::FormID snapShoutID{0};  // shout/power equipado no voice slot antes de entrar no modo
         bool valid{false};
     };
 
@@ -116,6 +117,11 @@ namespace IntegratedMagic {
             SpellSettings rightSettings{};
             bool hasLeft{false};
             bool hasRight{false};
+            // shout/power
+            bool isShout{false};
+            std::uint32_t shoutID{0};
+            RE::TESForm* shoutForm{nullptr};
+            SpellSettings shoutSettings{};
         };
 
         DelayedStart _delayStartLeft{};
@@ -162,14 +168,8 @@ namespace IntegratedMagic {
         bool CanOverwriteNow() const;
         void PrepareForOverwriteToSlot(int newSlot);
         void PumpAutoStartFallback(IntegratedMagic::Slots::Hand hand, float dt);
-        bool HandleSameSlotPressed();
-        bool HandleSlotOverwrite(int slot);
-        void HandleHoldRelease(IntegratedMagic::Slots::Hand hand);
-        void ValidateMagickaForSlot(SlotEntry& e);
-        void ComputeDualCasting(const SlotEntry& e);
         void DisableHand(IntegratedMagic::Slots::Hand hand);
         bool PrepareSlotEntry(int slot, SlotEntry& out);
-        void EquipSlotSpells(SlotEntry& e);
         void EnterHand(IntegratedMagic::Slots::Hand hand, const SpellSettings& ss);
         void TogglePressHand(IntegratedMagic::Slots::Hand hand, const SpellSettings& ss);
         void FinishHand(IntegratedMagic::Slots::Hand hand);
@@ -204,6 +204,10 @@ namespace IntegratedMagic {
         int _firstInterrupt = 0;
         bool _pendingRestore{false};
         bool _pendingSkipFirstCastStop{false};
+        // shout / power
+        std::uint32_t _modeShoutID{0};
+        bool _shoutFinished{false};
+        bool _dirtyShout{false};
     };
 
     template <class Fn>

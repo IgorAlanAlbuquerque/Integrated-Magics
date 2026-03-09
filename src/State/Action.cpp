@@ -153,7 +153,6 @@ namespace IntegratedMagic::MagicAction {
         if (auto* shout = shoutOrPower->As<RE::TESShout>()) {
             mgr->EquipShout(player, shout);
         } else if (auto* spell = shoutOrPower->As<RE::SpellItem>(); spell && IsPowerSpell(shoutOrPower)) {
-            if (auto const* dom = RE::BGSDefaultObjectManager::GetSingleton(); !dom) return;
             mgr->EquipSpell(player, spell, nullptr);
         }
     }
@@ -168,6 +167,8 @@ namespace IntegratedMagic::MagicAction {
         if (auto* power = rd.selectedPower ? rd.selectedPower->As<RE::SpellItem>() : nullptr) {
             if (IsPowerSpell(power)) {
                 UnEquipSpell(player, power, 2);
+                UnEquipSpell(player, power, 1);
+                UnEquipSpell(player, power, 0);
             }
         }
     }
