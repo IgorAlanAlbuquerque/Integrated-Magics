@@ -36,6 +36,7 @@ namespace IntegratedMagic {
         static std::string NormalizeKeyCopy(std::string_view key);
         static std::filesystem::path JsonPath();
         static std::string NormalizeKey(std::string key);
+
     private:
         SaveSpellDB() = default;
         mutable std::mutex _mtx;

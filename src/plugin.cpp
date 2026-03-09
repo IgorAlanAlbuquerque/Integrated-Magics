@@ -1,11 +1,12 @@
-#include "MagicConfig.h"
-#include "MagicHooks.h"
-#include "MagicInput.h"
-#include "MagicStrings.h"
+#include "Config/Config.h"
+#include "Hooks.h"
+#include "Input/Input.h"
 #include "PCH.h"
-#include "SaveSpellDB.h"
-#include "SpellSettingsDB.h"
-#include "UI_IntegratedMagic.h"
+#include "Persistence/SaveSpellDB.h"
+#include "Persistence/SpellSettingsDB.h"
+#include "UI/MENU_IntegratedMagic.h"
+#include "UI/Strings.h"
+#include "UI/StyleConfig.h"
 
 #ifndef DLLEXPORT
     #include "REL/Relocation.h"
@@ -100,23 +101,22 @@ namespace {
         }
     }
 
-    void GlobalMessageHandler(SKSE::MessagingInterface::Message* message) {
+    void GlobalMessageHandler(SKSE::MessagingInterface::Message* message) {  // NOSONAR: No const definition
         if (!message) return;
         switch (message->type) {
             case SKSE::MessagingInterface::kPreLoadGame: {
                 g_pendingEssPath = GetSaveKeyFromMsg(message);
                 break;
             }
-            case SKSE::MessagingInterface::kInputLoaded: {
-                MagicInput::RegisterInputHandler();
-                break;
-            }
             case SKSE::MessagingInterface::kDataLoaded: {
                 IntegratedMagic::Strings::Load();
                 IntegratedMagic::GetMagicConfig().Load();
                 IntegratedMagic::SpellSettingsDB::Get().Load();
-                IntegratedMagic_UI::Register();
-                MagicInput::OnConfigChanged();
+                IntegratedMagic::StyleConfig::Get().Load();
+                IntegratedMagic::MENU::Register();
+                IntegratedMagic::HUD::Register();
+                IntegratedMagic::TextureManager::Init();
+                Input::OnConfigChanged();
                 IntegratedMagic::Hooks::Install_Hooks();
                 break;
             }

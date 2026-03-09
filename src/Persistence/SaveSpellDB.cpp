@@ -155,7 +155,6 @@ namespace IntegratedMagic {
             try {
                 const auto outJson = _buildJsonV3_NoLock(_bySave);
                 _writeJsonToDisk(path, outJson);
-                spdlog::info("[IMAGIC][SaveSpellDB] Migrated legacy v2 SaveSpells.json to v3 (left/right).");
             } catch (const std::exception& e) {  // NOSONAR
                 spdlog::error("[IMAGIC][SaveSpellDB] Failed to write migrated v3 JSON: {}", e.what());
             }

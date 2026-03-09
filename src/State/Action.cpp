@@ -1,11 +1,11 @@
-#include "MagicAction.h"
+#include "Action.h"
 
 #include <atomic>
 #include <chrono>
 #include <thread>
 
-#include "MagicConfig.h"
-#include "MagicEquipSlots.h"
+#include "Config/Config.h"
+#include "Config/EquipSlots.h"
 
 namespace IntegratedMagic::MagicAction {
     namespace {
@@ -15,16 +15,16 @@ namespace IntegratedMagic::MagicAction {
             }
         }
 
-        RE::MagicSystem::CastingSource ToCastingSource(MagicSlots::Hand hand) {
-            return (hand == MagicSlots::Hand::Left) ? RE::MagicSystem::CastingSource::kLeftHand
-                                                    : RE::MagicSystem::CastingSource::kRightHand;
+        RE::MagicSystem::CastingSource ToCastingSource(Slots::Hand hand) {
+            return (hand == Slots::Hand::Left) ? RE::MagicSystem::CastingSource::kLeftHand
+                                               : RE::MagicSystem::CastingSource::kRightHand;
         }
 
-        const RE::BGSEquipSlot* ToEquipSlot(MagicSlots::Hand hand) {
+        const RE::BGSEquipSlot* ToEquipSlot(Slots::Hand hand) {
             return IntegratedMagic::EquipUtil::GetHandEquipSlot(hand);
         }
 
-        int ToUnEquipHandInt(MagicSlots::Hand hand) { return (hand == MagicSlots::Hand::Left) ? 0 : 1; }
+        int ToUnEquipHandInt(Slots::Hand hand) { return (hand == Slots::Hand::Left) ? 0 : 1; }
 
         void UnEquipSpell(RE::PlayerCharacter* pc, RE::SpellItem* spell, int hand) {
             auto aeMan = RE::ActorEquipManager::GetSingleton();
@@ -53,20 +53,13 @@ namespace IntegratedMagic::MagicAction {
             return caster->currentSpell->As<RE::SpellItem>();
         }
 
-        const RE::BSFixedString kVarSkipEquip("SkipEquipAnimation");
-        const RE::BSFixedString kVarLoadDelay("LoadBoundObjectDelay");
-        const RE::BSFixedString kVarSkip3D("Skip3DLoading");
+        const RE::BSFixedString kInstantAnim("InstantEquipAnim");
 
-        inline void SetSkipEquipVars(RE::PlayerCharacter* pc, bool enable, int loadDelayMs = 0, bool skip3D = false) {
+        inline void SetSkipEquipVars(RE::PlayerCharacter* pc, bool enable) {
             if (!pc) {
                 return;
             }
-            (void)pc->SetGraphVariableBool(kVarSkipEquip, enable);
-
-            if (enable) {
-                (void)pc->SetGraphVariableInt(kVarLoadDelay, loadDelayMs);
-                (void)pc->SetGraphVariableBool(kVarSkip3D, skip3D);
-            }
+            (void)pc->SetGraphVariableBool(kInstantAnim, enable);
         }
 
         inline std::atomic<std::uint64_t> g_skipToken{0};
@@ -107,11 +100,10 @@ namespace IntegratedMagic::MagicAction {
         return mc ? skyrim_cast<RE::ActorMagicCaster*>(mc) : nullptr;
     }
 
-    void EquipSpellInHand(RE::PlayerCharacter* player, RE::SpellItem* spell, MagicSlots::Hand hand) {
+    void EquipSpellInHand(RE::PlayerCharacter* player, RE::SpellItem* spell, Slots::Hand hand) {
         if (!player || !spell) {
             return;
         }
-        IntegratedMagic::MagicSelect::ScopedSuppressSelection suppress{};
         auto* mgr = RE::ActorEquipManager::GetSingleton();
         if (!mgr) {
             return;
@@ -132,17 +124,16 @@ namespace IntegratedMagic::MagicAction {
         mgr->EquipSpell(player, spell, equipSlot);
     }
 
-    void ClearHandSpell(RE::PlayerCharacter* player, RE::SpellItem* spell, MagicSlots::Hand hand) {
+    void ClearHandSpell(RE::PlayerCharacter* player, RE::SpellItem* spell, Slots::Hand hand) {
         if (!player || !spell) {
             return;
         }
-        IntegratedMagic::MagicSelect::ScopedSuppressSelection suppress{};
         auto* caster = GetCaster(player, ToCastingSource(hand));
         SetCasterDual(caster, false);
         UnEquipSpell(player, spell, ToUnEquipHandInt(hand));
     }
 
-    void ClearHandSpell(RE::PlayerCharacter* player, MagicSlots::Hand hand) {
+    void ClearHandSpell(RE::PlayerCharacter* player, Slots::Hand hand) {
         if (!player) {
             return;
         }
@@ -182,16 +173,16 @@ namespace IntegratedMagic::MagicAction {
     }
 
     void EquipSlotContent(RE::PlayerCharacter* player, int slot) {
-        using enum IntegratedMagic::MagicSlots::Hand;
+        using enum IntegratedMagic::Slots::Hand;
         if (!player) return;
 
-        if (IntegratedMagic::MagicSlots::IsShoutSlot(slot)) {
-            const auto shoutID = IntegratedMagic::MagicSlots::GetSlotShout(slot);
+        if (IntegratedMagic::Slots::IsShoutSlot(slot)) {
+            const auto shoutID = IntegratedMagic::Slots::GetSlotShout(slot);
             if (auto* form = shoutID ? RE::TESForm::LookupByID(shoutID) : nullptr) EquipShoutInVoice(player, form);
             return;
         }
-        const auto rightID = IntegratedMagic::MagicSlots::GetSlotSpell(slot, Right);
-        const auto leftID = IntegratedMagic::MagicSlots::GetSlotSpell(slot, Left);
+        const auto rightID = IntegratedMagic::Slots::GetSlotSpell(slot, Right);
+        const auto leftID = IntegratedMagic::Slots::GetSlotSpell(slot, Left);
         RE::SpellItem* rightSpell = rightID ? RE::TESForm::LookupByID<RE::SpellItem>(rightID) : nullptr;
         RE::SpellItem* leftSpell = leftID ? RE::TESForm::LookupByID<RE::SpellItem>(leftID) : nullptr;
         if (rightSpell) EquipSpellInHand(player, rightSpell, Right);

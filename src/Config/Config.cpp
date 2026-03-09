@@ -1,4 +1,4 @@
-#include "MagicConfig.h"
+#include "Config.h"
 
 #include <SimpleIni.h>
 
@@ -6,7 +6,7 @@
 #include <format>
 #include <string>
 
-#include "MagicConfigPath.h"
+#include "ConfigPath.h"
 #include "PCH.h"
 
 using namespace std::string_literals;
@@ -92,7 +92,9 @@ namespace IntegratedMagic {
             const auto sec = std::format("Magic{}", i + 1);
             _loadInput(ini, sec.c_str(), slotInput[i]);
         }
+        _loadInput(ini, "HudPopup", hudPopupInput);
         skipEquipAnimationPatch = _getBool(ini, "Patches", "SkipEquipAnimationPatch", false);
+        skipEquipAnimationOnReturnPatch = _getBool(ini, "Patches", "SkipEquipAnimationOnReturn", false);
         requireExclusiveHotkeyPatch = _getBool(ini, "Patches", "RequireExclusiveHotkeyPatch", false);
     }
 
@@ -107,7 +109,9 @@ namespace IntegratedMagic {
             const auto sec = std::format("Magic{}", i + 1);
             _saveInput(ini, sec.c_str(), slotInput[i]);
         }
+        _saveInput(ini, "HudPopup", hudPopupInput);
         ini.SetBoolValue("Patches", "SkipEquipAnimationPatch", skipEquipAnimationPatch);
+        ini.SetBoolValue("Patches", "SkipEquipAnimationOnReturn", skipEquipAnimationOnReturnPatch);
         ini.SetBoolValue("Patches", "RequireExclusiveHotkeyPatch", requireExclusiveHotkeyPatch);
         std::error_code ec;
         std::filesystem::create_directories(path.parent_path(), ec);

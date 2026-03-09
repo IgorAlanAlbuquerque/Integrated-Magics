@@ -1,10 +1,10 @@
-#include "MagicSlots.h"
+#include "Slots.h"
 
-#include "MagicConfig.h"
+#include "Config.h"
 #include "PCH.h"
-#include "SpellSettingsDB.h"
+#include "Persistence/SpellSettingsDB.h"
 
-namespace IntegratedMagic::MagicSlots {
+namespace IntegratedMagic::Slots {
     namespace {
         inline auto& SlotArrForHand(MagicConfig& cfg, Hand hand) {
             return (hand == Hand::Left) ? cfg.slotSpellFormIDLeft : cfg.slotSpellFormIDRight;

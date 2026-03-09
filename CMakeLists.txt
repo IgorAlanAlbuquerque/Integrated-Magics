@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(IntegratedMagic VERSION 0.0.1 LANGUAGES CXX)
+project(IntegratedMagic VERSION 1.2 LANGUAGES CXX)
 
 if(DEFINED ENV{SKYRIM_MODS_FOLDER} AND IS_DIRECTORY "$ENV{SKYRIM_MODS_FOLDER}")
     set(OUTPUT_FOLDER "$ENV{SKYRIM_MODS_FOLDER}/${PROJECT_NAME}")
@@ -21,22 +21,26 @@ include(${COMMONLIB_SRC_DIR}/cmake/CommonLibSSE.cmake)
 add_commonlibsse_plugin(${PROJECT_NAME}
   SOURCES
     src/plugin.cpp
-    src/MagicStrings.cpp
-    src/MagicConfig.cpp
-    src/SpellSettingsDB.cpp
-    src/UI_IntegratedMagic.cpp
-    src/MagicInput.cpp
-    src/MagicSlots.cpp
-    src/MagicSelect.cpp
-    src/MagicHooks.cpp
+    src/Hooks.cpp
+    src/UI/Strings.cpp
+    src/UI/MENU_IntegratedMagic.cpp
+    src/UI/HUD.cpp
+    src/UI/TextureManager.cpp
+    src/UI/StyleConfig.cpp
+    src/Config/Config.cpp
+    src/Config/Slots.cpp
+    src/Persistence/SpellSettingsDB.cpp
+    src/Persistence/SaveSpellDB.cpp
+    src/Input/Input.cpp
+    src/Input/Assign.cpp
+    src/State/State.cpp
+    src/State/Action.cpp
+    src/State/AnimListener.cpp
     src/Detours/detours.cpp
     src/Detours/disasm.cpp
     src/Detours/disolx64.cpp
     src/Detours/image.cpp
     src/Detours/modules.cpp
-    src/MagicState.cpp
-    src/MagicAction.cpp
-    src/SaveSpellDB.cpp
 ) 
 
 target_include_directories(${PROJECT_NAME}
@@ -51,19 +55,23 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 target_precompile_headers(${PROJECT_NAME}
   PRIVATE
     src/PCH.h
-    src/MagicStrings.h
-    src/MagicConfigPath.h
-    src/MagicConfig.h
-    src/SpellSettingsDB.h
-    src/UI_IntegratedMagic.h
-    src/MagicInput.h
-    src/MagicSlots.h
-    src/MagicSelect.h
-    src/MagicHooks.h
-    src/MagicState.h
-    src/MagicAction.h
-    src/MagicEquipSlots.h
-    src/SaveSpellDB.h
+    src/Hooks.h
+    src/UI/Strings.h
+    src/UI/MENU_IntegratedMagic.h
+    src/UI/HUD.h
+    src/UI/TextureManager.h
+    src/UI/StyleConfig.h
+    src/Config/ConfigPath.h
+    src/Config/Config.h
+    src/Config/Slots.h
+    src/Config/EquipSlots.h
+    src/Persistence/SpellSettingsDB.h
+    src/Persistence/SaveSpellDB.h
+    src/Input/Assign.h
+    src/Input/Input.h
+    src/State/State.h
+    src/State/Action.h
+    src/State/AnimListener.h
 ) 
 
 set_source_files_properties(
