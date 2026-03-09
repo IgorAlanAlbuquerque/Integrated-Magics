@@ -43,20 +43,13 @@ namespace IntegratedMagic::MagicAction {
             return caster->currentSpell->As<RE::SpellItem>();
         }
 
-        const RE::BSFixedString kVarSkipEquip("SkipEquipAnimation");
-        const RE::BSFixedString kVarLoadDelay("LoadBoundObjectDelay");
-        const RE::BSFixedString kVarSkip3D("Skip3DLoading");
+        const RE::BSFixedString kInstantAnim("InstantEquipAnim");
 
-        inline void SetSkipEquipVars(RE::PlayerCharacter* pc, bool enable, int loadDelayMs = 0, bool skip3D = false) {
+        inline void SetSkipEquipVars(RE::PlayerCharacter* pc, bool enable) {
             if (!pc) {
                 return;
             }
-            (void)pc->SetGraphVariableBool(kVarSkipEquip, enable);
-
-            if (enable) {
-                (void)pc->SetGraphVariableInt(kVarLoadDelay, loadDelayMs);
-                (void)pc->SetGraphVariableBool(kVarSkip3D, skip3D);
-            }
+            (void)pc->SetGraphVariableBool(kInstantAnim, enable);
         }
 
         inline std::atomic<std::uint64_t> g_skipToken{0};

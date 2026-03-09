@@ -6,6 +6,7 @@
 #include "Persistence/SpellSettingsDB.h"
 #include "UI/MENU_IntegratedMagic.h"
 #include "UI/Strings.h"
+#include "UI/StyleConfig.h"
 
 #ifndef DLLEXPORT
     #include "REL/Relocation.h"
@@ -106,6 +107,7 @@ namespace {
                 IntegratedMagic::Strings::Load();
                 IntegratedMagic::GetMagicConfig().Load();
                 IntegratedMagic::SpellSettingsDB::Get().Load();
+                IntegratedMagic::StyleConfig::Get().Load();
                 IntegratedMagic::MENU::Register();
                 IntegratedMagic::HUD::Register();
                 IntegratedMagic::TextureManager::Init();
