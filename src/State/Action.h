@@ -10,4 +10,5 @@ namespace IntegratedMagic::MagicAction {
     void EquipShoutInVoice(RE::PlayerCharacter* player, RE::TESForm* shoutOrPower);
     void ClearVoiceShout(RE::PlayerCharacter* player);
     void EquipSlotContent(RE::PlayerCharacter* player, int slot);
+    void ApplySkipEquipAnimReturn(RE::PlayerCharacter* player);
 }

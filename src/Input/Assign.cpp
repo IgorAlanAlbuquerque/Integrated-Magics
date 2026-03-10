@@ -46,7 +46,7 @@ namespace IntegratedMagic::MagicAssign {
         auto const* spell = form ? form->As<RE::SpellItem>() : nullptr;
         if (!spell) return false;
 
-        Slots::SetSlotSpell(slot, hand, spell->GetFormID(), /*saveNow=*/true);
+        Slots::SetSlotSpell(slot, hand, spell->GetFormID(), true);
         return true;
     }
 
@@ -58,14 +58,14 @@ namespace IntegratedMagic::MagicAssign {
         if (!form) return false;
 
         if (form->As<RE::TESShout>()) {
-            Slots::SetSlotShout(slot, formID, /*saveNow=*/true);
+            Slots::SetSlotShout(slot, formID, true);
             return true;
         }
 
         if (auto* spell = form->As<RE::SpellItem>()) {
             const auto t = spell->GetSpellType();
             if (t == RE::MagicSystem::SpellType::kPower || t == RE::MagicSystem::SpellType::kLesserPower) {
-                Slots::SetSlotShout(slot, formID, /*saveNow=*/true);
+                Slots::SetSlotShout(slot, formID, true);
                 return true;
             }
         }
@@ -84,7 +84,7 @@ namespace IntegratedMagic::MagicAssign {
     }
 
     bool TryClearSlotShout(int slot) {
-        Slots::SetSlotShout(slot, 0u, /*saveNow=*/true);
+        Slots::SetSlotShout(slot, 0u, true);
         return true;
     }
 }

@@ -173,6 +173,16 @@ namespace IntegratedMagic::MagicAction {
         }
     }
 
+    void ApplySkipEquipAnimReturn(RE::PlayerCharacter* player) {
+        auto const& cfg = IntegratedMagic::GetMagicConfig();
+        if (!cfg.skipEquipAnimationOnReturnPatch) {
+            return;
+        }
+        const std::uint64_t token = g_skipToken.fetch_add(1, std::memory_order_relaxed) + 1;
+        SetSkipEquipVars(player, true);
+        ScheduleDisableSkipEquip(token, 500);
+    }
+
     void EquipSlotContent(RE::PlayerCharacter* player, int slot) {
         using enum IntegratedMagic::Slots::Hand;
         if (!player) return;

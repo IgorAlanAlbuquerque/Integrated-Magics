@@ -211,7 +211,7 @@ namespace {
     }
 
     void DrawOneSpellSettings(const char* title, std::uint32_t formID, bool& dirty) {
-        ImGui::Text("%s: %s", title, GetFormNameByID(formID));  // ← era GetSpellNameByFormID
+        ImGui::Text("%s: %s", title, GetFormNameByID(formID));
         ImGui::Text("FormID: 0x%08X", formID);
         if (formID == 0u) {
             ImGui::TextDisabled("%s",
@@ -323,11 +323,17 @@ namespace {
             cfg.skipEquipAnimationPatch = v1;
             dirty = true;
         }
-        bool v2 = cfg.requireExclusiveHotkeyPatch;
+        if (bool v2 = cfg.skipEquipAnimationOnReturnPatch; ImGui::Checkbox(
+                IntegratedMagic::Strings::Get("Item_SkipEquipAnimReturn", "Skip equip animation on return").c_str(),
+                &v2)) {
+            cfg.skipEquipAnimationOnReturnPatch = v2;
+            dirty = true;
+        }
+        bool v3 = cfg.requireExclusiveHotkeyPatch;
         if (ImGui::Checkbox(
                 IntegratedMagic::Strings::Get("Item_RequireExclusiveHotkey", "Require exclusive hotkey").c_str(),
-                &v2)) {
-            cfg.requireExclusiveHotkeyPatch = v2;
+                &v3)) {
+            cfg.requireExclusiveHotkeyPatch = v3;
             dirty = true;
         }
     }

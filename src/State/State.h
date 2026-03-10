@@ -32,6 +32,7 @@ namespace IntegratedMagic {
         RE::InputEvent* FlushSyntheticInput(RE::InputEvent* head);
 
         void DispatchAttack(IntegratedMagic::Slots::Hand hand, float value, float heldSecs);
+        void DispatchShout(float value, float heldSecs);
     }
 
     struct SpellSettings;
@@ -47,7 +48,7 @@ namespace IntegratedMagic {
         ObjSnapshot leftObj{};
         RE::MagicItem* rightSpell{nullptr};
         RE::MagicItem* leftSpell{nullptr};
-        RE::FormID snapShoutID{0};  // shout/power equipado no voice slot antes de entrar no modo
+        RE::FormID snapShoutID{0};
         bool valid{false};
     };
 
@@ -97,6 +98,7 @@ namespace IntegratedMagic {
         void NotifyAttackEnabled();
         void PumpAutomatic(float dt);
         void OnBeginCast(IntegratedMagic::Slots::Hand hand);
+        void OnShoutStop();
         const HandMode& LeftMode() const noexcept { return _left; }
         const HandMode& RightMode() const noexcept { return _right; }
 
@@ -117,7 +119,7 @@ namespace IntegratedMagic {
             SpellSettings rightSettings{};
             bool hasLeft{false};
             bool hasRight{false};
-            // shout/power
+
             bool isShout{false};
             std::uint32_t shoutID{0};
             RE::TESForm* shoutForm{nullptr};
@@ -175,6 +177,8 @@ namespace IntegratedMagic {
         void FinishHand(IntegratedMagic::Slots::Hand hand);
         void PumpAutomaticHand(IntegratedMagic::Slots::Hand hand);
         void SetModeSpellsFromHand(IntegratedMagic::Slots::Hand hand, RE::SpellItem* spell);
+        void StartShoutPress();
+        void StopShoutPress();
         static inline bool IsLeft(IntegratedMagic::Slots::Hand h) { return h == IntegratedMagic::Slots::Hand::Left; }
         void MarkDirty(IntegratedMagic::Slots::Hand h) {
             if (IsLeft(h))
@@ -204,10 +208,15 @@ namespace IntegratedMagic {
         int _firstInterrupt = 0;
         bool _pendingRestore{false};
         bool _pendingSkipFirstCastStop{false};
-        // shout / power
+
         std::uint32_t _modeShoutID{0};
         bool _shoutFinished{false};
         bool _dirtyShout{false};
+        bool _shoutHeld{false};
+        float _shoutHeldSecs{0.f};
+        bool _shoutIsPower{false};
+        float _powerAutoSecs{0.f};
+        bool _shoutWaitingStopEvent{false};
     };
 
     template <class Fn>

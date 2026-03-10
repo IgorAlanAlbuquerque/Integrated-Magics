@@ -255,7 +255,7 @@ namespace IntegratedMagic::HUD {
         }
 
         void DrawSpellModeWidget(ImDrawList* dl, bool clicked, ImVec2 origin, float availW, std::uint32_t formID,
-                                 const char* /*idSuffix*/) {
+                                 const char*) {
             if (!formID) return;
             auto s = SpellSettingsDB::Get().GetOrCreate(formID);
 
