@@ -96,6 +96,31 @@ namespace IntegratedMagic {
     }
 
     namespace {
+        using WS = RE::WEAPON_STATE;
+        using KS = RE::KNOCK_STATE_ENUM;
+
+        bool PlayerIsDead(RE::PlayerCharacter* pc) { return pc->IsDead(); }
+
+        bool PlayerIsKnockedOrStaggered(RE::PlayerCharacter* pc) {
+            auto ks = pc->AsActorState()->GetKnockState();
+            return ks != KS::kNormal && ks != KS::kQueued;
+        }
+
+        bool PlayerIsBlocking(RE::PlayerCharacter* pc) { return pc->IsBlocking(); }
+
+        bool PlayerIsSheathingOrSheathed(RE::PlayerCharacter* pc) {
+            auto ws = pc->AsActorState()->GetWeaponState();
+            return ws == WS::kSheathing || ws == WS::kSheathed || ws == WS::kWantToSheathe;
+        }
+
+        bool CasterSpellMismatch(RE::ActorMagicCaster* caster, RE::SpellItem* expected) {
+            if (!caster || !expected) return false;
+            auto* cur = caster->currentSpell ? caster->currentSpell->As<RE::SpellItem>() : nullptr;
+
+            if (!cur) return false;
+            return cur != expected;
+        }
+
         inline RE::PlayerCharacter* GetPlayer() { return RE::PlayerCharacter::GetSingleton(); }
 
         RE::ExtraDataList* GetWornExtraForHand(RE::InventoryEntryData const* entry, bool leftHand) {
@@ -391,6 +416,7 @@ namespace IntegratedMagic {
         _shoutIsPower = false;
         _powerAutoSecs = 0.f;
         _shoutWaitingStopEvent = false;
+        _activeTimeoutSecs = 0.f;
     }
 
     void MagicState::CaptureSnapshot(RE::PlayerCharacter const* player) {
@@ -944,10 +970,22 @@ namespace IntegratedMagic {
         PumpAutomaticHand(Left);
         PumpAutomaticHand(Right);
 
-        if (_active && _modeShoutID != 0 && _shoutIsPower && _shoutHeld && !_shoutFinished) {
+        if (!_active) return;
+        if (ShouldForceInterrupt()) {
+            ForceExit();
+            return;
+        }
+
+        _activeTimeoutSecs += dt;
+        if (_activeTimeoutSecs > kMaxActiveTimeoutSecs) {
+            ForceExit();
+            return;
+        }
+
+        if (_modeShoutID != 0 && _shoutIsPower && _shoutHeld && !_shoutFinished) {
             const auto ss = SpellSettingsDB::Get().GetOrCreate(_modeShoutID);
             if (ss.mode == IntegratedMagic::ActivationMode::Automatic) {
-                constexpr float kPowerAutoDuration = 1.0f;
+                constexpr float kPowerAutoDuration = 0.5f;
                 _powerAutoSecs += (dt > 0.f ? dt : 0.f);
                 if (_powerAutoSecs >= kPowerAutoDuration) {
                     StopShoutPress();
@@ -1327,8 +1365,12 @@ namespace IntegratedMagic {
         if (!_active || _modeShoutID == 0 || _shoutFinished) return;
         if (_shoutIsPower) return;
         const auto ss = SpellSettingsDB::Get().GetOrCreate(_modeShoutID);
+        const bool isHold = (ss.mode == IntegratedMagic::ActivationMode::Hold);
         const bool isAutomatic = (ss.mode == IntegratedMagic::ActivationMode::Automatic);
-        if (isAutomatic || _shoutWaitingStopEvent) {
+        if (isAutomatic || _shoutWaitingStopEvent || isHold) {
+            if (isHold && !_shoutWaitingStopEvent) {
+                StopShoutPress();
+            }
             _shoutWaitingStopEvent = false;
             _shoutFinished = true;
             TryFinalizeExit();
@@ -1374,5 +1416,65 @@ namespace IntegratedMagic {
         using enum IntegratedMagic::Slots::Hand;
         pumpOne(Left);
         pumpOne(Right);
+    }
+
+    bool MagicState::ShouldForceInterrupt() const {
+        if (!_active) return false;
+        auto* pc = GetPlayer();
+        if (!pc) return true;
+
+        if (PlayerIsDead(pc)) return true;
+        if (PlayerIsKnockedOrStaggered(pc)) return true;
+        if (PlayerIsBlocking(pc)) return true;
+        if (PlayerIsSheathingOrSheathed(pc)) return true;
+
+        using Hand = Slots::Hand;
+        if (_modeSpellRight) {
+            auto* caster = MagicAction::GetCaster(pc, RE::MagicSystem::CastingSource::kRightHand);
+            if (CasterSpellMismatch(caster, _modeSpellRight)) return true;
+        }
+        if (_modeSpellLeft) {
+            auto* caster = MagicAction::GetCaster(pc, RE::MagicSystem::CastingSource::kLeftHand);
+            if (CasterSpellMismatch(caster, _modeSpellLeft)) return true;
+        }
+
+        return false;
+    }
+
+    void MagicState::ForceExit() {
+        if (!_active) return;
+
+        auto* pc = GetPlayer();
+
+        StopAllAutoAttack();
+        CancelAllDelayedStarts();
+
+        _left = {};
+        _right = {};
+
+        if (pc && !pc->IsDead() && _snap.valid) {
+            RestoreSnapshot(pc);
+        }
+
+        _snap = {};
+        _active = false;
+        _activeSlot = -1;
+        _modeSpellLeft = nullptr;
+        _modeSpellRight = nullptr;
+        _dirtyLeft = false;
+        _dirtyRight = false;
+        _modeShoutID = 0;
+        _shoutFinished = false;
+        _shoutHeld = false;
+        _activeTimeoutSecs = 0.f;
+        _pendingRestore = false;
+        _pendingSkipFirstCastStop = false;
+        _firstInterrupt = 0;
+    }
+
+    void MagicState::ForceExitNoRestore() {
+        if (!_active) return;
+        _snap = {};
+        ForceExit();
     }
 }
