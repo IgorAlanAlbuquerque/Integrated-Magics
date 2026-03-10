@@ -7,6 +7,7 @@
 #include "UI/MENU_IntegratedMagic.h"
 #include "UI/Strings.h"
 #include "UI/StyleConfig.h"
+#include "State/CastGuardEvents.h"
 
 #ifndef DLLEXPORT
     #include "REL/Relocation.h"
@@ -118,6 +119,7 @@ namespace {
                 IntegratedMagic::TextureManager::Init();
                 Input::OnConfigChanged();
                 IntegratedMagic::Hooks::Install_Hooks();
+                CastGuardEvents::Get().Register();
                 break;
             }
             case SKSE::MessagingInterface::kPostLoadGame: {

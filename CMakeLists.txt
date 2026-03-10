@@ -72,6 +72,7 @@ target_precompile_headers(${PROJECT_NAME}
     src/State/State.h
     src/State/MagicAction.h
     src/State/AnimListener.h
+    src/State/CastGuardEvents.h
 ) 
 
 set_source_files_properties(

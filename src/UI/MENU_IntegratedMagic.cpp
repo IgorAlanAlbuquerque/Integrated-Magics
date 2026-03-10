@@ -85,10 +85,11 @@ namespace {
     }
 
     void ClearSlotData(IntegratedMagic::MagicConfig& cfg, int slot) {
-        using Hand = IntegratedMagic::Slots::Hand;
-        cfg.slotSpellFormIDLeft[static_cast<std::size_t>(slot)].store(0u, std::memory_order_relaxed);
-        cfg.slotSpellFormIDRight[static_cast<std::size_t>(slot)].store(0u, std::memory_order_relaxed);
-        auto& icfg = cfg.slotInput[static_cast<std::size_t>(slot)];
+        const auto idx = static_cast<std::size_t>(slot);
+        cfg.slotSpellFormIDLeft[idx].store(0u, std::memory_order_relaxed);
+        cfg.slotSpellFormIDRight[idx].store(0u, std::memory_order_relaxed);
+        cfg.slotShoutFormID[idx].store(0u, std::memory_order_relaxed);
+        auto& icfg = cfg.slotInput[idx];
         icfg.KeyboardScanCode1.store(-1, std::memory_order_relaxed);
         icfg.KeyboardScanCode2.store(-1, std::memory_order_relaxed);
         icfg.KeyboardScanCode3.store(-1, std::memory_order_relaxed);

@@ -99,6 +99,8 @@ namespace IntegratedMagic {
         void PumpAutomatic(float dt);
         void OnBeginCast(IntegratedMagic::Slots::Hand hand);
         void OnShoutStop();
+        void ForceExit();
+        void ForceExitNoRestore();
         const HandMode& LeftMode() const noexcept { return _left; }
         const HandMode& RightMode() const noexcept { return _right; }
 
@@ -179,6 +181,7 @@ namespace IntegratedMagic {
         void SetModeSpellsFromHand(IntegratedMagic::Slots::Hand hand, RE::SpellItem* spell);
         void StartShoutPress();
         void StopShoutPress();
+        bool ShouldForceInterrupt() const;
         static inline bool IsLeft(IntegratedMagic::Slots::Hand h) { return h == IntegratedMagic::Slots::Hand::Left; }
         void MarkDirty(IntegratedMagic::Slots::Hand h) {
             if (IsLeft(h))
@@ -217,6 +220,8 @@ namespace IntegratedMagic {
         bool _shoutIsPower{false};
         float _powerAutoSecs{0.f};
         bool _shoutWaitingStopEvent{false};
+        float _activeTimeoutSecs{0.f};
+        static constexpr float kMaxActiveTimeoutSecs = 30.f;
     };
 
     template <class Fn>
