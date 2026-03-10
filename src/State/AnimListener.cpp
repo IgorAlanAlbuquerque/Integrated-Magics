@@ -33,4 +33,7 @@ void AnimListener::HandleAnimEvent(const RE::BSAnimationGraphEvent* ev,
     if (tag == "shoutStop"sv) {
         state.OnShoutStop();
     }
+    if (tag == "blockStart"sv || tag == "BashExit"sv) {
+        state.ForceExit();
+    }
 }

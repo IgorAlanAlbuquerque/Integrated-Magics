@@ -88,7 +88,7 @@ namespace {
         const auto idx = static_cast<std::size_t>(slot);
         cfg.slotSpellFormIDLeft[idx].store(0u, std::memory_order_relaxed);
         cfg.slotSpellFormIDRight[idx].store(0u, std::memory_order_relaxed);
-        cfg.slotShoutFormID[idx].store(0u, std::memory_order_relaxed);  // NOVO
+        cfg.slotShoutFormID[idx].store(0u, std::memory_order_relaxed);
         auto& icfg = cfg.slotInput[idx];
         icfg.KeyboardScanCode1.store(-1, std::memory_order_relaxed);
         icfg.KeyboardScanCode2.store(-1, std::memory_order_relaxed);
