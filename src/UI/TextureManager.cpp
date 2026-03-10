@@ -41,6 +41,19 @@ namespace IntegratedMagic {
         return GetIcon(ClassifySpell(spell));
     }
 
+    const TextureManager::Image& TextureManager::GetIconForForm(RE::FormID formID) {
+        if (!formID) return GetIcon(SpellIconType::spell_default);
+
+        auto* form = RE::TESForm::LookupByID(formID);
+        if (!form) return GetIcon(SpellIconType::spell_default);
+
+        if (form->As<RE::TESShout>()) return GetIcon(SpellIconType::shout);
+
+        if (auto const* spell = form->As<RE::SpellItem>()) return GetSpellIcon(spell);
+
+        return GetIcon(SpellIconType::spell_default);
+    }
+
     const TextureManager::Image& TextureManager::GetIcon(SpellIconType type) {
         const auto idx = std::to_underlying(type);
         if (auto it = icons_.find(idx); it != icons_.end() && it->second.valid()) return it->second;

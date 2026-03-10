@@ -1,4 +1,4 @@
-#include "MagicAction.h"
+#include "Action.h"
 
 #include <atomic>
 #include <chrono>
@@ -34,6 +34,16 @@ namespace IntegratedMagic::MagicAction {
             using func_t = void (RE::ActorEquipManager::*)(RE::Actor*, RE::SpellItem*, int);
             REL::Relocation<func_t> func{RELOCATION_ID(37947, 38903)};
             func(aeMan, pc, spell, hand);
+        }
+
+        void UnEquipShout(RE::Actor* a_actor, RE::TESShout* a_shout) {
+            auto aeMan = RE::ActorEquipManager::GetSingleton();
+            if (!aeMan || !a_actor || !a_shout) {
+                return;
+            }
+            using func_t = void (RE::ActorEquipManager::*)(RE::Actor*, RE::TESShout*);
+            REL::Relocation<func_t> func{RELOCATION_ID(37948, 38904)};
+            func(aeMan, a_actor, a_shout);
         }
 
         RE::SpellItem* GetEquippedSpellFromCaster(RE::ActorMagicCaster* caster) {
@@ -72,6 +82,13 @@ namespace IntegratedMagic::MagicAction {
                     });
                 }
             }).detach();
+        }
+
+        bool IsPowerSpell(RE::TESForm* form) {
+            auto const* spell = form ? form->As<RE::SpellItem>() : nullptr;
+            if (!spell) return false;
+            using ST = RE::MagicSystem::SpellType;
+            return spell->GetSpellType() == ST::kPower || spell->GetSpellType() == ST::kLesserPower;
         }
     }
 
@@ -126,5 +143,65 @@ namespace IntegratedMagic::MagicAction {
             return;
         }
         ClearHandSpell(player, cur, hand);
+    }
+
+    void EquipShoutInVoice(RE::PlayerCharacter* player, RE::TESForm* shoutOrPower) {
+        if (!player || !shoutOrPower) return;
+        auto* mgr = RE::ActorEquipManager::GetSingleton();
+        if (!mgr) return;
+
+        if (auto* shout = shoutOrPower->As<RE::TESShout>()) {
+            mgr->EquipShout(player, shout);
+        } else if (auto* spell = shoutOrPower->As<RE::SpellItem>(); spell && IsPowerSpell(shoutOrPower)) {
+            mgr->EquipSpell(player, spell, nullptr);
+        }
+    }
+
+    void ClearVoiceShout(RE::PlayerCharacter* player) {
+        if (!player) return;
+        if (auto* shout = player->GetCurrentShout()) {
+            UnEquipShout(player, shout);
+            return;
+        }
+        auto const& rd = player->GetActorRuntimeData();
+        if (auto* power = rd.selectedPower ? rd.selectedPower->As<RE::SpellItem>() : nullptr) {
+            if (IsPowerSpell(power)) {
+                UnEquipSpell(player, power, 2);
+                UnEquipSpell(player, power, 1);
+                UnEquipSpell(player, power, 0);
+            }
+        }
+    }
+
+    void ApplySkipEquipAnimReturn(RE::PlayerCharacter* player) {
+        auto const& cfg = IntegratedMagic::GetMagicConfig();
+        if (!cfg.skipEquipAnimationOnReturnPatch) {
+            return;
+        }
+        const std::uint64_t token = g_skipToken.fetch_add(1, std::memory_order_relaxed) + 1;
+        SetSkipEquipVars(player, true);
+        ScheduleDisableSkipEquip(token, 500);
+    }
+
+    void EquipSlotContent(RE::PlayerCharacter* player, int slot) {
+        using enum IntegratedMagic::Slots::Hand;
+        if (!player) return;
+
+        if (IntegratedMagic::Slots::IsShoutSlot(slot)) {
+            const auto shoutID = IntegratedMagic::Slots::GetSlotShout(slot);
+            if (auto* form = shoutID ? RE::TESForm::LookupByID(shoutID) : nullptr) EquipShoutInVoice(player, form);
+            return;
+        }
+        const auto rightID = IntegratedMagic::Slots::GetSlotSpell(slot, Right);
+        const auto leftID = IntegratedMagic::Slots::GetSlotSpell(slot, Left);
+        RE::SpellItem* rightSpell = rightID ? RE::TESForm::LookupByID<RE::SpellItem>(rightID) : nullptr;
+        RE::SpellItem* leftSpell = leftID ? RE::TESForm::LookupByID<RE::SpellItem>(leftID) : nullptr;
+        if (rightSpell) EquipSpellInHand(player, rightSpell, Right);
+        if (leftSpell) EquipSpellInHand(player, leftSpell, Left);
+        const bool wantDual = (rightSpell && leftSpell && rightID == leftID);
+        auto* leftCaster = GetCaster(player, RE::MagicSystem::CastingSource::kLeftHand);
+        auto* rightCaster = GetCaster(player, RE::MagicSystem::CastingSource::kRightHand);
+        SetCasterDual(leftCaster, wantDual);
+        SetCasterDual(rightCaster, wantDual);
     }
 }

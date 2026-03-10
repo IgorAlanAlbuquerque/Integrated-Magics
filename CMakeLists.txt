@@ -34,7 +34,7 @@ add_commonlibsse_plugin(${PROJECT_NAME}
     src/Input/Input.cpp
     src/Input/Assign.cpp
     src/State/State.cpp
-    src/State/MagicAction.cpp
+    src/State/Action.cpp
     src/State/AnimListener.cpp
     src/Detours/detours.cpp
     src/Detours/disasm.cpp
@@ -70,7 +70,7 @@ target_precompile_headers(${PROJECT_NAME}
     src/Input/Assign.h
     src/Input/Input.h
     src/State/State.h
-    src/State/MagicAction.h
+    src/State/Action.h
     src/State/AnimListener.h
 ) 
 

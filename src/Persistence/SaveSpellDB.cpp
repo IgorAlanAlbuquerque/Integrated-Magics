@@ -29,15 +29,16 @@ namespace IntegratedMagic {
 
         std::size_t _clampedCount(std::size_t n) { return std::min<std::size_t>(n, kJsonSlotsHardCap); }
 
-        void _resizeBoth(IntegratedMagic::SaveSpellSlots& s, std::size_t count) {
+        void _resizeAll(IntegratedMagic::SaveSpellSlots& s, std::size_t count) {
             s.left.resize(count, 0u);
             s.right.resize(count, 0u);
+            s.shout.resize(count, 0u);
         }
 
         IntegratedMagic::SaveSpellSlots _migrateV2ArrayToLR(const nlohmann::json& arr) {
             IntegratedMagic::SaveSpellSlots s{};
             const std::size_t count = _clampedCount(arr.size());
-            _resizeBoth(s, count);
+            _resizeAll(s, count);
             for (std::size_t i = 0; i < count; ++i) {
                 const std::uint32_t id = _toU32Clamped(arr.at(i));
                 if (id == 0u) {
@@ -53,14 +54,17 @@ namespace IntegratedMagic {
             IntegratedMagic::SaveSpellSlots s{};
             const auto itL = obj.find("left");
             const auto itR = obj.find("right");
+            const auto itS = obj.find("shout");
             if (itL == obj.end() || itR == obj.end() || !itL->is_array() || !itR->is_array()) {
                 return s;
             }
-            const std::size_t count = _clampedCount(std::max(itL->size(), itR->size()));
-            _resizeBoth(s, count);
+            const std::size_t shoutSize = (itS != obj.end() && itS->is_array()) ? itS->size() : 0;
+            const std::size_t count = _clampedCount(std::max({itL->size(), itR->size(), shoutSize}));
+            _resizeAll(s, count);
             for (std::size_t i = 0; i < count; ++i) {
                 if (i < itL->size()) s.left[i] = _toU32Clamped(itL->at(i));
                 if (i < itR->size()) s.right[i] = _toU32Clamped(itR->at(i));
+                if (itS != obj.end() && itS->is_array() && i < itS->size()) s.shout[i] = _toU32Clamped(itS->at(i));
             }
             return s;
         }
@@ -74,6 +78,7 @@ namespace IntegratedMagic {
                 nlohmann::json obj;
                 obj["left"] = slots.left;
                 obj["right"] = slots.right;
+                obj["shout"] = slots.shout;
                 saves[key] = std::move(obj);
             }
             j["saves"] = std::move(saves);

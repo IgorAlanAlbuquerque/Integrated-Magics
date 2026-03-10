@@ -560,8 +560,8 @@ namespace {
             const auto s = static_cast<std::size_t>(i);
             fill(g_cache[s], cfg.slotInput[s]);
             const auto& hk = g_cache[s];
-            const int kbKeys = std::count_if(hk.kb.begin(), hk.kb.end(), [](int c) { return c != -1; });
-            const int gpKeys = std::count_if(hk.gp.begin(), hk.gp.end(), [](int c) { return c != -1; });
+            const auto kbKeys = std::count_if(hk.kb.begin(), hk.kb.end(), [](int c) { return c != -1; });
+            const auto gpKeys = std::count_if(hk.gp.begin(), hk.gp.end(), [](int c) { return c != -1; });
             g_slotIsMultiKey[s] = (kbKeys > 1) || (gpKeys > 1);
         }
 
