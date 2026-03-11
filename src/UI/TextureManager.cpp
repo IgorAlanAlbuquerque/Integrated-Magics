@@ -123,12 +123,12 @@ namespace IntegratedMagic {
             return false;
         }
 
-        auto* data = static_cast<unsigned char*>(malloc(w * h * 4));  // NOSONAR
+        auto* data = static_cast<unsigned char*>(malloc(w * h * 4));
         nsvgRasterize(rast, svg, 0, 0, 1, data, w, h, w * 4);
         nsvgDelete(svg);
         nsvgDeleteRasterizer(rast);
 
-        auto* d3dDevice = reinterpret_cast<ID3D11Device*>(device);  // NOSONAR
+        auto* d3dDevice = reinterpret_cast<ID3D11Device*>(device);
 
         D3D11_TEXTURE2D_DESC desc{};
         desc.Width = static_cast<UINT>(w);
@@ -146,7 +146,7 @@ namespace IntegratedMagic {
 
         ID3D11Texture2D* tex{nullptr};
         HRESULT hr = d3dDevice->CreateTexture2D(&desc, &sub, &tex);
-        free(data);  // NOSONAR
+        free(data);
         if (FAILED(hr) || !tex) return false;
 
         D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc{};
