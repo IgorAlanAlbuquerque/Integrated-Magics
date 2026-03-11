@@ -94,7 +94,7 @@ namespace IntegratedMagic {
     }
 
     SaveSpellDB& SaveSpellDB::Get() {
-        static SaveSpellDB g;  // NOSONAR
+        static SaveSpellDB g;
         return g;
     }
 
@@ -147,7 +147,7 @@ namespace IntegratedMagic {
                 _bySave.insert_or_assign(key, std::move(slots));
             } catch (const nlohmann::json::exception& e) {
                 spdlog::error("[IMAGIC][SaveSpellDB] JSON exception for key='{}': {}", it.key(), e.what());
-            } catch (const std::exception& e) {  // NOSONAR
+            } catch (const std::exception& e) {
                 spdlog::error("[IMAGIC][SaveSpellDB] Std exception while reading entry: {}", e.what());
             }
         }
@@ -155,7 +155,7 @@ namespace IntegratedMagic {
             try {
                 const auto outJson = _buildJsonV3_NoLock(_bySave);
                 _writeJsonToDisk(path, outJson);
-            } catch (const std::exception& e) {  // NOSONAR
+            } catch (const std::exception& e) {
                 spdlog::error("[IMAGIC][SaveSpellDB] Failed to write migrated v3 JSON: {}", e.what());
             }
         }

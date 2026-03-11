@@ -37,6 +37,7 @@ namespace IntegratedMagic::HUD {
         static std::atomic_bool g_mouseClicked{false};
         static std::atomic_bool g_mouseRightClicked{false};
         static std::atomic_bool g_popupJustOpened{false};
+        static std::atomic_bool g_hudVisible{true};
 
         bool IsHardBlocked() {
             if (!RE::PlayerCharacter::GetSingleton()) return true;
@@ -543,6 +544,7 @@ namespace IntegratedMagic::HUD {
     }
 
     void DrawHudElement() {
+        if (!g_hudVisible.load(std::memory_order_relaxed)) return;
         if (IsHardBlocked()) return;
         if (Slots::GetSlotCount() == 0) return;
 
@@ -571,6 +573,10 @@ namespace IntegratedMagic::HUD {
 
         DrawDetailPopup();
     }
+
+    bool IsHudVisible() { return g_hudVisible.load(std::memory_order_relaxed); }
+
+    void SetHudVisible(bool visible) { g_hudVisible.store(visible, std::memory_order_relaxed); }
 
     void Register() {
         if (!SKSEMenuFramework::IsInstalled()) return;

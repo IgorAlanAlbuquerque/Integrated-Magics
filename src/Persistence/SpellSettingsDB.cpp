@@ -18,7 +18,7 @@ namespace {
 
 namespace IntegratedMagic {
     SpellSettingsDB& SpellSettingsDB::Get() {
-        static SpellSettingsDB inst;  // NOSONAR
+        static SpellSettingsDB inst;
         return inst;
     }
 
@@ -67,7 +67,7 @@ namespace IntegratedMagic {
                 s.autoAttack = v.value("autoAttack", true);
                 _byKey.insert_or_assign(key, s);
             }
-        } catch (const std::exception& e) {  // NOSONAR
+        } catch (const std::exception& e) {
             spdlog::error("[IMAGIC][SPELLCFG] Load failed: {}", e.what());
         }
     }
@@ -86,7 +86,7 @@ namespace IntegratedMagic {
             j["spells"] = std::move(spells);
             std::ofstream o(path);
             o << j.dump(2);
-        } catch (const std::exception& e) {  // NOSONAR
+        } catch (const std::exception& e) {
             spdlog::error("[IMAGIC][SPELLCFG] Save failed: {}", e.what());
         }
     }

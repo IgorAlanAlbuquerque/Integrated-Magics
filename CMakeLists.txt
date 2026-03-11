@@ -23,7 +23,7 @@ add_commonlibsse_plugin(${PROJECT_NAME}
     src/plugin.cpp
     src/Hooks.cpp
     src/UI/Strings.cpp
-    src/UI/MENU_IntegratedMagic.cpp
+    src/UI/MENU.cpp
     src/UI/HUD.cpp
     src/UI/TextureManager.cpp
     src/UI/StyleConfig.cpp
@@ -57,7 +57,7 @@ target_precompile_headers(${PROJECT_NAME}
     src/PCH.h
     src/Hooks.h
     src/UI/Strings.h
-    src/UI/MENU_IntegratedMagic.h
+    src/UI/MENU.h
     src/UI/HUD.h
     src/UI/TextureManager.h
     src/UI/StyleConfig.h

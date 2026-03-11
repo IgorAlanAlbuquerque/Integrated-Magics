@@ -4,10 +4,10 @@
 #include "PCH.h"
 #include "Persistence/SaveSpellDB.h"
 #include "Persistence/SpellSettingsDB.h"
-#include "UI/MENU_IntegratedMagic.h"
+#include "State/CastGuardEvents.h"
+#include "UI/MENU.h"
 #include "UI/Strings.h"
 #include "UI/StyleConfig.h"
-#include "State/CastGuardEvents.h"
 
 #ifndef DLLEXPORT
     #include "REL/Relocation.h"
@@ -17,9 +17,9 @@
 #endif
 
 namespace {
-    static std::string g_pendingEssPath;  // NOSONAR
-    static std::string g_currentEssPath;  // NOSONAR
-    static bool g_dbLoaded = false;       // NOSONAR
+    static std::string g_pendingEssPath;
+    static std::string g_currentEssPath;
+    static bool g_dbLoaded = false;
 
     void EnsureSaveSpellDBLoaded() {
         if (!g_dbLoaded) {
@@ -85,7 +85,7 @@ namespace {
             return raw != 0u;
         }
         if (message->data && message->dataLen == sizeof(bool)) {
-            return *reinterpret_cast<const bool*>(message->data);  // NOSONAR
+            return *reinterpret_cast<const bool*>(message->data);
         }
         return message->data != nullptr;
     }
@@ -102,7 +102,7 @@ namespace {
         }
     }
 
-    void GlobalMessageHandler(SKSE::MessagingInterface::Message* message) {  // NOSONAR: No const definition
+    void GlobalMessageHandler(SKSE::MessagingInterface::Message* message) {
         if (!message) return;
         switch (message->type) {
             case SKSE::MessagingInterface::kPreLoadGame: {

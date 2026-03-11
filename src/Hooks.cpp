@@ -17,13 +17,13 @@ namespace IntegratedMagic::Hooks {
             static void thunk(RE::BSTEventSource<RE::InputEvent*>* a_dispatcher, RE::InputEvent* const* a_events) {
                 if (!a_events) return;
 
-                Input::ProcessAndFilter(const_cast<RE::InputEvent**>(a_events));  // NOSONAR
+                Input::ProcessAndFilter(const_cast<RE::InputEvent**>(a_events));
 
                 RE::InputEvent* head = IntegratedMagic::detail::FlushSyntheticInput(*a_events);
 
                 if (func == 0) return;
-                RE::InputEvent* const arr[2]{head, nullptr};     // NOSONAR
-                reinterpret_cast<Fn*>(func)(a_dispatcher, arr);  // NOSONAR
+                RE::InputEvent* const arr[2]{head, nullptr};
+                reinterpret_cast<Fn*>(func)(a_dispatcher, arr);
             }
 
             static void Install() {
@@ -51,7 +51,7 @@ namespace IntegratedMagic::Hooks {
             static void Install() {
                 REL::Relocation<std::uintptr_t> vtbl{RE::VTABLE_PlayerCharacter[2]};
                 const std::uintptr_t orig = vtbl.write_vfunc(1, thunk);
-                _orig = reinterpret_cast<Fn>(orig);  // NOSONAR
+                _orig = reinterpret_cast<Fn>(orig);
             }
         };
 

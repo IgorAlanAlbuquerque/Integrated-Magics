@@ -12,12 +12,12 @@
 namespace IntegratedMagic {
     namespace detail {
         static SyntheticInputState& GetSynth() {
-            static SyntheticInputState s;  // NOSONAR
+            static SyntheticInputState s;
             return s;
         }
 
         static SyntheticInputState& GetRetain() {
-            static SyntheticInputState s;  // NOSONAR
+            static SyntheticInputState s;
             return s;
         }
 
@@ -212,11 +212,7 @@ namespace IntegratedMagic {
                     liveExtra = FindAnyInstanceExtraForBase(idx, it.base);
                 }
                 const bool isArmor = (it.base->GetFormType() == RE::FormType::Armor);
-                mgr->EquipObject(actor, it.base, liveExtra, 1, nullptr,
-                                 /*queue*/ true,
-                                 /*force*/ false,
-                                 /*sounds*/ true,
-                                 /*applyNow*/ isArmor);
+                mgr->EquipObject(actor, it.base, liveExtra, 1, nullptr, true, false, true, isArmor);
             }
             items.clear();
         }
@@ -341,21 +337,13 @@ namespace IntegratedMagic {
                 if (!desiredExtra) {
                     desiredExtra = FindAnyInstanceExtraForBase(idx, want.base);
                 }
-                mgr->EquipObject(player, want.base, desiredExtra, 1, slot,
-                                 /*queue*/ true,
-                                 /*force*/ false,
-                                 /*sounds*/ true,
-                                 /*applyNow*/ false);
+                mgr->EquipObject(player, want.base, desiredExtra, 1, slot, true, false, true, false);
                 return;
             }
             if (!curBase) {
                 return;
             }
-            mgr->UnequipObject(player, curBase, curExtra, 1, slot,
-                               /*queue*/ true,
-                               /*force*/ false,
-                               /*sounds*/ true,
-                               /*applyNow*/ false, nullptr);
+            mgr->UnequipObject(player, curBase, curExtra, 1, slot, true, false, true, false, nullptr);
         }
     }
 
@@ -386,7 +374,7 @@ namespace IntegratedMagic {
     }
 
     MagicState& MagicState::Get() {
-        static MagicState inst;  // NOSONAR
+        static MagicState inst;
         return inst;
     }
 

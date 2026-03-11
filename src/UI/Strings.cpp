@@ -8,8 +8,8 @@
 
 namespace IntegratedMagic::Strings {
     namespace {
-        std::unordered_map<std::string, std::string> g_strings;  // NOSONAR
-        bool g_loaded = false;                                   // NOSONAR
+        std::unordered_map<std::string, std::string> g_strings;
+        bool g_loaded = false;
 
         std::filesystem::path StringsPath() { return GetThisDllDir() / "IntegratedMagic_Strings.txt"; }
 
