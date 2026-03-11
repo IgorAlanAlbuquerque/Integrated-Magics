@@ -16,7 +16,6 @@
 #include "UI/HUD.h"
 
 namespace {
-
     constexpr int kMaxSlots = static_cast<int>(IntegratedMagic::MagicConfig::kMaxSlots);
     constexpr int kMaxCode = 400;
     constexpr float kExclusiveConfirmDelaySec = 0.10f;
@@ -27,29 +26,29 @@ namespace {
     constexpr int kDIK_Escape = 0x01;
     static_assert(kMaxSlots <= 64, "Input mask uses uint64_t, keep max slots <= 64.");
 
-    std::atomic<int> g_slotCount{4};                         // NOSONAR
-    std::array<std::atomic_bool, kMaxCode> g_kbDown{};       // NOSONAR
-    std::array<std::atomic_bool, kMaxCode> g_gpDown{};       // NOSONAR
-    std::array<std::atomic_bool, kMaxSlots> g_slotDown{};    // NOSONAR
-    std::array<bool, kMaxSlots> g_slotWasAccepted{};         // NOSONAR — filtra releases após combo aceito
-    std::atomic<std::uint64_t> g_pressedMask{0ull};          // NOSONAR
-    std::atomic<std::uint64_t> g_releasedMask{0ull};         // NOSONAR
-    std::array<bool, kMaxSlots> g_prevRawKbDown{};           // NOSONAR
-    std::array<bool, kMaxSlots> g_slotIsMultiKey{};          // NOSONAR — combo com 2+ teclas
-    std::array<bool, kMaxSlots> g_slotFullComboSeen{};       // NOSONAR — combo completo visto no pending atual
-    std::array<bool, kMaxSlots> g_prevRawGpDown{};           // NOSONAR
-    std::array<float, kMaxSlots> g_exclusivePendingTimer{};  // NOSONAR
+    std::atomic<int> g_slotCount{4};
+    std::array<std::atomic_bool, kMaxCode> g_kbDown{};
+    std::array<std::atomic_bool, kMaxCode> g_gpDown{};
+    std::array<std::atomic_bool, kMaxSlots> g_slotDown{};
+    std::array<bool, kMaxSlots> g_slotWasAccepted{};
+    std::atomic<std::uint64_t> g_pressedMask{0ull};
+    std::atomic<std::uint64_t> g_releasedMask{0ull};
+    std::array<bool, kMaxSlots> g_prevRawKbDown{};
+    std::array<bool, kMaxSlots> g_slotIsMultiKey{};
+    std::array<bool, kMaxSlots> g_slotFullComboSeen{};
+    std::array<bool, kMaxSlots> g_prevRawGpDown{};
+    std::array<float, kMaxSlots> g_exclusivePendingTimer{};
 
     enum class PendingSrc : std::uint8_t { None = 0, Kb = 1, Gp = 2 };
-    std::array<PendingSrc, kMaxSlots> g_exclusivePendingSrc{};  // NOSONAR
+    std::array<PendingSrc, kMaxSlots> g_exclusivePendingSrc{};
 
     struct SlotHotkeys {
         std::array<int, 3> kb{-1, -1, -1};
         std::array<int, 3> gp{-1, -1, -1};
     };
-    std::array<SlotHotkeys, kMaxSlots> g_cache{};  // NOSONAR
-    SlotHotkeys g_hudCache{};                      // NOSONAR — hotkeys do popup HUD
-    std::atomic_bool g_hudTogglePending{false};    // NOSONAR — edge detectado, aguardando consumo
+    std::array<SlotHotkeys, kMaxSlots> g_cache{};
+    SlotHotkeys g_hudCache{};
+    std::atomic_bool g_hudTogglePending{false};
 
     struct RetainedEvent {
         RE::INPUT_DEVICE dev;
@@ -58,14 +57,14 @@ namespace {
         float value;
         float heldSecs;
     };
-    std::array<std::vector<RetainedEvent>, kMaxSlots> g_retainedEvents{};  // NOSONAR
+    std::array<std::vector<RetainedEvent>, kMaxSlots> g_retainedEvents{};
 
     struct CaptureState {
         std::atomic_bool captureRequested{false};
         std::atomic_int capturedEncoded{-1};
     };
     CaptureState& GetCaptureState() {
-        static CaptureState st{};  // NOSONAR
+        static CaptureState st{};
         return st;
     }
 
@@ -278,10 +277,10 @@ namespace {
             const auto src = g_exclusivePendingSrc[s];
             const bool stillDown = (src == PendingSrc::Kb) ? kbNow : gpNow;
 
-            const bool stillExcl = (src == PendingSrc::Kb)
-                                       ? ComboExclusiveNow(hk.kb, g_kbDown, IsAllowedExtra_Keyboard_MoveOrCamera)
-                                       : ComboExclusiveNow(hk.gp, g_gpDown, IsAllowedExtra_Gamepad_MoveOrCamera);
-            if (!stillExcl) {
+            if (const bool stillExcl = (src == PendingSrc::Kb)
+                                           ? ComboExclusiveNow(hk.kb, g_kbDown, IsAllowedExtra_Keyboard_MoveOrCamera)
+                                           : ComboExclusiveNow(hk.gp, g_gpDown, IsAllowedExtra_Gamepad_MoveOrCamera);
+                !stillExcl) {
                 ClearExclusivePending(s, ClearReason::Cancelled);
                 return false;
             }
@@ -298,9 +297,9 @@ namespace {
                         return true;
                     }
 
-                    const bool anyHeld =
-                        (src == PendingSrc::Gp) ? AnyComboKeyDown(hk.gp, g_gpDown) : AnyComboKeyDown(hk.kb, g_kbDown);
-                    if (anyHeld) {
+                    if (const bool anyHeld = (src == PendingSrc::Gp) ? AnyComboKeyDown(hk.gp, g_gpDown)
+                                                                     : AnyComboKeyDown(hk.kb, g_kbDown);
+                        anyHeld) {
                         g_exclusivePendingTimer[s] -= dt;
                         if (g_exclusivePendingTimer[s] <= 0.0f) {
                             ClearExclusivePending(s, ClearReason::Cancelled);
@@ -502,9 +501,7 @@ namespace {
             const bool inGp = dev == RE::INPUT_DEVICE::kGamepad && ComboContains(hk.gp, convertedCode);
             if (!inKb && !inGp) continue;
 
-            const bool accepted = g_slotDown[s].load(std::memory_order_relaxed);
-
-            if (accepted) {
+            if (const bool accepted = g_slotDown[s].load(std::memory_order_relaxed); accepted) {
                 return true;
             }
 
@@ -535,6 +532,23 @@ namespace {
         return false;
     }
 
+    bool HasTransformArchetype(const RE::MagicItem* item) {
+        if (!item) return false;
+        using ArchetypeID = RE::EffectArchetypes::ArchetypeID;
+        return std::ranges::any_of(item->effects, [](const auto* effect) {
+            if (!effect || !effect->baseEffect) return false;
+            const auto arch = effect->baseEffect->GetArchetype();
+            return arch == ArchetypeID::kWerewolf || arch == ArchetypeID::kVampireLord;
+        });
+    }
+
+    bool IsTransformPowerEquipped(RE::PlayerCharacter* pc) {
+        if (!pc) return false;
+        const auto& rd = pc->GetActorRuntimeData();
+        if (!rd.selectedPower) return false;
+        return HasTransformArchetype(rd.selectedPower->As<RE::MagicItem>());
+    }
+
     bool IsHudComboDown() { return ComboDown(g_hudCache.kb, g_kbDown) || ComboDown(g_hudCache.gp, g_gpDown); }
 
     bool ShouldFilterHudToggle(RE::INPUT_DEVICE dev, int convertedCode) { return IsHudToggleCombo(dev, convertedCode); }
@@ -560,8 +574,8 @@ namespace {
             const auto s = static_cast<std::size_t>(i);
             fill(g_cache[s], cfg.slotInput[s]);
             const auto& hk = g_cache[s];
-            const auto kbKeys = std::count_if(hk.kb.begin(), hk.kb.end(), [](int c) { return c != -1; });
-            const auto gpKeys = std::count_if(hk.gp.begin(), hk.gp.end(), [](int c) { return c != -1; });
+            const auto kbKeys = std::ranges::count_if(hk.kb, [](int c) { return c != -1; });
+            const auto gpKeys = std::ranges::count_if(hk.gp, [](int c) { return c != -1; });
             g_slotIsMultiKey[s] = (kbKeys > 1) || (gpKeys > 1);
         }
 
@@ -570,6 +584,7 @@ namespace {
     }
 
     void ProcessButtonEvents(RE::InputEvent** a_evns, CaptureState& cap, bool& wantCapture) {
+        auto* player = RE::PlayerCharacter::GetSingleton();
         for (auto* e = *a_evns; e; e = e->next) {
             const auto* btn = e->AsButtonEvent();
             if (!btn || (!btn->IsDown() && !btn->IsUp())) continue;
@@ -585,11 +600,17 @@ namespace {
 
             (void)TryHandleCapture(btn, cap, wantCapture, dev, code);
             UpdateDownState(dev, code, btn->IsDown());
+
+            if (btn->IsDown() && player && btn->QUserEvent() == "Shout"sv) {
+                if (IsTransformPowerEquipped(player)) {
+                    IntegratedMagic::MagicState::Get().ForceExitNoRestore();
+                }
+            }
         }
     }
 
     void UpdateHudToggleState() {
-        static bool prevHudDown = false;  // NOSONAR
+        static bool prevHudDown = false;
 
         const bool hudDown = IsHudComboDown();
         if (hudDown && !prevHudDown) {
@@ -693,7 +714,7 @@ namespace {
 void Input::ProcessAndFilter(RE::InputEvent** a_evns) {
     if (!a_evns) return;
 
-    static bool prevBlocked = false;  // NOSONAR
+    static bool prevBlocked = false;
 
     auto& cap = GetCaptureState();
     bool wantCapture = cap.captureRequested.load(std::memory_order_relaxed);
@@ -755,3 +776,9 @@ std::optional<int> Input::ConsumePressedSlot() { return ConsumeBit(g_pressedMask
 std::optional<int> Input::ConsumeReleasedSlot() { return ConsumeBit(g_releasedMask); }
 
 bool Input::ConsumeHudToggle() { return g_hudTogglePending.exchange(false, std::memory_order_relaxed); }
+
+void Input::CancelHotkeyCapture() {
+    auto& cap = GetCaptureState();
+    cap.captureRequested.store(false, std::memory_order_relaxed);
+    cap.capturedEncoded.store(-1, std::memory_order_relaxed);
+}

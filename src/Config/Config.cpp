@@ -119,7 +119,7 @@ namespace IntegratedMagic {
     }
 
     MagicConfig& GetMagicConfig() {
-        static MagicConfig g{};  // NOSONAR
+        static MagicConfig g{};
         return g;
     }
 }

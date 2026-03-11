@@ -10,6 +10,7 @@ namespace Input {
     std::optional<int> GetDownSlotForSelection();
     bool IsSlotHotkeyDown(int slot);
     void RequestHotkeyCapture();
+    void CancelHotkeyCapture();
     int PollCapturedHotkey();
     std::optional<int> ConsumePressedSlot();
     std::optional<int> ConsumeReleasedSlot();
