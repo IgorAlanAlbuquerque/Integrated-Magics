@@ -726,6 +726,11 @@ void Input::ProcessAndFilter(RE::InputEvent** a_evns) {
         ClearLikelyStuckKeysAfterMenuClose();
     }
 
+    if (!prevBlocked && blocked) {
+        const int n = ActiveSlots();
+        for (int slot = 0; slot < n; ++slot) DiscardExclusivePending(static_cast<std::size_t>(slot));
+    }
+
     prevBlocked = blocked;
 
     ProcessButtonEvents(a_evns, cap, wantCapture);
@@ -736,7 +741,7 @@ void Input::ProcessAndFilter(RE::InputEvent** a_evns) {
 
     FilterMouseForPopup(a_evns);
 
-    if (!wantCapture) {
+    if (!wantCapture && !blocked) {
         FilterEvents(a_evns);
     }
 

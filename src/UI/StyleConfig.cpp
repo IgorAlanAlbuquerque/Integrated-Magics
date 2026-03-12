@@ -6,7 +6,6 @@
 namespace IntegratedMagic {
 
     namespace {
-
         float GetFloat(const CSimpleIniA& ini, const char* section, const char* key, float def) {
             const char* v = ini.GetValue(section, key, nullptr);
             if (!v) return def;
@@ -36,6 +35,23 @@ namespace IntegratedMagic {
                 return def;
             }
         }
+
+        HudAnchor GetAnchor(const CSimpleIniA& ini, const char* section, const char* key, HudAnchor def) {
+            const char* v = ini.GetValue(section, key, nullptr);
+            if (!v) return def;
+            // Accept integer (0-8) or name string
+            const std::string s{v};
+            if (s == "TopLeft"      || s == "0") return HudAnchor::TopLeft;
+            if (s == "TopCenter"    || s == "1") return HudAnchor::TopCenter;
+            if (s == "TopRight"     || s == "2") return HudAnchor::TopRight;
+            if (s == "MiddleLeft"   || s == "3") return HudAnchor::MiddleLeft;
+            if (s == "Center"       || s == "4") return HudAnchor::Center;
+            if (s == "MiddleRight"  || s == "5") return HudAnchor::MiddleRight;
+            if (s == "BottomLeft"   || s == "6") return HudAnchor::BottomLeft;
+            if (s == "BottomCenter" || s == "7") return HudAnchor::BottomCenter;
+            if (s == "BottomRight"  || s == "8") return HudAnchor::BottomRight;
+            return def;
+        }
     }
 
     void StyleConfig::Load() {
@@ -57,6 +73,14 @@ namespace IntegratedMagic {
         iconSizeFactor = GetFloat(ini, "Icons", "SizeFactor", iconSizeFactor);
         iconOffsetFactor = GetFloat(ini, "Icons", "OffsetFactor", iconOffsetFactor);
         overlayAlpha = GetU8(ini, "Popup", "OverlayAlpha", overlayAlpha);
+
+        slotActiveScale = GetFloat(ini, "HUD", "SlotActiveScale", slotActiveScale);
+        slotModifierScale = GetFloat(ini, "HUD", "SlotModifierScale", slotModifierScale);
+        slotExpandTime = GetFloat(ini, "HUD", "SlotExpandTime", slotExpandTime);
+        slotRetractTime = GetFloat(ini, "HUD", "SlotRetractTime", slotRetractTime);
+        hudAnchor  = GetAnchor(ini, "HUD", "Anchor",  hudAnchor);
+        hudOffsetX = GetFloat(ini,  "HUD", "OffsetX", hudOffsetX);
+        hudOffsetY = GetFloat(ini,  "HUD", "OffsetY", hudOffsetY);
 
         slotBgActive = GetColor(ini, "Colors", "SlotBgActive", slotBgActive);
         slotBgInactive = GetColor(ini, "Colors", "SlotBgInactive", slotBgInactive);
@@ -84,5 +108,4 @@ namespace IntegratedMagic {
 
         spdlog::info("[StyleConfig] styles.ini carregado.");
     }
-
 }
