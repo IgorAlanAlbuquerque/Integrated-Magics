@@ -487,6 +487,9 @@ namespace IntegratedMagic {
             ClearHandSpellIfNoSnapshot(player, leftSnapSpell, _modeSpellLeft, Left);
             RestoreOneHand(player, mgr, idx, true, _snap.leftObj, leftSlot);
             EquipSpellIfPresent(player, leftSnapSpell, Left);
+            if (!_dirtyRight && _snap.rightObj.base) {
+                RestoreOneHand(player, mgr, idx, false, _snap.rightObj, rightSlot);
+            }
         }
 
         if (_dirtyShout) {
