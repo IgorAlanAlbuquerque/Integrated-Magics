@@ -110,6 +110,12 @@ namespace IntegratedMagic::MagicAction {
         }
         auto* caster = GetCaster(player, ToCastingSource(hand));
         SetCasterDual(caster, false);
+#ifdef DEBUG
+        spdlog::info("[Action] EquipSpellInHand: hand={} spellID={:#010x} name='{}' | currentCasterSpell={:#010x}",
+                     (hand == Slots::Hand::Left) ? "Left" : "Right", spell->GetFormID(),
+                     spell->GetFullName() ? spell->GetFullName() : "<null>",
+                     (caster && caster->currentSpell) ? caster->currentSpell->GetFormID() : 0u);
+#endif
 
         auto const& cfg = IntegratedMagic::GetMagicConfig();
         std::uint64_t token = 0;
@@ -128,6 +134,10 @@ namespace IntegratedMagic::MagicAction {
         if (!player || !spell) {
             return;
         }
+#ifdef DEBUG
+        spdlog::info("[Action] ClearHandSpell(spell): hand={} spellID={:#010x}",
+                     (hand == Slots::Hand::Left) ? "Left" : "Right", spell->GetFormID());
+#endif
         auto* caster = GetCaster(player, ToCastingSource(hand));
         SetCasterDual(caster, false);
         UnEquipSpell(player, spell, ToUnEquipHandInt(hand));
@@ -140,8 +150,16 @@ namespace IntegratedMagic::MagicAction {
         auto* caster = GetCaster(player, ToCastingSource(hand));
         auto* cur = GetEquippedSpellFromCaster(caster);
         if (!cur) {
+#ifdef DEBUG
+            spdlog::info("[Action] ClearHandSpell(no-spell): hand={} - caster has no spell, skipping",
+                         (hand == Slots::Hand::Left) ? "Left" : "Right");
+#endif
             return;
         }
+#ifdef DEBUG
+        spdlog::info("[Action] ClearHandSpell(no-spell): hand={} clearing spellID={:#010x}",
+                     (hand == Slots::Hand::Left) ? "Left" : "Right", cur->GetFormID());
+#endif
         ClearHandSpell(player, cur, hand);
     }
 

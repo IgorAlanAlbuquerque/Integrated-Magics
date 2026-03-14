@@ -87,10 +87,12 @@ namespace IntegratedMagic {
         void OnSlotReleased(int slot);
         void OnCastStop();
         void OnCastInterrupt();
-        void OnStaggerStop();
         void TryFinalizeExit();
         bool IsActive() const noexcept { return _active; }
         int ActiveSlot() const noexcept { return _activeSlot; }
+        bool IsDualCasting() const noexcept { return _isDualCasting; }
+        bool PendingSkipFirstCastStop() const noexcept { return _pendingSkipFirstCastStop; }
+        int DualCastSkipCount() const noexcept { return _dualCastSkipCastStops; }
         void StartAutoAttack(IntegratedMagic::Slots::Hand hand);
         void StopAutoAttack(IntegratedMagic::Slots::Hand hand);
         void StopAllAutoAttack();
@@ -211,6 +213,10 @@ namespace IntegratedMagic {
         int _firstInterrupt = 0;
         bool _pendingRestore{false};
         bool _pendingSkipFirstCastStop{false};
+        int _dualCastSkipCastStops{0};
+        bool _pendingPowerRestore{false};
+        bool _wasHandsDown{false};
+        bool _pendingRestoreAfterSheathe{false};
 
         std::uint32_t _modeShoutID{0};
         bool _shoutFinished{false};

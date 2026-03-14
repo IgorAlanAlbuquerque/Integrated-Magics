@@ -380,11 +380,31 @@ namespace IntegratedMagic {
 
     void MagicState::EnsureActiveWithSnapshot(RE::PlayerCharacter const* player, int slot) {
         if (_active) {
+#ifdef DEBUG
+            spdlog::info("[State] EnsureActiveWithSnapshot: already active, updating slot {} -> {}", _activeSlot, slot);
+#endif
             _activeSlot = slot;
             return;
         }
         CaptureSnapshot(player);
         _prevExtraEquipped.clear();
+        _pendingRestoreAfterSheathe = false;
+        _pendingRestore = false;
+        _pendingPowerRestore = false;
+        auto* pc = const_cast<RE::PlayerCharacter*>(player);
+#ifdef DEBUG
+        const auto ws = pc->AsActorState()->GetWeaponState();
+        _wasHandsDown = (ws == RE::WEAPON_STATE::kSheathed);
+
+        spdlog::info("[State] EnsureActiveWithSnapshot: ACTIVATING slot={} wasHandsDown={} weaponState={}", slot,
+                     _wasHandsDown, static_cast<int>(ws));
+#endif
+        if (_wasHandsDown) {
+#ifdef DEBUG
+            spdlog::info("[State] EnsureActiveWithSnapshot: calling DrawWeaponMagicHands(true)");
+#endif
+            pc->DrawWeaponMagicHands(true);
+        }
         _active = true;
         _activeSlot = slot;
         _left = {};
@@ -472,6 +492,7 @@ namespace IntegratedMagic {
         if (!mgr) {
             return;
         }
+        _wasHandsDown = false;
         MagicAction::ApplySkipEquipAnimReturn(player);
         const auto idx = BuildInventoryIndex(player);
         const auto* rightSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(Right);
@@ -611,6 +632,9 @@ namespace IntegratedMagic {
         hm.holdActive = false;
         hm.autoActive = false;
         using enum IntegratedMagic::ActivationMode;
+#ifdef DEBUG
+        const char* handStr = (hand == IntegratedMagic::Slots::Hand::Left) ? "Left" : "Right";
+#endif
         switch (ss.mode) {
             case Hold:
                 hm.holdActive = true;
@@ -625,6 +649,12 @@ namespace IntegratedMagic {
                         _pendingSkipFirstCastStop = true;
                     }
                 }
+#ifdef DEBUG
+                spdlog::info(
+                    "[State] EnterHand: hand={} mode=Hold wantAutoAttack={} waitingAutoAfterEquip={} "
+                    "pendingSkipFirstCastStop={}",
+                    handStr, hm.wantAutoAttack, hm.waitingAutoAfterEquip, _pendingSkipFirstCastStop);
+#endif
                 break;
             case Automatic:
                 hm.autoActive = true;
@@ -640,9 +670,18 @@ namespace IntegratedMagic {
                 if (IntegratedMagic::GetMagicConfig().skipEquipAnimationPatch) {
                     _pendingSkipFirstCastStop = true;
                 }
+#ifdef DEBUG
+                spdlog::info(
+                    "[State] EnterHand: hand={} mode=Automatic waitingChargeComplete=true waitingAutoAfterEquip=true "
+                    "pendingSkipFirstCastStop={}",
+                    handStr, _pendingSkipFirstCastStop);
+#endif
                 break;
             case Press:
                 hm.pressActive = true;
+#ifdef DEBUG
+                spdlog::info("[State] EnterHand: hand={} mode=Press", handStr);
+#endif
                 break;
         }
     }
@@ -658,6 +697,9 @@ namespace IntegratedMagic {
     }
 
     void MagicState::FinishHand(IntegratedMagic::Slots::Hand hand) {
+#ifdef DEBUG
+        spdlog::info("[State] FinishHand: hand={}", (hand == IntegratedMagic::Slots::Hand::Left) ? "Left" : "Right");
+#endif
         auto& hm = ModeFor(hand);
         hm.finished = true;
         hm.holdActive = false;
@@ -674,6 +716,10 @@ namespace IntegratedMagic {
     }
 
     void MagicState::OnSlotPressed(int slot) {
+#ifdef DEBUG
+        spdlog::info("[State] OnSlotPressed: slot={} active={} activeSlot={} modeShoutID={}", slot, _active,
+                     _activeSlot, _modeShoutID);
+#endif
         if (IntegratedMagic::Slots::IsShoutSlot(slot)) {
             if (_active && slot == _activeSlot && _modeShoutID != 0) {
                 if (_shoutFinished) return;
@@ -693,21 +739,22 @@ namespace IntegratedMagic {
             }
             SlotEntry e{};
             if (!PrepareSlotEntry(slot, e)) return;
+            using enum IntegratedMagic::ActivationMode;
+            if ((e.shoutSettings.mode == Hold || e.shoutSettings.mode == Automatic) && !_shoutIsPower &&
+                e.player->GetVoiceRecoveryTime() > 0.0f) {
+                _shoutFinished = true;
+                TryFinalizeExit();
+                return;
+            }
             MagicAction::EquipShoutInVoice(e.player, e.shoutForm);
             _dirtyShout = true;
 
-            using enum IntegratedMagic::ActivationMode;
             switch (e.shoutSettings.mode) {
                 case Hold:
                 case Press:
                     StartShoutPress();
                     break;
                 case Automatic:
-                    if (!_shoutIsPower && e.player->GetVoiceRecoveryTime() > 0.0f) {
-                        _shoutFinished = true;
-                        TryFinalizeExit();
-                        return;
-                    }
                     StartShoutPress();
                     _powerAutoSecs = 0.f;
                     break;
@@ -751,19 +798,19 @@ namespace IntegratedMagic {
             return;
         }
         using enum IntegratedMagic::Slots::Hand;
-        if (e.hasRight && e.rightSettings.mode == IntegratedMagic::ActivationMode::Automatic &&
-            !HasEnoughMagickaForSpell(e.player, e.rightSpell)) {
+        if (e.hasRight && !HasEnoughMagickaForSpell(e.player, e.rightSpell)) {
             e.hasRight = false;
             DisableHand(IntegratedMagic::Slots::Hand::Right);
         }
-        if (e.hasLeft && e.leftSettings.mode == IntegratedMagic::ActivationMode::Automatic) {
+        if (e.hasLeft) {
             float magickaAvailable = GetPlayerMagicka(e.player);
-            if (e.hasRight && e.rightSettings.mode == IntegratedMagic::ActivationMode::Automatic) {
+            if (e.hasRight) {
                 const float baseCostRight = GetSpellMagickaCost(e.player, e.rightSpell);
                 if (e.rightID == e.leftID) {
                     const float dualMultiplier = GetDualCastCostMultiplier(e.player, e.rightSpell);
-                    const float totalDualCost = baseCostRight * dualMultiplier;
-                    if (totalDualCost > 0.0f && (magickaAvailable + 1e-2f) < totalDualCost) {
+                    const bool willDualCast = (dualMultiplier > 2.0f);
+                    const float totalCost = willDualCast ? baseCostRight * dualMultiplier : baseCostRight * 2.0f;
+                    if (totalCost > 0.0f && (magickaAvailable + 1e-2f) < totalCost) {
                         e.hasLeft = false;
                         DisableHand(IntegratedMagic::Slots::Hand::Left);
                     }
@@ -829,6 +876,9 @@ namespace IntegratedMagic {
     }
 
     void MagicState::OnSlotReleased(int slot) {
+#ifdef DEBUG
+        spdlog::info("[State] OnSlotReleased: slot={} active={} activeSlot={}", slot, _active, _activeSlot);
+#endif
         if (!_active || slot != _activeSlot) {
             return;
         }
@@ -879,6 +929,9 @@ namespace IntegratedMagic {
 
     void MagicState::StartAutoAttack(IntegratedMagic::Slots::Hand hand) {
         using enum IntegratedMagic::Slots::Hand;
+#ifdef DEBUG
+        spdlog::info("[State] StartAutoAttack: hand={}", (hand == Left) ? "Left" : "Right");
+#endif
         if (hand == Left) {
             _aaHeldLeft = true;
             _aaSecsLeft = 0.0f;
@@ -896,6 +949,9 @@ namespace IntegratedMagic {
         if (!held) {
             return;
         }
+#ifdef DEBUG
+        spdlog::info("[State] StopAutoAttack: hand={} heldSecs={:.3f}", (hand == Left) ? "Left" : "Right", secs);
+#endif
         const float heldSecs = (secs > 0.0f) ? secs : 0.1f;
         IntegratedMagic::detail::DispatchAttack(hand, 0.0f, heldSecs);
         held = false;
@@ -927,13 +983,25 @@ namespace IntegratedMagic {
 
     void MagicState::NotifyAttackEnabled() {
         if (!_active) {
+#ifdef DEBUG
+            spdlog::info("[State] NotifyAttackEnabled: ignored - not active");
+#endif
             return;
         }
         _attackEnabled = true;
         using enum IntegratedMagic::Slots::Hand;
+#ifdef DEBUG
+        spdlog::info(
+            "[State] NotifyAttackEnabled: left.waitingAutoAfterEquip={} right.waitingAutoAfterEquip={} aaHeldLeft={} "
+            "aaHeldRight={}",
+            _left.waitingAutoAfterEquip, _right.waitingAutoAfterEquip, _aaHeldLeft, _aaHeldRight);
+#endif
         if (_left.waitingAutoAfterEquip) {
             _left.waitingAutoAfterEquip = false;
             if ((_left.autoActive || _left.wantAutoAttack) && !_aaHeldLeft) {
+#ifdef DEBUG
+                spdlog::info("[State] NotifyAttackEnabled: starting Left auto attack");
+#endif
                 StartAutoAttack(Left);
                 if (_left.autoActive || (_left.holdActive && _left.wantAutoAttack)) {
                     _left.waitingBeginCast = true;
@@ -944,6 +1012,9 @@ namespace IntegratedMagic {
         if (_right.waitingAutoAfterEquip) {
             _right.waitingAutoAfterEquip = false;
             if ((_right.autoActive || _right.wantAutoAttack) && !_aaHeldRight) {
+#ifdef DEBUG
+                spdlog::info("[State] NotifyAttackEnabled: starting Right auto attack");
+#endif
                 StartAutoAttack(Right);
                 if (_right.autoActive || (_right.holdActive && _right.wantAutoAttack)) {
                     _right.waitingBeginCast = true;
@@ -955,6 +1026,80 @@ namespace IntegratedMagic {
 
     void MagicState::PumpAutomatic(float dt) {
         using enum IntegratedMagic::Slots::Hand;
+        if (_pendingPowerRestore) {
+#ifdef DEBUG
+            spdlog::info("[State] PumpAutomatic: pendingPowerRestore -> RestoreSnapshot");
+#endif
+            _pendingPowerRestore = false;
+            if (auto* player = GetPlayer(); player) {
+                RestoreSnapshot(player);
+                if (auto* mgr = RE::ActorEquipManager::GetSingleton()) {
+                    auto idx = BuildInventoryIndex(player);
+                    ReequipPrevExtraEquipped(player, mgr, idx, _prevExtraEquipped);
+                }
+            }
+            _snap = {};
+            return;
+        }
+        if (_pendingRestoreAfterSheathe) {
+            auto* player = GetPlayer();
+            if (player) {
+                const auto ws = player->AsActorState()->GetWeaponState();
+                const bool giveUp = player->IsInCombat() || ws == RE::WEAPON_STATE::kWantToDraw;
+                if (ws == RE::WEAPON_STATE::kSheathed || giveUp) {
+#ifdef DEBUG
+                    spdlog::info("[State] PumpAutomatic: pendingRestoreAfterSheathe -> RestoreSnapshot (giveUp={})",
+                                 giveUp);
+#endif
+                    _pendingRestoreAfterSheathe = false;
+                    RestoreSnapshot(player);
+                    if (auto* mgr = RE::ActorEquipManager::GetSingleton()) {
+                        auto idx = BuildInventoryIndex(player);
+                        ReequipPrevExtraEquipped(player, mgr, idx, _prevExtraEquipped);
+                    }
+                    _snap = {};
+                }
+            }
+            return;
+        }
+        if (_pendingRestore) {
+#ifdef DEBUG
+            spdlog::info("[State] PumpAutomatic: pendingRestore -> RestoreSnapshot + deactivate");
+#endif
+            _pendingRestore = false;
+            auto* player = GetPlayer();
+            if (player) {
+                StopShoutPress();
+                RestoreSnapshot(player);
+                if (auto* mgr = RE::ActorEquipManager::GetSingleton()) {
+                    auto idx = BuildInventoryIndex(player);
+                    ReequipPrevExtraEquipped(player, mgr, idx, _prevExtraEquipped);
+                }
+            }
+            _active = false;
+            _activeSlot = -1;
+            _left = {};
+            _right = {};
+            _aaHeldLeft = false;
+            _aaHeldRight = false;
+            _aaSecsLeft = 0.f;
+            _aaSecsRight = 0.f;
+            _attackEnabled = false;
+            _modeSpellLeft = nullptr;
+            _modeSpellRight = nullptr;
+            _modeShoutID = 0;
+            _shoutFinished = false;
+            _dirtyShout = false;
+            _shoutHeld = false;
+            _shoutHeldSecs = 0.f;
+            _shoutIsPower = false;
+            _powerAutoSecs = 0.f;
+            _shoutWaitingStopEvent = false;
+            _snap.valid = false;
+            _firstInterrupt = 0;
+            _pendingSkipFirstCastStop = false;
+            return;
+        }
         PumpDelayedStarts(dt);
         PumpAutoStartFallback(Left, dt);
         PumpAutoStartFallback(Right, dt);
@@ -963,12 +1108,19 @@ namespace IntegratedMagic {
 
         if (!_active) return;
         if (ShouldForceInterrupt()) {
+#ifdef DEBUG
+            spdlog::info("[State] PumpAutomatic: ShouldForceInterrupt=true -> ForceExit (timeoutSecs={:.3f})",
+                         _activeTimeoutSecs);
+#endif
             ForceExit();
             return;
         }
 
         _activeTimeoutSecs += dt;
         if (_activeTimeoutSecs > kMaxActiveTimeoutSecs) {
+#ifdef DEBUG
+            spdlog::info("[State] PumpAutomatic: TIMEOUT ({:.3f}s > max) -> ForceExit", _activeTimeoutSecs);
+#endif
             ForceExit();
             return;
         }
@@ -979,6 +1131,9 @@ namespace IntegratedMagic {
                 constexpr float kPowerAutoDuration = 0.5f;
                 _powerAutoSecs += (dt > 0.f ? dt : 0.f);
                 if (_powerAutoSecs >= kPowerAutoDuration) {
+#ifdef DEBUG
+                    spdlog::info("[State] PumpAutomatic: power auto duration elapsed -> finishing shout");
+#endif
                     StopShoutPress();
                     _shoutFinished = true;
                     TryFinalizeExit();
@@ -994,10 +1149,19 @@ namespace IntegratedMagic {
         if (!_active) {
             return;
         }
+#ifdef DEBUG
+        const char* handStr = (hand == Left) ? "Left" : "Right";
+#endif
 
         if (hm.waitingAutoAfterEquip) {
             hm.waitingEnableBumperSecs += (dt > 0.0f ? dt : 0.0f);
             if (constexpr float kFallbackDelay = 0.25f; hm.waitingEnableBumperSecs >= kFallbackDelay) {
+#ifdef DEBUG
+                spdlog::info(
+                    "[State] PumpAutoStartFallback: hand={} FALLBACK FIRED after {:.3f}s (EnableBumper never arrived?) "
+                    "aaHeld={}",
+                    handStr, hm.waitingEnableBumperSecs, (hand == Left) ? _aaHeldLeft : _aaHeldRight);
+#endif
                 hm.waitingAutoAfterEquip = false;
                 bool const& aaHeld = (hand == Left) ? _aaHeldLeft : _aaHeldRight;
                 if (!aaHeld) {
@@ -1012,6 +1176,10 @@ namespace IntegratedMagic {
         if (!hm.waitingBeginCast) {
             return;
         }
+        if (!_attackEnabled) {
+            hm.beginCastWaitSecs = 0.f;
+            return;
+        }
         constexpr float kBeginCastTimeout = 0.1f;
         constexpr int kMaxRetries = 3;
         hm.beginCastWaitSecs += (dt > 0.0f ? dt : 0.0f);
@@ -1022,14 +1190,26 @@ namespace IntegratedMagic {
         hm.beginCastWaitSecs = 0.f;
 
         const bool hasLimit = (hm.mode == Automatic);
+#ifdef DEBUG
+        spdlog::info(
+            "[State] PumpAutoStartFallback: hand={} BeginCast timeout! retry={}/{} hasLimit={} delayPending={}",
+            handStr, hm.beginCastRetries, kMaxRetries, hasLimit, DelayFor(hand).pending);
+#endif
         if (!hasLimit || hm.beginCastRetries < kMaxRetries) {
             ++hm.beginCastRetries;
             auto const& d = DelayFor(hand);
             if (!d.pending) {
+#ifdef DEBUG
+                spdlog::info("[State] PumpAutoStartFallback: hand={} scheduling delayed start (retry {})", handStr,
+                             hm.beginCastRetries);
+#endif
                 StopAutoAttack(hand);
                 ScheduleDelayedStart(hand);
             }
         } else {
+#ifdef DEBUG
+            spdlog::info("[State] PumpAutoStartFallback: hand={} MAX RETRIES reached -> FinishHand", handStr);
+#endif
             hm.waitingBeginCast = false;
             FinishHand(hand);
         }
@@ -1079,9 +1259,14 @@ namespace IntegratedMagic {
             }
             return false;
         };
-        if (!charged(caster)) {
+        const bool isCharged = charged(caster);
+        if (!isCharged) {
             return;
         }
+#ifdef DEBUG
+        spdlog::info("[State] PumpAutomaticHand: hand={} charge={:.3f} CHARGE COMPLETE - stopping auto attack",
+                     (hand == IntegratedMagic::Slots::Hand::Left) ? "Left" : "Right", charge);
+#endif
         hm.waitingChargeComplete = false;
         hm.chargeComplete = true;
         StopAutoAttack(hand);
@@ -1109,13 +1294,37 @@ namespace IntegratedMagic {
         if (!_active) {
             return;
         }
-        if (!AllRelevantHandsFinished()) {
+        const bool allFinished = AllRelevantHandsFinished();
+#ifdef DEBUG
+        spdlog::info("[State] TryFinalizeExit: allFinished={} left.finished={} right.finished={} shoutFinished={}",
+                     allFinished, _left.finished, _right.finished, _shoutFinished);
+#endif
+        if (!allFinished) {
             return;
         }
         ExitAllNow();
     }
 
     void MagicState::ExitAllNow() {
+#ifdef DEBUG
+        spdlog::info("[State] ExitAllNow: modeShoutID={} shoutIsPower={} shoutFinished={} firstInterrupt={} active={}",
+                     _modeShoutID, _shoutIsPower, _shoutFinished, _firstInterrupt, _active);
+#endif
+
+        if (_modeShoutID != 0 && _shoutIsPower && _shoutFinished) {
+            _pendingPowerRestore = true;
+            StopAllAutoAttack();
+            CancelAllDelayedStarts();
+            _active = false;
+            _activeSlot = -1;
+            _left = {};
+            _right = {};
+            _modeShoutID = 0;
+            _shoutFinished = false;
+            _dirtyShout = true;
+            _shoutHeld = false;
+            return;
+        }
         auto* player = GetPlayer();
         if (!player) {
             _active = false;
@@ -1174,51 +1383,83 @@ namespace IntegratedMagic {
     void MagicState::OnCastStop() {
         using enum IntegratedMagic::Slots::Hand;
         if (!_active) {
+#ifdef DEBUG
+            spdlog::info("[State] OnCastStop: ignored - not active");
+#endif
             return;
         }
+#ifdef DEBUG
+        spdlog::info(
+            "[State] OnCastStop: pendingSkipFirstCastStop={} isDualCasting={} left.autoActive={} "
+            "left.chargeComplete={} left.finished={} right.autoActive={} right.chargeComplete={} right.finished={} "
+            "left.holdFired={} right.holdFired={}",
+            _pendingSkipFirstCastStop, _isDualCasting, _left.autoActive, _left.chargeComplete, _left.finished,
+            _right.autoActive, _right.chargeComplete, _right.finished, _left.holdFiredAndWaitingCastStop,
+            _right.holdFiredAndWaitingCastStop);
+#endif
         if (_pendingSkipFirstCastStop) {
             _pendingSkipFirstCastStop = false;
-
+#ifdef DEBUG
+            spdlog::info("[State] OnCastStop: SKIPPING first cast stop, scheduling delayed starts");
+#endif
             auto stopAndDelayStart = [&](IntegratedMagic::Slots::Hand h) {
                 auto& hm = ModeFor(h);
                 if ((hm.autoActive || (hm.holdActive && hm.wantAutoAttack)) && !hm.finished) {
                     CancelDelayedStart(h);
-
                     StopAutoAttack(h);
-
                     hm.waitingBeginCast = true;
                     hm.beginCastWaitSecs = 0.f;
                     hm.beginCastRetries = 0;
-
                     ScheduleDelayedStart(h);
+#ifdef DEBUG
+                    spdlog::info("[State] OnCastStop: scheduled delayed start for hand={}",
+                                 (h == Left) ? "Left" : "Right");
+#endif
                 }
             };
-
             stopAndDelayStart(Left);
             stopAndDelayStart(Right);
             return;
         }
         if (_isDualCasting) {
-            if (_left.autoActive && !_left.finished) {
-                FinishHand(Left);
+            if (_dualCastSkipCastStops > 0) {
+                --_dualCastSkipCastStops;
+#ifdef DEBUG
+                spdlog::info("[State] OnCastStop: dual cast skip remaining={}", _dualCastSkipCastStops);
+#endif
+                return;
             }
-            if (_right.autoActive && !_right.finished) {
-                FinishHand(Right);
-            }
+#ifdef DEBUG
+            spdlog::info("[State] OnCastStop: dual cast finishing both hands");
+#endif
+            FinishHand(Left);
+            FinishHand(Right);
             _isDualCasting = false;
             TryFinalizeExit();
             return;
         }
         if (_left.autoActive && !_left.finished && _left.chargeComplete) {
+#ifdef DEBUG
+            spdlog::info("[State] OnCastStop: finishing Left (autoActive+chargeComplete)");
+#endif
             FinishHand(Left);
         }
         if (_right.autoActive && !_right.finished && _right.chargeComplete) {
+#ifdef DEBUG
+            spdlog::info("[State] OnCastStop: finishing Right (autoActive+chargeComplete)");
+#endif
             FinishHand(Right);
         }
         if (_left.holdFiredAndWaitingCastStop && !_left.finished) {
+#ifdef DEBUG
+            spdlog::info("[State] OnCastStop: finishing Left (holdFiredAndWaitingCastStop)");
+#endif
             FinishHand(Left);
         }
         if (_right.holdFiredAndWaitingCastStop && !_right.finished) {
+#ifdef DEBUG
+            spdlog::info("[State] OnCastStop: finishing Right (holdFiredAndWaitingCastStop)");
+#endif
             FinishHand(Right);
         }
         TryFinalizeExit();
@@ -1228,20 +1469,38 @@ namespace IntegratedMagic {
         if (!_active) {
             return;
         }
+#ifdef DEBUG
+        spdlog::info("[State] OnCastInterrupt: firstInterrupt={} left.autoActive={} right.autoActive={}",
+                     _firstInterrupt, _left.autoActive, _right.autoActive);
+#endif
         if (_firstInterrupt == 0) {
             _firstInterrupt++;
+#ifdef DEBUG
+            spdlog::info("[State] OnCastInterrupt: first interrupt - ignoring");
+#endif
+            return;
+        }
+        if (_wasHandsDown && !_attackEnabled) {
+            _firstInterrupt++;
+#ifdef DEBUG
+            spdlog::info("[State] OnCastInterrupt: low hands interrupt - ignoring");
+#endif
             return;
         }
         _firstInterrupt++;
         using enum IntegratedMagic::Slots::Hand;
         bool anyFinished = false;
         if (_left.autoActive && !_left.finished) {
-            FinishHand(Left);
-            anyFinished = true;
+            if (!_left.waitingBeginCast) {
+                FinishHand(Left);
+                anyFinished = true;
+            }
         }
         if (_right.autoActive && !_right.finished) {
-            FinishHand(Right);
-            anyFinished = true;
+            if (!_right.waitingBeginCast) {
+                FinishHand(Right);
+                anyFinished = true;
+            }
         }
         if (anyFinished) {
             _isDualCasting = false;
@@ -1266,6 +1525,13 @@ namespace IntegratedMagic {
         }
         if ((needL && (_left.holdActive || _left.autoActive || _left.holdFiredAndWaitingCastStop)) ||
             (needR && (_right.holdActive || _right.autoActive || _right.holdFiredAndWaitingCastStop))) {
+#ifdef DEBUG
+            spdlog::info(
+                "[State] CanOverwriteNow: FALSE - hand still active (L.hold={} L.auto={} L.holdFired={} R.hold={} "
+                "R.auto={} R.holdFired={})",
+                _left.holdActive, _left.autoActive, _left.holdFiredAndWaitingCastStop, _right.holdActive,
+                _right.autoActive, _right.holdFiredAndWaitingCastStop);
+#endif
             return false;
         }
         int pressCount = 0;
@@ -1306,50 +1572,20 @@ namespace IntegratedMagic {
         _shoutIsPower = false;
         _powerAutoSecs = 0.f;
         _shoutWaitingStopEvent = false;
+        _dualCastSkipCastStops = 0;
+        _pendingPowerRestore = false;
+        _pendingRestoreAfterSheathe = false;
     }
 
     void MagicState::DisableHand(IntegratedMagic::Slots::Hand hand) {
+#ifdef DEBUG
+        spdlog::info("[State] DisableHand: hand={}", (hand == IntegratedMagic::Slots::Hand::Left) ? "Left" : "Right");
+#endif
         auto& hm = ModeFor(hand);
         StopAutoAttack(hand);
         hm = {};
         hm.finished = true;
         SetModeSpellsFromHand(hand, nullptr);
-    }
-
-    void MagicState::OnStaggerStop() {
-        if (_pendingRestore) {
-            if (auto* player = RE::PlayerCharacter::GetSingleton(); player) {
-                StopShoutPress();
-                RestoreSnapshot(player);
-                if (auto* mgr = RE::ActorEquipManager::GetSingleton(); mgr) {
-                    auto idx = BuildInventoryIndex(player);
-                    ReequipPrevExtraEquipped(player, mgr, idx, _prevExtraEquipped);
-                }
-                _active = false;
-                _activeSlot = -1;
-                _left = {};
-                _right = {};
-                _aaHeldLeft = false;
-                _aaHeldRight = false;
-                _aaSecsLeft = 0.f;
-                _aaSecsRight = 0.f;
-                _attackEnabled = false;
-                _modeSpellLeft = nullptr;
-                _modeSpellRight = nullptr;
-                _modeShoutID = 0;
-                _shoutFinished = false;
-                _dirtyShout = false;
-                _shoutHeld = false;
-                _shoutHeldSecs = 0.f;
-                _shoutIsPower = false;
-                _powerAutoSecs = 0.f;
-                _shoutWaitingStopEvent = false;
-                _snap.valid = false;
-                _firstInterrupt = 0;
-                _pendingSkipFirstCastStop = false;
-            }
-            _pendingRestore = false;
-        }
     }
 
     void MagicState::OnShoutStop() {
@@ -1370,13 +1606,33 @@ namespace IntegratedMagic {
 
     void MagicState::OnBeginCast(IntegratedMagic::Slots::Hand hand) {
         auto& mode = ModeFor(hand);
+#ifdef DEBUG
+        const char* handStr = (hand == IntegratedMagic::Slots::Hand::Left) ? "Left" : "Right";
+        spdlog::info("[State] OnBeginCast: hand={} waitingBeginCast={} retries={}", handStr, mode.waitingBeginCast,
+                     mode.beginCastRetries);
+#endif
         if (!mode.waitingBeginCast) return;
-
         mode.waitingBeginCast = false;
         mode.beginCastWaitSecs = 0.f;
         mode.beginCastRetries = 0;
-
         CancelDelayedStart(hand);
+#ifdef DEBUG
+        spdlog::info("[State] OnBeginCast: hand={} -> cast confirmed, begin cast wait cleared", handStr);
+#endif
+
+        using enum IntegratedMagic::Slots::Hand;
+        const auto other = (hand == Left) ? Right : Left;
+        auto& otherMode = ModeFor(other);
+        if (otherMode.waitingBeginCast) {
+#ifdef DEBUG
+            spdlog::info("[State] OnBeginCast: also clearing other hand ({}) waitingBeginCast",
+                         (other == Left) ? "Left" : "Right");
+#endif
+            otherMode.waitingBeginCast = false;
+            otherMode.beginCastWaitSecs = 0.f;
+            otherMode.beginCastRetries = 0;
+            CancelDelayedStart(other);
+        }
     }
 
     void MagicState::PumpDelayedStarts(float dt) {
@@ -1396,7 +1652,17 @@ namespace IntegratedMagic {
             d.secs = 0.f;
 
             auto& hm = ModeFor(h);
+#ifdef DEBUG
+            const char* handStr = (h == IntegratedMagic::Slots::Hand::Left) ? "Left" : "Right";
+            spdlog::info(
+                "[State] PumpDelayedStarts: hand={} delay elapsed! autoActive={} holdActive={} wantAutoAttack={} "
+                "finished={}",
+                handStr, hm.autoActive, hm.holdActive, hm.wantAutoAttack, hm.finished);
+#endif
             if ((hm.autoActive || (hm.holdActive && hm.wantAutoAttack)) && !hm.finished) {
+#ifdef DEBUG
+                spdlog::info("[State] PumpDelayedStarts: hand={} -> StartAutoAttack", handStr);
+#endif
                 StartAutoAttack(h);
 
                 hm.waitingBeginCast = true;
@@ -1412,28 +1678,79 @@ namespace IntegratedMagic {
     bool MagicState::ShouldForceInterrupt() const {
         if (!_active) return false;
         auto* pc = GetPlayer();
-        if (!pc) return true;
-
-        if (PlayerIsDead(pc)) return true;
-        if (PlayerIsKnockedOrStaggered(pc)) return true;
-        if (PlayerIsBlocking(pc)) return true;
-        if (PlayerIsSheathingOrSheathed(pc)) return true;
-
+        if (!pc) {
+#ifdef DEBUG
+            spdlog::info("[State] ShouldForceInterrupt: TRUE - no player");
+#endif
+            return true;
+        }
+        if (PlayerIsDead(pc)) {
+#ifdef DEBUG
+            spdlog::info("[State] ShouldForceInterrupt: TRUE - player is dead");
+#endif
+            return true;
+        }
+        if (PlayerIsKnockedOrStaggered(pc)) {
+#ifdef DEBUG
+            spdlog::info("[State] ShouldForceInterrupt: TRUE - player knocked/staggered (knockState={})",
+                         static_cast<int>(pc->AsActorState()->GetKnockState()));
+#endif
+            return true;
+        }
+        if (PlayerIsBlocking(pc)) {
+#ifdef DEBUG
+            spdlog::info("[State] ShouldForceInterrupt: TRUE - player is blocking");
+#endif
+            return true;
+        }
+        if (PlayerIsSheathingOrSheathed(pc)) {
+#ifdef DEBUG
+            spdlog::info("[State] ShouldForceInterrupt: TRUE - player sheathing/sheathed (weaponState={})",
+                         static_cast<int>(pc->AsActorState()->GetWeaponState()));
+#endif
+            return true;
+        }
         using Hand = Slots::Hand;
         if (_modeSpellRight) {
             auto* caster = MagicAction::GetCaster(pc, RE::MagicSystem::CastingSource::kRightHand);
-            if (CasterSpellMismatch(caster, _modeSpellRight)) return true;
+            if (CasterSpellMismatch(caster, _modeSpellRight)) {
+#ifdef DEBUG
+                const auto* curSpell =
+                    (caster && caster->currentSpell) ? caster->currentSpell->As<RE::SpellItem>() : nullptr;
+                spdlog::info(
+                    "[State] ShouldForceInterrupt: TRUE - Right caster spell mismatch! casterSpell={:#010x} "
+                    "modeSpell={:#010x}",
+                    curSpell ? curSpell->GetFormID() : 0u, _modeSpellRight->GetFormID());
+#endif
+                return true;
+            }
         }
         if (_modeSpellLeft) {
             auto* caster = MagicAction::GetCaster(pc, RE::MagicSystem::CastingSource::kLeftHand);
-            if (CasterSpellMismatch(caster, _modeSpellLeft)) return true;
+            if (CasterSpellMismatch(caster, _modeSpellLeft)) {
+#ifdef DEBUG
+                const auto* curSpell =
+                    (caster && caster->currentSpell) ? caster->currentSpell->As<RE::SpellItem>() : nullptr;
+                spdlog::info(
+                    "[State] ShouldForceInterrupt: TRUE - Left caster spell mismatch! casterSpell={:#010x} "
+                    "modeSpell={:#010x}",
+                    curSpell ? curSpell->GetFormID() : 0u, _modeSpellLeft->GetFormID());
+#endif
+                return true;
+            }
         }
-
         return false;
     }
 
     void MagicState::ForceExit() {
         if (!_active) return;
+#ifdef DEBUG
+        spdlog::info(
+            "[State] ForceExit: slot={} left.autoActive={} left.finished={} right.autoActive={} right.finished={} "
+            "aaHeldL={} aaHeldR={}",
+            _activeSlot, _left.autoActive, _left.finished, _right.autoActive, _right.finished, _aaHeldLeft,
+            _aaHeldRight);
+#endif
 
         auto* pc = GetPlayer();
 
@@ -1461,10 +1778,16 @@ namespace IntegratedMagic {
         _pendingRestore = false;
         _pendingSkipFirstCastStop = false;
         _firstInterrupt = 0;
+        _dualCastSkipCastStops = 0;
+        _pendingPowerRestore = false;
+        _pendingRestoreAfterSheathe = false;
     }
 
     void MagicState::ForceExitNoRestore() {
         if (!_active) return;
+#ifdef DEBUG
+        spdlog::info("[State] ForceExitNoRestore: discarding snapshot and forcing exit");
+#endif
         _snap = {};
         ForceExit();
     }

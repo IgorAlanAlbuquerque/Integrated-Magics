@@ -192,6 +192,7 @@ namespace {
         bool hudVisible = IntegratedMagic::HUD::IsHudVisible();
         if (ImGui::Checkbox(IntegratedMagic::Strings::Get("Item_ShowHud", "Show HUD").c_str(), &hudVisible)) {
             IntegratedMagic::HUD::SetHudVisible(hudVisible);
+            dirty = true;
         }
     }
 
