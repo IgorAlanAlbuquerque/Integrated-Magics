@@ -33,9 +33,13 @@ add_commonlibsse_plugin(${PROJECT_NAME}
     src/Persistence/SaveSpellDB.cpp
     src/Input/Input.cpp
     src/Input/Assign.cpp
-    src/State/State.cpp
     src/State/Action.cpp
     src/State/AnimListener.cpp
+    src/State/InventoryUtil.cpp
+    src/State/SyntheticInput.cpp
+    src/State/MagicStateLifecycle.cpp
+    src/State/MagicStatePump.cpp
+    src/State/MagicStateSlot.cpp
     src/Detours/detours.cpp
     src/Detours/disasm.cpp
     src/Detours/disolx64.cpp
@@ -74,6 +78,8 @@ target_precompile_headers(${PROJECT_NAME}
     src/State/Action.h
     src/State/AnimListener.h
     src/State/CastGuardEvents.h
+    src/State/InventoryUtil.h
+    src/State/SyntheticInput.h
 ) 
 
 set_source_files_properties(

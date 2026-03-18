@@ -849,10 +849,24 @@ namespace {
 void Input::ProcessAndFilter(RE::InputEvent** a_evns) {
     if (!a_evns) return;
 
-    static bool prevBlocked = false;
+    for (int code = 0; code < kMaxCode; ++code) {
+        const auto idx = static_cast<std::size_t>(code);
+        if (!g_kbDown[idx].load(std::memory_order_relaxed)) continue;
+        const UINT vk = MapVirtualKeyA(static_cast<UINT>(code), MAPVK_VSC_TO_VK);
+        if (vk == 0) continue;
+        const bool physicallyDown = (GetAsyncKeyState(static_cast<int>(vk)) & 0x8000) != 0;
+        if (!physicallyDown) {
+#ifdef DEBUG
+            spdlog::info("[Input] ProcessAndFilter: cleared stuck key scancode={}", code);
+#endif
+            g_kbDown[idx].store(false, std::memory_order_relaxed);
+        }
+    }
 
+    static bool prevBlocked = false;
     auto& cap = GetCaptureState();
     bool wantCapture = cap.captureRequested.load(std::memory_order_relaxed);
+    const bool wantCaptureBefore = wantCapture;
 
     const float dt = CalculateDeltaTime();
     const bool blocked = IsInputBlockedByMenus();
@@ -879,8 +893,25 @@ void Input::ProcessAndFilter(RE::InputEvent** a_evns) {
     UpdateSlotsIfAllowed(blocked, dt);
     FilterMouseForPopup(a_evns);
 
-    if (!wantCapture && !blocked) {
+    if (!blocked) {
         FilterEvents(a_evns);
+    }
+
+    if (wantCaptureBefore && !blocked) {
+        RE::InputEvent* prev = nullptr;
+        RE::InputEvent* cur = *a_evns;
+        while (cur) {
+            RE::InputEvent* next = cur->next;
+            if (cur->AsButtonEvent()) {
+                if (prev)
+                    prev->next = next;
+                else
+                    *a_evns = next;
+            } else {
+                prev = cur;
+            }
+            cur = next;
+        }
     }
 
     DispatchIfAllowed(blocked, dt);

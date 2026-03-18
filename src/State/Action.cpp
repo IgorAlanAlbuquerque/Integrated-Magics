@@ -55,14 +55,12 @@ namespace IntegratedMagic::MagicAction {
 
         const RE::BSFixedString kInstantAnim("InstantEquipAnim");
 
+        inline std::atomic<std::uint64_t> g_skipToken{0};
+
         inline void SetSkipEquipVars(RE::PlayerCharacter* pc, bool enable) {
-            if (!pc) {
-                return;
-            }
+            if (!pc) return;
             (void)pc->SetGraphVariableBool(kInstantAnim, enable);
         }
-
-        inline std::atomic<std::uint64_t> g_skipToken{0};
 
         inline void ScheduleDisableSkipEquip(std::uint64_t token, int delayMs) {
             std::thread([token, delayMs]() {
@@ -79,6 +77,12 @@ namespace IntegratedMagic::MagicAction {
                         }
                         auto* pc = RE::PlayerCharacter::GetSingleton();
                         SetSkipEquipVars(pc, false);
+#ifdef DEBUG
+                        spdlog::info(
+                            "[Action] ScheduleDisableSkipEquip: token={} - disabling InstantEquipAnim (timer fallback)",
+                            token);
+#endif
+                        g_skipToken.fetch_add(1, std::memory_order_relaxed);
                     });
                 }
             }).detach();
@@ -118,16 +122,34 @@ namespace IntegratedMagic::MagicAction {
 #endif
 
         auto const& cfg = IntegratedMagic::GetMagicConfig();
-        std::uint64_t token = 0;
 
         if (cfg.skipEquipAnimationPatch) {
-            token = g_skipToken.fetch_add(1, std::memory_order_relaxed) + 1;
+            const std::uint64_t token = (g_skipToken.fetch_add(1, std::memory_order_relaxed) + 1) | 1ull;
+            g_skipToken.store(token, std::memory_order_relaxed);
             SetSkipEquipVars(player, true);
+#ifdef DEBUG
+            spdlog::info("[Action] EquipSpellInHand: InstantEquipAnim = true (token={})", token);
+#endif
             ScheduleDisableSkipEquip(token, 500);
         }
 
         const auto* equipSlot = ToEquipSlot(hand);
         mgr->EquipSpell(player, spell, equipSlot);
+    }
+
+    void DisableSkipEquipVarsNow(RE::PlayerCharacter* player) {
+        auto const& cfg = IntegratedMagic::GetMagicConfig();
+        if (!cfg.skipEquipAnimationPatch) return;
+
+        const std::uint64_t cur = g_skipToken.load(std::memory_order_relaxed);
+        if ((cur & 1ull) == 0) return;
+
+        const std::uint64_t next = (cur + 1ull) & ~1ull;
+        g_skipToken.store(next, std::memory_order_relaxed);
+        SetSkipEquipVars(player, false);
+#ifdef DEBUG
+        spdlog::info("[Action] DisableSkipEquipVarsNow: InstantEquipAnim = false (token {} -> {})", cur, next);
+#endif
     }
 
     void ClearHandSpell(RE::PlayerCharacter* player, RE::SpellItem* spell, Slots::Hand hand) {
@@ -196,30 +218,12 @@ namespace IntegratedMagic::MagicAction {
         if (!cfg.skipEquipAnimationOnReturnPatch) {
             return;
         }
-        const std::uint64_t token = g_skipToken.fetch_add(1, std::memory_order_relaxed) + 1;
+        const std::uint64_t token = (g_skipToken.fetch_add(1, std::memory_order_relaxed) + 1) | 1ull;
+        g_skipToken.store(token, std::memory_order_relaxed);
         SetSkipEquipVars(player, true);
+#ifdef DEBUG
+        spdlog::info("[Action] ApplySkipEquipAnimReturn: InstantEquipAnim = true (token={})", token);
+#endif
         ScheduleDisableSkipEquip(token, 500);
-    }
-
-    void EquipSlotContent(RE::PlayerCharacter* player, int slot) {
-        using enum IntegratedMagic::Slots::Hand;
-        if (!player) return;
-
-        if (IntegratedMagic::Slots::IsShoutSlot(slot)) {
-            const auto shoutID = IntegratedMagic::Slots::GetSlotShout(slot);
-            if (auto* form = shoutID ? RE::TESForm::LookupByID(shoutID) : nullptr) EquipShoutInVoice(player, form);
-            return;
-        }
-        const auto rightID = IntegratedMagic::Slots::GetSlotSpell(slot, Right);
-        const auto leftID = IntegratedMagic::Slots::GetSlotSpell(slot, Left);
-        RE::SpellItem* rightSpell = rightID ? RE::TESForm::LookupByID<RE::SpellItem>(rightID) : nullptr;
-        RE::SpellItem* leftSpell = leftID ? RE::TESForm::LookupByID<RE::SpellItem>(leftID) : nullptr;
-        if (rightSpell) EquipSpellInHand(player, rightSpell, Right);
-        if (leftSpell) EquipSpellInHand(player, leftSpell, Left);
-        const bool wantDual = (rightSpell && leftSpell && rightID == leftID);
-        auto* leftCaster = GetCaster(player, RE::MagicSystem::CastingSource::kLeftHand);
-        auto* rightCaster = GetCaster(player, RE::MagicSystem::CastingSource::kRightHand);
-        SetCasterDual(leftCaster, wantDual);
-        SetCasterDual(rightCaster, wantDual);
     }
 }

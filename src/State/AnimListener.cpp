@@ -13,9 +13,8 @@ void AnimListener::HandleAnimEvent(const RE::BSAnimationGraphEvent* ev,
 
     using Hand = IntegratedMagic::Slots::Hand;
     auto& state = IntegratedMagic::MagicState::Get();
-#ifdef DEBUG
     const std::string_view tag{ev->tag.c_str(), ev->tag.size()};
-
+#ifdef DEBUG
     spdlog::info("[AnimListener] Event received: tag='{}' | state.active={}", ev->tag.c_str(), state.IsActive());
 #endif
 
@@ -59,5 +58,10 @@ void AnimListener::HandleAnimEvent(const RE::BSAnimationGraphEvent* ev,
         spdlog::info("[AnimListener] >> {} -> ForceExit!", ev->tag.c_str());
 #endif
         state.ForceExit();
+    }
+    if (tag == "tailMTIdle"sv || tag == "IdleStop"sv) {
+        if (state.IsWaitingSheatheRestore()) {
+            state.NotifySheatheComplete();
+        }
     }
 }

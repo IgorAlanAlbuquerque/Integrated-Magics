@@ -325,8 +325,6 @@ namespace IntegratedMagic::HUD {
             }
         }
 
-        // Returns the center point of the HUD ring based on anchor + offset config.
-        // 'half' is the half-size of the bounding box (ringRadius + maxSlotR + glowPad).
         ImVec2 ComputeHudCenter(const ImGuiIO* io, float half) {
             const float W = io->DisplaySize.x;
             const float H = io->DisplaySize.y;
@@ -334,7 +332,6 @@ namespace IntegratedMagic::HUD {
             const float ox = st.hudOffsetX;
             const float oy = st.hudOffsetY;
 
-            // Margin keeps the HUD fully inside the screen edge.
             const float m = half + 4.f;
 
             switch (st.hudAnchor) {
@@ -368,12 +365,9 @@ namespace IntegratedMagic::HUD {
 
             SlotAnimator::Update(n, activeSlot, /*modifierHeld=*/false);
 
-            // Ring center is anchored to a FIXED half (base slotRadius only).
-            // This prevents the center from drifting as slots animate.
             const float fixedHalf = st.ringRadius + st.slotRadius + kGlowPad;
             const ImVec2 ringCenter = ComputeHudCenter(io, fixedHalf);
 
-            // Window is sized to the ANIMATED max so expanded slots are never clipped.
             float maxScale = SlotAnimator::MaxPossibleScale();
             for (int i = 0; i < n; ++i) maxScale = std::max(maxScale, SlotAnimator::GetScale(i));
             const float animHalf = st.ringRadius + st.slotRadius * maxScale + kGlowPad;
@@ -394,8 +388,6 @@ namespace IntegratedMagic::HUD {
 
             const float dynR = DynamicRingRadius(n, st.slotRadius, st.ringRadius);
 
-            // Two-pass draw: inactive slots first, active slot last (painter's algorithm).
-            // This ensures the active slot always renders on top of its neighbors.
             for (int i = 0; i < n; ++i) {
                 if (i == activeSlot) continue;
                 const ImVec2 center = SlotCenter(ringCenter, dynR, i, n);

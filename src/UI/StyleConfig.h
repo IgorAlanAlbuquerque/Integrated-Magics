@@ -4,15 +4,15 @@
 namespace IntegratedMagic {
 
     enum class HudAnchor : std::uint8_t {
-        TopLeft      = 0,
-        TopCenter    = 1,
-        TopRight     = 2,
-        MiddleLeft   = 3,
-        Center       = 4,
-        MiddleRight  = 5,
-        BottomLeft   = 6,
+        TopLeft = 0,
+        TopCenter = 1,
+        TopRight = 2,
+        MiddleLeft = 3,
+        Center = 4,
+        MiddleRight = 5,
+        BottomLeft = 6,
         BottomCenter = 7,
-        BottomRight  = 8,  // default — original behavior
+        BottomRight = 8,
     };
 
     struct StyleConfig {
@@ -30,10 +30,9 @@ namespace IntegratedMagic {
         float slotExpandTime = 0.12f;
         float slotRetractTime = 0.15f;
 
-        // HUD position
-        HudAnchor hudAnchor   = HudAnchor::BottomRight;
-        float     hudOffsetX  = 0.f;   // pixels, applied after anchor
-        float     hudOffsetY  = 0.f;
+        HudAnchor hudAnchor = HudAnchor::BottomRight;
+        float hudOffsetX = 0.f;
+        float hudOffsetY = 0.f;
 
         std::uint32_t slotBgActive = 0xE60F161Eu;
         std::uint32_t slotBgInactive = 0xC80C0C0Cu;

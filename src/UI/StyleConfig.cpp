@@ -39,7 +39,6 @@ namespace IntegratedMagic {
         HudAnchor GetAnchor(const CSimpleIniA& ini, const char* section, const char* key, HudAnchor def) {
             const char* v = ini.GetValue(section, key, nullptr);
             if (!v) return def;
-            // Accept integer (0-8) or name string
             const std::string s{v};
             if (s == "TopLeft"      || s == "0") return HudAnchor::TopLeft;
             if (s == "TopCenter"    || s == "1") return HudAnchor::TopCenter;
