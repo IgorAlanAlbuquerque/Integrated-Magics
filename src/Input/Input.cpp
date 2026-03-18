@@ -157,6 +157,13 @@ namespace {
     enum class ClearReason { Success, Timeout, Cancelled };
 
     void ClearExclusivePending(std::size_t s, ClearReason reason) {
+#ifdef DEBUG
+        const char* reasonStr = (reason == ClearReason::Success)   ? "Success"
+                                : (reason == ClearReason::Timeout) ? "Timeout"
+                                                                   : "Cancelled";
+        spdlog::info("[Input] ClearExclusivePending: slot={} reason={} retainedEvents={}", s, reasonStr,
+                     g_retainedEvents[s].size());
+#endif
         if (reason != ClearReason::Success) {
             for (auto const& ev : g_retainedEvents[s]) {
                 IntegratedMagic::detail::EnqueueRetainedEvent(ev.dev, ev.rawIdCode, ev.userEvent, ev.value,
@@ -170,6 +177,12 @@ namespace {
     }
 
     void DiscardExclusivePending(std::size_t s) {
+        if (g_exclusivePendingSrc[s] != PendingSrc::None || !g_retainedEvents[s].empty()) {
+#ifdef DEBUG
+            spdlog::info("[Input] DiscardExclusivePending: slot={} (had pending src={} retained={})", s,
+                         static_cast<int>(g_exclusivePendingSrc[s]), g_retainedEvents[s].size());
+#endif
+        }
         g_retainedEvents[s].clear();
         g_exclusivePendingSrc[s] = PendingSrc::None;
         g_exclusivePendingTimer[s] = 0.0f;
@@ -236,11 +249,17 @@ namespace {
     void HandleSlotPressed(int slot) {
         if (slot < 0 || slot >= ActiveSlots()) return;
         if (!RE::PlayerCharacter::GetSingleton()) return;
+#ifdef DEBUG
+        spdlog::info("[Input] HandleSlotPressed: slot={}", slot);
+#endif
         IntegratedMagic::MagicState::Get().OnSlotPressed(slot);
     }
 
     void HandleSlotReleased(int slot) {
         if (slot < 0 || slot >= ActiveSlots()) return;
+#ifdef DEBUG
+        spdlog::info("[Input] HandleSlotReleased: slot={}", slot);
+#endif
         IntegratedMagic::MagicState::Get().OnSlotReleased(slot);
     }
 
@@ -281,6 +300,9 @@ namespace {
                                            ? ComboExclusiveNow(hk.kb, g_kbDown, IsAllowedExtra_Keyboard_MoveOrCamera)
                                            : ComboExclusiveNow(hk.gp, g_gpDown, IsAllowedExtra_Gamepad_MoveOrCamera);
                 !stillExcl) {
+#ifdef DEBUG
+                spdlog::info("[Input] ComputeAcceptedExclusive: slot={} pending CANCELLED (no longer exclusive)", slot);
+#endif
                 ClearExclusivePending(s, ClearReason::Cancelled);
                 return false;
             }
@@ -289,10 +311,20 @@ namespace {
                 if (stillDown && !g_slotFullComboSeen[s]) {
                     g_slotFullComboSeen[s] = true;
                     g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;
+#ifdef DEBUG
+                    spdlog::info(
+                        "[Input] ComputeAcceptedExclusive: slot={} multi-key full combo seen, timer reset to {:.3f}s",
+                        slot, kExclusiveConfirmDelaySec);
+#endif
                 }
 
                 if (!stillDown) {
                     if (g_slotFullComboSeen[s]) {
+#ifdef DEBUG
+                        spdlog::info(
+                            "[Input] ComputeAcceptedExclusive: slot={} multi-key released after full combo -> ACCEPTED",
+                            slot);
+#endif
                         DiscardExclusivePending(s);
                         return true;
                     }
@@ -302,17 +334,33 @@ namespace {
                         anyHeld) {
                         g_exclusivePendingTimer[s] -= dt;
                         if (g_exclusivePendingTimer[s] <= 0.0f) {
+#ifdef DEBUG
+                            spdlog::info(
+                                "[Input] ComputeAcceptedExclusive: slot={} multi-key partial hold TIMEOUT -> Cancelled",
+                                slot);
+#endif
                             ClearExclusivePending(s, ClearReason::Cancelled);
                         }
                         return false;
                     }
 
+#ifdef DEBUG
+                    spdlog::info(
+                        "[Input] ComputeAcceptedExclusive: slot={} multi-key all released without full combo -> "
+                        "Cancelled",
+                        slot);
+#endif
                     ClearExclusivePending(s, ClearReason::Cancelled);
                     return false;
                 }
 
                 g_exclusivePendingTimer[s] -= dt;
                 if (g_exclusivePendingTimer[s] <= 0.0f) {
+#ifdef DEBUG
+                    spdlog::info(
+                        "[Input] ComputeAcceptedExclusive: slot={} multi-key timer elapsed -> Success (held down)",
+                        slot);
+#endif
                     ClearExclusivePending(s, ClearReason::Success);
                     return true;
                 }
@@ -320,11 +368,17 @@ namespace {
 
             } else {
                 if (!stillDown) {
+#ifdef DEBUG
+                    spdlog::info("[Input] ComputeAcceptedExclusive: slot={} single-key released -> ACCEPTED", slot);
+#endif
                     DiscardExclusivePending(s);
                     return true;
                 }
                 g_exclusivePendingTimer[s] -= dt;
                 if (g_exclusivePendingTimer[s] <= 0.0f) {
+#ifdef DEBUG
+                    spdlog::info("[Input] ComputeAcceptedExclusive: slot={} single-key timer elapsed -> Success", slot);
+#endif
                     ClearExclusivePending(s, ClearReason::Success);
                     return true;
                 }
@@ -336,12 +390,22 @@ namespace {
         const bool gpEdge = gpNow && !gpPrev;
 
         if (kbEdge && ComboExclusiveNow(hk.kb, g_kbDown, IsAllowedExtra_Keyboard_MoveOrCamera)) {
+#ifdef DEBUG
+            spdlog::info(
+                "[Input] ComputeAcceptedExclusive: slot={} KB edge detected, starting exclusive pending (isMulti={})",
+                slot, isMulti);
+#endif
             g_exclusivePendingSrc[s] = PendingSrc::Kb;
             g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;
             if (isMulti) g_slotFullComboSeen[s] = true;
             return false;
         }
         if (gpEdge && ComboExclusiveNow(hk.gp, g_gpDown, IsAllowedExtra_Gamepad_MoveOrCamera)) {
+#ifdef DEBUG
+            spdlog::info(
+                "[Input] ComputeAcceptedExclusive: slot={} GP edge detected, starting exclusive pending (isMulti={})",
+                slot, isMulti);
+#endif
             g_exclusivePendingSrc[s] = PendingSrc::Gp;
             g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;
             if (isMulti) g_slotFullComboSeen[s] = true;
@@ -370,6 +434,11 @@ namespace {
                 accNow = rawNow;
             }
             if (accNow != prevAcc) {
+#ifdef DEBUG
+                spdlog::info("[Input] RecomputeSlotEdges: slot={} EDGE {} (kb={} gp={} exclusive={} multiKey={})", slot,
+                             accNow ? "PRESSED" : "RELEASED", kbNow, gpNow, cfg.requireExclusiveHotkeyPatch,
+                             g_slotIsMultiKey[s]);
+#endif
                 g_slotDown[s].store(accNow, std::memory_order_relaxed);
                 AtomicFetchOrU64(accNow ? g_pressedMask : g_releasedMask, (1uLL << slot));
             }
@@ -425,6 +494,10 @@ namespace {
         else if (dev == RE::INPUT_DEVICE::kGamepad)
             encoded = -(convertedCode + 1);
         if (encoded == -1) return false;
+#ifdef DEBUG
+        spdlog::info("[Input] TryHandleCapture: captured dev={} code={} encoded={}", static_cast<int>(dev),
+                     convertedCode, encoded);
+#endif
         cap.capturedEncoded.store(encoded, std::memory_order_relaxed);
         cap.captureRequested.store(false, std::memory_order_relaxed);
         wantCapture = false;
@@ -439,9 +512,21 @@ namespace {
     }
 
     void DrainWhenBlocked() {
-        for (auto s = Input::ConsumePressedSlot(); s.has_value(); s = Input::ConsumePressedSlot());
-        for (auto s = Input::ConsumeReleasedSlot(); s.has_value(); s = Input::ConsumeReleasedSlot())
+#ifdef DEBUG
+        int drained = 0;
+#endif
+        for (auto s = Input::ConsumePressedSlot(); s.has_value(); s = Input::ConsumePressedSlot())
+#ifdef DEBUG
+            ++drained;
+        if (drained > 0)
+            spdlog::info("[Input] DrainWhenBlocked: discarded {} pressed slot(s) (input blocked)", drained);
+#endif
+        for (auto s = Input::ConsumeReleasedSlot(); s.has_value(); s = Input::ConsumeReleasedSlot()) {
+#ifdef DEBUG
+            spdlog::info("[Input] DrainWhenBlocked: releasing slot={} while blocked", *s);
+#endif
             HandleSlotReleased(*s);
+        }
     }
 
     void DispatchSlots() {
@@ -502,24 +587,65 @@ namespace {
             if (!inKb && !inGp) continue;
 
             if (const bool accepted = g_slotDown[s].load(std::memory_order_relaxed); accepted) {
+#ifdef DEBUG
+                spdlog::info("[Input] ShouldFilterAndSave: slot={} code={} dev={} FILTERED (slot is down)", slot,
+                             convertedCode, static_cast<int>(dev));
+#endif
                 return true;
             }
 
-            if (g_slotWasAccepted[s]) return true;
+            if (g_slotWasAccepted[s]) {
+#ifdef DEBUG
+                spdlog::info("[Input] ShouldFilterAndSave: slot={} code={} dev={} FILTERED (wasAccepted)", slot,
+                             convertedCode, static_cast<int>(dev));
+#endif
+                return true;
+            }
 
-            if (inKb && ComboDown(hk.kb, g_kbDown)) return true;
-            if (inGp && ComboDown(hk.gp, g_gpDown)) return true;
+            if (inKb && ComboDown(hk.kb, g_kbDown)) {
+#ifdef DEBUG
+                spdlog::info("[Input] ShouldFilterAndSave: slot={} code={} FILTERED (kb combo down)", slot,
+                             convertedCode);
+#endif
+                return true;
+            }
+            if (inGp && ComboDown(hk.gp, g_gpDown)) {
+#ifdef DEBUG
+                spdlog::info("[Input] ShouldFilterAndSave: slot={} code={} FILTERED (gp combo down)", slot,
+                             convertedCode);
+#endif
+                return true;
+            }
 
             if (g_slotIsMultiKey[s] && !HasExclusivePending(s)) {
+#ifdef DEBUG
+                spdlog::info(
+                    "[Input] ShouldFilterAndSave: slot={} code={} starting exclusive pending (multiKey, no pending "
+                    "yet)",
+                    slot, convertedCode);
+#endif
                 const PendingSrc src = inGp ? PendingSrc::Gp : PendingSrc::Kb;
                 g_exclusivePendingSrc[s] = src;
                 g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;
             }
 
             if (HasExclusivePending(s)) {
-                if (const bool isHeld = (value > 0.5f && heldSecs > 0.0f); !isHeld) {
+                const bool isHeld = (value > 0.5f && heldSecs > 0.0f);
+                if (!isHeld) {
+#ifdef DEBUG
+                    spdlog::info("[Input] ShouldFilterAndSave: slot={} code={} RETAINED (exclusive pending, not held)",
+                                 slot, convertedCode);
+#endif
                     g_retainedEvents[s].emplace_back(dev, rawIdCode, userEvent, value, heldSecs);
                 }
+#ifdef DEBUG
+                else {
+                    spdlog::info(
+                        "[Input] ShouldFilterAndSave: slot={} code={} FILTERED without retain (exclusive pending, "
+                        "held)",
+                        slot, convertedCode);
+                }
+#endif
                 return true;
             }
         }
@@ -577,6 +703,10 @@ namespace {
             const auto kbKeys = std::ranges::count_if(hk.kb, [](int c) { return c != -1; });
             const auto gpKeys = std::ranges::count_if(hk.gp, [](int c) { return c != -1; });
             g_slotIsMultiKey[s] = (kbKeys > 1) || (gpKeys > 1);
+#ifdef DEBUG
+            spdlog::info("[Input] LoadHotkeyCache: slot={} kb=[{},{},{}] gp=[{},{},{}] isMultiKey={}", i, hk.kb[0],
+                         hk.kb[1], hk.kb[2], hk.gp[0], hk.gp[1], hk.gp[2], g_slotIsMultiKey[s]);
+#endif
         }
 
         g_hudCache = {};
@@ -603,6 +733,11 @@ namespace {
 
             if (btn->IsDown() && player && btn->QUserEvent() == "Shout"sv) {
                 if (IsTransformPowerEquipped(player)) {
+#ifdef DEBUG
+                    spdlog::info(
+                        "[Input] ProcessButtonEvents: Shout pressed with transform power equipped -> "
+                        "ForceExitNoRestore");
+#endif
                     IntegratedMagic::MagicState::Get().ForceExitNoRestore();
                 }
             }
@@ -714,36 +849,78 @@ namespace {
 void Input::ProcessAndFilter(RE::InputEvent** a_evns) {
     if (!a_evns) return;
 
-    static bool prevBlocked = false;
+    for (int code = 0; code < kMaxCode; ++code) {
+        const auto idx = static_cast<std::size_t>(code);
+        if (!g_kbDown[idx].load(std::memory_order_relaxed)) continue;
+        const UINT vk = MapVirtualKeyA(static_cast<UINT>(code), MAPVK_VSC_TO_VK);
+        if (vk == 0) continue;
+        const bool physicallyDown = (GetAsyncKeyState(static_cast<int>(vk)) & 0x8000) != 0;
+        if (!physicallyDown) {
+#ifdef DEBUG
+            spdlog::info("[Input] ProcessAndFilter: cleared stuck key scancode={}", code);
+#endif
+            g_kbDown[idx].store(false, std::memory_order_relaxed);
+        }
+    }
 
+    static bool prevBlocked = false;
     auto& cap = GetCaptureState();
     bool wantCapture = cap.captureRequested.load(std::memory_order_relaxed);
+    const bool wantCaptureBefore = wantCapture;
 
     const float dt = CalculateDeltaTime();
     const bool blocked = IsInputBlockedByMenus();
 
     if (prevBlocked && !blocked) {
+#ifdef DEBUG
+        spdlog::info("[Input] ProcessAndFilter: menu CLOSED - clearing stuck keys");
+#endif
         ClearLikelyStuckKeysAfterMenuClose();
+    }
+
+    if (!prevBlocked && blocked) {
+#ifdef DEBUG
+        spdlog::info("[Input] ProcessAndFilter: menu OPENED - discarding all exclusive pending");
+#endif
+        const int n = ActiveSlots();
+        for (int slot = 0; slot < n; ++slot) DiscardExclusivePending(static_cast<std::size_t>(slot));
     }
 
     prevBlocked = blocked;
 
     ProcessButtonEvents(a_evns, cap, wantCapture);
-
     UpdateHudToggleState();
-
     UpdateSlotsIfAllowed(blocked, dt);
-
     FilterMouseForPopup(a_evns);
 
-    if (!wantCapture) {
+    if (!blocked) {
         FilterEvents(a_evns);
+    }
+
+    if (wantCaptureBefore && !blocked) {
+        RE::InputEvent* prev = nullptr;
+        RE::InputEvent* cur = *a_evns;
+        while (cur) {
+            RE::InputEvent* next = cur->next;
+            if (cur->AsButtonEvent()) {
+                if (prev)
+                    prev->next = next;
+                else
+                    *a_evns = next;
+            } else {
+                prev = cur;
+            }
+            cur = next;
+        }
     }
 
     DispatchIfAllowed(blocked, dt);
 }
 
 void Input::OnConfigChanged() {
+#ifdef DEBUG
+    spdlog::info("[Input] OnConfigChanged: reloading hotkey cache and resetting exclusive state");
+#endif
     LoadHotkeyCache_FromConfig();
     ResetExclusiveState();
 }

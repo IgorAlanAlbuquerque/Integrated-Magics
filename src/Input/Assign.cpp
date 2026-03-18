@@ -23,42 +23,102 @@ namespace IntegratedMagic::MagicAssign {
     HoveredMagicType GetHoveredMagicType() {
         using enum IntegratedMagic::MagicAssign::HoveredMagicType;
         const auto formID = GetHoveredFormID();
-        if (!formID) return None;
+        if (!formID) {
+#ifdef DEBUG
+            spdlog::info("[Assign] GetHoveredMagicType: no hovered formID -> None");
+#endif
+            return None;
+        }
 
         auto* form = RE::TESForm::LookupByID(formID);
-        if (!form) return None;
+        if (!form) {
+#ifdef DEBUG
+            spdlog::info("[Assign] GetHoveredMagicType: formID={:#010x} not found -> None", formID);
+#endif
+            return None;
+        }
 
-        if (form->As<RE::TESShout>()) return Shout;
+        if (form->As<RE::TESShout>()) {
+#ifdef DEBUG
+            spdlog::info("[Assign] GetHoveredMagicType: formID={:#010x} -> Shout", formID);
+#endif
+            return Shout;
+        }
 
         if (auto const* spell = form->As<RE::SpellItem>()) {
-            if (const auto t = spell->GetSpellType();
-                t == RE::MagicSystem::SpellType::kPower || t == RE::MagicSystem::SpellType::kLesserPower)
+            const auto t = spell->GetSpellType();
+            if (t == RE::MagicSystem::SpellType::kPower || t == RE::MagicSystem::SpellType::kLesserPower) {
+#ifdef DEBUG
+                spdlog::info("[Assign] GetHoveredMagicType: formID={:#010x} spellType={} -> Power", formID,
+                             static_cast<int>(t));
+#endif
                 return Power;
+            }
+#ifdef DEBUG
+            spdlog::info("[Assign] GetHoveredMagicType: formID={:#010x} spellType={} -> Spell", formID,
+                         static_cast<int>(t));
+#endif
             return Spell;
         }
+#ifdef DEBUG
+        spdlog::info("[Assign] GetHoveredMagicType: formID={:#010x} unrecognised form type -> None", formID);
+#endif
         return None;
     }
 
     bool TryAssignHoveredSpellToSlot(int slot, Slots::Hand hand) {
         const auto formID = GetHoveredFormID();
-        if (!formID) return false;
+        if (!formID) {
+#ifdef DEBUG
+            spdlog::info("[Assign] TryAssignHoveredSpellToSlot: slot={} hand={} - no hovered formID, abort", slot,
+                         (hand == Slots::Hand::Left) ? "Left" : "Right");
+#endif
+            return false;
+        }
 
         auto* form = RE::TESForm::LookupByID(formID);
         auto const* spell = form ? form->As<RE::SpellItem>() : nullptr;
-        if (!spell) return false;
+        if (!spell) {
+#ifdef DEBUG
+            spdlog::info(
+                "[Assign] TryAssignHoveredSpellToSlot: slot={} hand={} - formID={:#010x} is not a SpellItem, abort",
+                slot, (hand == Slots::Hand::Left) ? "Left" : "Right", formID);
+#endif
+            return false;
+        }
 
+#ifdef DEBUG
+        spdlog::info("[Assign] TryAssignHoveredSpellToSlot: slot={} hand={} spellID={:#010x} name='{}'", slot,
+                     (hand == Slots::Hand::Left) ? "Left" : "Right", spell->GetFormID(),
+                     spell->GetFullName() ? spell->GetFullName() : "<null>");
+#endif
         Slots::SetSlotSpell(slot, hand, spell->GetFormID(), true);
         return true;
     }
 
     bool TryAssignHoveredShoutToSlot(int slot) {
         const auto formID = GetHoveredFormID();
-        if (!formID) return false;
+        if (!formID) {
+#ifdef DEBUG
+            spdlog::info("[Assign] TryAssignHoveredShoutToSlot: slot={} - no hovered formID, abort", slot);
+#endif
+            return false;
+        }
 
         auto* form = RE::TESForm::LookupByID(formID);
-        if (!form) return false;
+        if (!form) {
+#ifdef DEBUG
+            spdlog::info("[Assign] TryAssignHoveredShoutToSlot: slot={} formID={:#010x} not found, abort", slot,
+                         formID);
+#endif
+            return false;
+        }
 
         if (form->As<RE::TESShout>()) {
+#ifdef DEBUG
+            spdlog::info("[Assign] TryAssignHoveredShoutToSlot: slot={} formID={:#010x} -> assigned as Shout", slot,
+                         formID);
+#endif
             Slots::SetSlotShout(slot, formID, true);
             return true;
         }
@@ -66,14 +126,28 @@ namespace IntegratedMagic::MagicAssign {
         if (auto const* spell = form->As<RE::SpellItem>()) {
             const auto t = spell->GetSpellType();
             if (t == RE::MagicSystem::SpellType::kPower || t == RE::MagicSystem::SpellType::kLesserPower) {
+#ifdef DEBUG
+                spdlog::info(
+                    "[Assign] TryAssignHoveredShoutToSlot: slot={} formID={:#010x} spellType={} -> assigned as Power",
+                    slot, formID, static_cast<int>(t));
+#endif
                 Slots::SetSlotShout(slot, formID, true);
                 return true;
             }
+#ifdef DEBUG
+            spdlog::info(
+                "[Assign] TryAssignHoveredShoutToSlot: slot={} formID={:#010x} is a regular spell (not Power), abort",
+                slot, formID);
+#endif
         }
         return false;
     }
 
     bool TryClearSlotHand(int slot, Slots::Hand hand) {
+#ifdef DEBUG
+        spdlog::info("[Assign] TryClearSlotHand: slot={} hand={}", slot,
+                     (hand == Slots::Hand::Left) ? "Left" : "Right");
+#endif
         auto& cfg = GetMagicConfig();
         const auto s = static_cast<std::size_t>(slot);
         if (hand == Slots::Hand::Right)
@@ -85,6 +159,9 @@ namespace IntegratedMagic::MagicAssign {
     }
 
     bool TryClearSlotShout(int slot) {
+#ifdef DEBUG
+        spdlog::info("[Assign] TryClearSlotShout: slot={}", slot);
+#endif
         Slots::SetSlotShout(slot, 0u, true);
         return true;
     }

@@ -9,6 +9,6 @@ namespace IntegratedMagic::MagicAction {
     void ClearHandSpell(RE::PlayerCharacter* player, RE::SpellItem* spell, Slots::Hand hand);
     void EquipShoutInVoice(RE::PlayerCharacter* player, RE::TESForm* shoutOrPower);
     void ClearVoiceShout(RE::PlayerCharacter* player);
-    void EquipSlotContent(RE::PlayerCharacter* player, int slot);
     void ApplySkipEquipAnimReturn(RE::PlayerCharacter* player);
+    void DisableSkipEquipVarsNow(RE::PlayerCharacter* player);
 }

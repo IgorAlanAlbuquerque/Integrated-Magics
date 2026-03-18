@@ -24,6 +24,7 @@ namespace IntegratedMagic {
         std::array<std::atomic<std::uint32_t>, kMaxSlots> slotShoutFormID;
         std::array<InputConfig, kMaxSlots> slotInput;
         InputConfig hudPopupInput;
+        bool hudVisible{true};
         bool skipEquipAnimationPatch = false;
         bool skipEquipAnimationOnReturnPatch = false;
         bool requireExclusiveHotkeyPatch = false;
