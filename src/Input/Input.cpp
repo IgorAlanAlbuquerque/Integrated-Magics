@@ -521,11 +521,11 @@ namespace {
         if (drained > 0)
             spdlog::info("[Input] DrainWhenBlocked: discarded {} pressed slot(s) (input blocked)", drained);
 #endif
-        for (auto s = Input::ConsumeReleasedSlot(); s.has_value(); s = Input::ConsumeReleasedSlot()) {
+        for (auto s2 = Input::ConsumeReleasedSlot(); s2.has_value(); s2 = Input::ConsumeReleasedSlot()) {
 #ifdef DEBUG
-            spdlog::info("[Input] DrainWhenBlocked: releasing slot={} while blocked", *s);
+            spdlog::info("[Input] DrainWhenBlocked: releasing slot={} while blocked", *s2);
 #endif
-            HandleSlotReleased(*s);
+            HandleSlotReleased(*s2);
         }
     }
 

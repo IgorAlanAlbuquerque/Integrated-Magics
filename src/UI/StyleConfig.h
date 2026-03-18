@@ -3,6 +3,13 @@
 
 namespace IntegratedMagic {
 
+    enum class HudLayoutType : std::uint8_t {
+        Circular = 0,
+        Horizontal = 1,
+        Vertical = 2,
+        Grid = 3,
+    };
+
     enum class HudAnchor : std::uint8_t {
         TopLeft = 0,
         TopCenter = 1,
@@ -20,6 +27,7 @@ namespace IntegratedMagic {
         float ringRadius = 54.f;
         float popupSlotRadius = 48.f;
         float popupRingRadius = 90.f;
+        float popupSlotGap = 24.f;
         float modeWidgetW = 58.f;
         float iconSizeFactor = 0.90f;
         float iconOffsetFactor = 0.28f;
@@ -27,12 +35,17 @@ namespace IntegratedMagic {
 
         float slotActiveScale = 1.35f;
         float slotModifierScale = 1.20f;
+        float slotNeighborScale = 0.88f;
         float slotExpandTime = 0.12f;
         float slotRetractTime = 0.15f;
 
         HudAnchor hudAnchor = HudAnchor::BottomRight;
         float hudOffsetX = 0.f;
         float hudOffsetY = 0.f;
+
+        HudLayoutType hudLayout = HudLayoutType::Circular;
+        float slotSpacing = 8.f;
+        int gridColumns = 2;
 
         std::uint32_t slotBgActive = 0xE60F161Eu;
         std::uint32_t slotBgInactive = 0xC80C0C0Cu;
@@ -72,5 +85,4 @@ namespace IntegratedMagic {
     private:
         StyleConfig() = default;
     };
-
 }

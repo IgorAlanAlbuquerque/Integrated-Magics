@@ -66,6 +66,7 @@ target_precompile_headers(${PROJECT_NAME}
     src/UI/TextureManager.h
     src/UI/StyleConfig.h
     src/UI/SlotAnimator.h
+    src/UI/SlotLayout.h
     src/Config/ConfigPath.h
     src/Config/Config.h
     src/Config/Slots.h

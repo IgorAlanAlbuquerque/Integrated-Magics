@@ -15,6 +15,7 @@
 #include "SKSEMenuFramework.h"
 #include "State/State.h"
 #include "UI/SlotAnimator.h"
+#include "UI/SlotLayout.h"
 #include "UI/StyleConfig.h"
 #include "UI/TextureManager.h"
 
@@ -325,36 +326,36 @@ namespace IntegratedMagic::HUD {
             }
         }
 
-        ImVec2 ComputeHudCenter(const ImGuiIO* io, float half) {
+        ImVec2 ComputeHudCenter(const ImGuiIO* io, ImVec2 halfSize) {
             const float W = io->DisplaySize.x;
             const float H = io->DisplaySize.y;
             const auto& st = Style();
+            const float mx = halfSize.x + 4.f;
+            const float my = halfSize.y + 4.f;
             const float ox = st.hudOffsetX;
             const float oy = st.hudOffsetY;
-
-            const float m = half + 4.f;
 
             switch (st.hudAnchor) {
                 using enum HudAnchor;
                 case TopLeft:
-                    return {m + ox, m + oy};
+                    return {mx + ox, my + oy};
                 case TopCenter:
-                    return {W * 0.5f + ox, m + oy};
+                    return {W * 0.5f + ox, my + oy};
                 case TopRight:
-                    return {W - m + ox, m + oy};
+                    return {W - mx + ox, my + oy};
                 case MiddleLeft:
-                    return {m + ox, H * 0.5f + oy};
+                    return {mx + ox, H * 0.5f + oy};
                 case Center:
                     return {W * 0.5f + ox, H * 0.5f + oy};
                 case MiddleRight:
-                    return {W - m + ox, H * 0.5f + oy};
+                    return {W - mx + ox, H * 0.5f + oy};
                 case BottomLeft:
-                    return {m + ox, H - m + oy};
+                    return {mx + ox, H - my + oy};
                 case BottomCenter:
-                    return {W * 0.5f + ox, H - m + oy};
+                    return {W * 0.5f + ox, H - my + oy};
                 case BottomRight:
                 default:
-                    return {W - m + ox, H - m + oy};
+                    return {W - mx + ox, H - my + oy};
             }
         }
 
@@ -365,15 +366,28 @@ namespace IntegratedMagic::HUD {
 
             SlotAnimator::Update(n, activeSlot, /*modifierHeld=*/false);
 
-            const float fixedHalf = st.ringRadius + st.slotRadius + kGlowPad;
-            const ImVec2 ringCenter = ComputeHudCenter(io, fixedHalf);
+            const LayoutVec2 fixedHalf = [&] {
+                LayoutVec2 h = SlotLayout::BoundingHalf(st.hudLayout, n, st.slotRadius, st.ringRadius, st.slotSpacing,
+                                                        st.gridColumns);
+                return LayoutVec2{h.x + kGlowPad, h.y + kGlowPad};
+            }();
 
             float maxScale = SlotAnimator::MaxPossibleScale();
             for (int i = 0; i < n; ++i) maxScale = std::max(maxScale, SlotAnimator::GetScale(i));
-            const float animHalf = st.ringRadius + st.slotRadius * maxScale + kGlowPad;
 
-            ImGui::SetNextWindowPos({ringCenter.x - animHalf, ringCenter.y - animHalf}, ImGuiCond_Always, {0.f, 0.f});
-            ImGui::SetNextWindowSize({animHalf * 2.f, animHalf * 2.f}, ImGuiCond_Always);
+            const LayoutVec2 animHalf = [&] {
+                LayoutVec2 h = SlotLayout::BoundingHalf(st.hudLayout, n, st.slotRadius * maxScale, st.ringRadius,
+                                                        st.slotSpacing, st.gridColumns);
+                return LayoutVec2{h.x + kGlowPad, h.y + kGlowPad};
+            }();
+
+            const ImVec2 hudOrigin = ComputeHudCenter(io, {fixedHalf.x, fixedHalf.y});
+
+            LayoutVec2 relPos[SlotLayout::kMaxSlots]{};
+            SlotLayout::Compute(st.hudLayout, n, st.slotRadius, st.ringRadius, st.slotSpacing, st.gridColumns, relPos);
+
+            ImGui::SetNextWindowPos({hudOrigin.x - animHalf.x, hudOrigin.y - animHalf.y}, ImGuiCond_Always, {0.f, 0.f});
+            ImGui::SetNextWindowSize({animHalf.x * 2.f, animHalf.y * 2.f}, ImGuiCond_Always);
             ImGui::SetNextWindowBgAlpha(0.f);
 
             ImGui::Begin(kHudWindowID, nullptr,
@@ -384,13 +398,11 @@ namespace IntegratedMagic::HUD {
 
             ImDrawList* dl = ImGui::GetWindowDrawList();
 
-            DrawRingCenter(dl, ringCenter);
-
-            const float dynR = DynamicRingRadius(n, st.slotRadius, st.ringRadius);
+            if (SlotLayout::HasCenter(st.hudLayout)) DrawRingCenter(dl, hudOrigin);
 
             for (int i = 0; i < n; ++i) {
                 if (i == activeSlot) continue;
-                const ImVec2 center = SlotCenter(ringCenter, dynR, i, n);
+                const ImVec2 center = {hudOrigin.x + relPos[i].x, hudOrigin.y + relPos[i].y};
                 const float slotR = st.slotRadius * SlotAnimator::GetScale(i);
                 const auto rID = Slots::GetSlotSpell(i, Slots::Hand::Right);
                 const auto lID = Slots::GetSlotSpell(i, Slots::Hand::Left);
@@ -401,7 +413,7 @@ namespace IntegratedMagic::HUD {
             }
 
             if (activeSlot >= 0 && activeSlot < n) {
-                const ImVec2 center = SlotCenter(ringCenter, dynR, activeSlot, n);
+                const ImVec2 center = {hudOrigin.x + relPos[activeSlot].x, hudOrigin.y + relPos[activeSlot].y};
                 const float slotR = st.slotRadius * SlotAnimator::GetScale(activeSlot);
                 const auto rID = Slots::GetSlotSpell(activeSlot, Slots::Hand::Right);
                 const auto lID = Slots::GetSlotSpell(activeSlot, Slots::Hand::Left);
@@ -426,7 +438,7 @@ namespace IntegratedMagic::HUD {
 
             const int n = static_cast<int>(Slots::GetSlotCount());
             const auto& st = Style();
-            const float dynPopupR = DynamicRingRadius(n, st.popupSlotRadius, st.popupRingRadius);
+            const float dynPopupR = DynamicRingRadius(n, st.popupSlotRadius, st.popupRingRadius, st.popupSlotGap);
             const float popupHalf = dynPopupR + st.popupSlotRadius + kGlowPad + st.modeWidgetW + 12.f;
             const ImVec2 popupSize = {popupHalf * 2.f, popupHalf * 2.f + 48.f};
             const ImVec2 popupPos = {io->DisplaySize.x * 0.5f - popupSize.x * 0.5f,
@@ -597,6 +609,7 @@ namespace IntegratedMagic::HUD {
     }
 
     void DrawHudElement() {
+        if (!g_hudVisible.load(std::memory_order_relaxed)) return;
         if (IsHardBlocked()) return;
         if (Slots::GetSlotCount() == 0) return;
 
@@ -607,8 +620,6 @@ namespace IntegratedMagic::HUD {
         if (inMagicMenu && Input::ConsumeHudToggle()) ToggleDetailPopup();
 
         if (!inMagicMenu && g_popupWindow && g_popupWindow->IsOpen.load()) g_popupWindow->IsOpen = false;
-
-        if (!g_hudVisible.load(std::memory_order_relaxed)) return;
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.f, 0.f});

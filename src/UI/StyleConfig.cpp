@@ -4,7 +4,6 @@
 #include "SimpleIni.h"
 
 namespace IntegratedMagic {
-
     namespace {
         float GetFloat(const CSimpleIniA& ini, const char* section, const char* key, float def) {
             const char* v = ini.GetValue(section, key, nullptr);
@@ -40,15 +39,26 @@ namespace IntegratedMagic {
             const char* v = ini.GetValue(section, key, nullptr);
             if (!v) return def;
             const std::string s{v};
-            if (s == "TopLeft"      || s == "0") return HudAnchor::TopLeft;
-            if (s == "TopCenter"    || s == "1") return HudAnchor::TopCenter;
-            if (s == "TopRight"     || s == "2") return HudAnchor::TopRight;
-            if (s == "MiddleLeft"   || s == "3") return HudAnchor::MiddleLeft;
-            if (s == "Center"       || s == "4") return HudAnchor::Center;
-            if (s == "MiddleRight"  || s == "5") return HudAnchor::MiddleRight;
-            if (s == "BottomLeft"   || s == "6") return HudAnchor::BottomLeft;
+            if (s == "TopLeft" || s == "0") return HudAnchor::TopLeft;
+            if (s == "TopCenter" || s == "1") return HudAnchor::TopCenter;
+            if (s == "TopRight" || s == "2") return HudAnchor::TopRight;
+            if (s == "MiddleLeft" || s == "3") return HudAnchor::MiddleLeft;
+            if (s == "Center" || s == "4") return HudAnchor::Center;
+            if (s == "MiddleRight" || s == "5") return HudAnchor::MiddleRight;
+            if (s == "BottomLeft" || s == "6") return HudAnchor::BottomLeft;
             if (s == "BottomCenter" || s == "7") return HudAnchor::BottomCenter;
-            if (s == "BottomRight"  || s == "8") return HudAnchor::BottomRight;
+            if (s == "BottomRight" || s == "8") return HudAnchor::BottomRight;
+            return def;
+        }
+
+        HudLayoutType GetLayout(const CSimpleIniA& ini, const char* section, const char* key, HudLayoutType def) {
+            const char* v = ini.GetValue(section, key, nullptr);
+            if (!v) return def;
+            const std::string s{v};
+            if (s == "Circular" || s == "0") return HudLayoutType::Circular;
+            if (s == "Horizontal" || s == "1") return HudLayoutType::Horizontal;
+            if (s == "Vertical" || s == "2") return HudLayoutType::Vertical;
+            if (s == "Grid" || s == "3") return HudLayoutType::Grid;
             return def;
         }
     }
@@ -68,6 +78,7 @@ namespace IntegratedMagic {
         ringRadius = GetFloat(ini, "HUD", "RingRadius", ringRadius);
         popupSlotRadius = GetFloat(ini, "Popup", "SlotRadius", popupSlotRadius);
         popupRingRadius = GetFloat(ini, "Popup", "RingRadius", popupRingRadius);
+        popupSlotGap = GetFloat(ini, "Popup", "SlotGap", popupSlotGap);
         modeWidgetW = GetFloat(ini, "Popup", "ModeWidgetWidth", modeWidgetW);
         iconSizeFactor = GetFloat(ini, "Icons", "SizeFactor", iconSizeFactor);
         iconOffsetFactor = GetFloat(ini, "Icons", "OffsetFactor", iconOffsetFactor);
@@ -75,11 +86,15 @@ namespace IntegratedMagic {
 
         slotActiveScale = GetFloat(ini, "HUD", "SlotActiveScale", slotActiveScale);
         slotModifierScale = GetFloat(ini, "HUD", "SlotModifierScale", slotModifierScale);
+        slotNeighborScale = GetFloat(ini, "HUD", "SlotNeighborScale", slotNeighborScale);
         slotExpandTime = GetFloat(ini, "HUD", "SlotExpandTime", slotExpandTime);
         slotRetractTime = GetFloat(ini, "HUD", "SlotRetractTime", slotRetractTime);
-        hudAnchor  = GetAnchor(ini, "HUD", "Anchor",  hudAnchor);
-        hudOffsetX = GetFloat(ini,  "HUD", "OffsetX", hudOffsetX);
-        hudOffsetY = GetFloat(ini,  "HUD", "OffsetY", hudOffsetY);
+        hudAnchor = GetAnchor(ini, "HUD", "Anchor", hudAnchor);
+        hudOffsetX = GetFloat(ini, "HUD", "OffsetX", hudOffsetX);
+        hudOffsetY = GetFloat(ini, "HUD", "OffsetY", hudOffsetY);
+        hudLayout = GetLayout(ini, "HUD", "Layout", hudLayout);
+        slotSpacing = GetFloat(ini, "HUD", "SlotSpacing", slotSpacing);
+        gridColumns = static_cast<int>(GetFloat(ini, "HUD", "GridColumns", static_cast<float>(gridColumns)));
 
         slotBgActive = GetColor(ini, "Colors", "SlotBgActive", slotBgActive);
         slotBgInactive = GetColor(ini, "Colors", "SlotBgInactive", slotBgInactive);

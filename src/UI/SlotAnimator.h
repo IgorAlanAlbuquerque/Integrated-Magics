@@ -17,14 +17,24 @@ namespace IntegratedMagic {
             const float expandSpeed = st.slotExpandTime > 0.f ? 1.f / st.slotExpandTime : 9999.f;
             const float retractSpeed = st.slotRetractTime > 0.f ? 1.f / st.slotRetractTime : 9999.f;
 
+            const bool hasActive = (activeSlot >= 0 && activeSlot < n);
+            const int prevSlot = hasActive ? (activeSlot - 1 + n) % n : -1;
+            const int nextSlot = hasActive ? (activeSlot + 1) % n : -1;
+
+            const bool neighborsExist = hasActive && n > 1;
+
             for (int i = 0; i < kMaxSlots; ++i) {
                 float target = 1.f;
 
                 if (i < n) {
-                    if (activeSlot == i)
+                    if (hasActive && i == activeSlot) {
                         target = st.slotActiveScale;
-                    else if (modifierHeld)
+                    } else if (neighborsExist && (i == prevSlot || i == nextSlot)) {
+                        target =
+                            modifierHeld ? std::max(st.slotNeighborScale, st.slotModifierScale) : st.slotNeighborScale;
+                    } else if (modifierHeld) {
                         target = st.slotModifierScale;
+                    }
                 }
 
                 s_slots[i].SetTarget(target);
