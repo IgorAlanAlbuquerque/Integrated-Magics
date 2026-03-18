@@ -3,6 +3,18 @@
 
 namespace IntegratedMagic {
 
+    enum class HudAnchor : std::uint8_t {
+        TopLeft = 0,
+        TopCenter = 1,
+        TopRight = 2,
+        MiddleLeft = 3,
+        Center = 4,
+        MiddleRight = 5,
+        BottomLeft = 6,
+        BottomCenter = 7,
+        BottomRight = 8,
+    };
+
     struct StyleConfig {
         float slotRadius = 32.f;
         float ringRadius = 54.f;
@@ -12,6 +24,15 @@ namespace IntegratedMagic {
         float iconSizeFactor = 0.90f;
         float iconOffsetFactor = 0.28f;
         std::uint8_t overlayAlpha = 160;
+
+        float slotActiveScale = 1.35f;
+        float slotModifierScale = 1.20f;
+        float slotExpandTime = 0.12f;
+        float slotRetractTime = 0.15f;
+
+        HudAnchor hudAnchor = HudAnchor::BottomRight;
+        float hudOffsetX = 0.f;
+        float hudOffsetY = 0.f;
 
         std::uint32_t slotBgActive = 0xE60F161Eu;
         std::uint32_t slotBgInactive = 0xC80C0C0Cu;

@@ -14,6 +14,7 @@
 #include "RE/U/UI.h"
 #include "SKSEMenuFramework.h"
 #include "State/State.h"
+#include "UI/SlotAnimator.h"
 #include "UI/StyleConfig.h"
 #include "UI/TextureManager.h"
 
@@ -324,14 +325,55 @@ namespace IntegratedMagic::HUD {
             }
         }
 
+        ImVec2 ComputeHudCenter(const ImGuiIO* io, float half) {
+            const float W = io->DisplaySize.x;
+            const float H = io->DisplaySize.y;
+            const auto& st = Style();
+            const float ox = st.hudOffsetX;
+            const float oy = st.hudOffsetY;
+
+            const float m = half + 4.f;
+
+            switch (st.hudAnchor) {
+                using enum HudAnchor;
+                case TopLeft:
+                    return {m + ox, m + oy};
+                case TopCenter:
+                    return {W * 0.5f + ox, m + oy};
+                case TopRight:
+                    return {W - m + ox, m + oy};
+                case MiddleLeft:
+                    return {m + ox, H * 0.5f + oy};
+                case Center:
+                    return {W * 0.5f + ox, H * 0.5f + oy};
+                case MiddleRight:
+                    return {W - m + ox, H * 0.5f + oy};
+                case BottomLeft:
+                    return {m + ox, H - m + oy};
+                case BottomCenter:
+                    return {W * 0.5f + ox, H - m + oy};
+                case BottomRight:
+                default:
+                    return {W - m + ox, H - m + oy};
+            }
+        }
+
         void DrawSmallHUD(ImGuiIO const* io) {
             const auto& st = Style();
-            const float kMargin = st.ringRadius + st.slotRadius + kGlowPad + 4.f;
-            const ImVec2 ringCenter = {io->DisplaySize.x - kMargin, io->DisplaySize.y - kMargin};
-            const float half = st.ringRadius + st.slotRadius + kGlowPad;
+            const int n = static_cast<int>(Slots::GetSlotCount());
+            const int activeSlot = MagicState::Get().ActiveSlot();
 
-            ImGui::SetNextWindowPos({ringCenter.x - half, ringCenter.y - half}, ImGuiCond_Always, {0.f, 0.f});
-            ImGui::SetNextWindowSize({half * 2.f, half * 2.f}, ImGuiCond_Always);
+            SlotAnimator::Update(n, activeSlot, /*modifierHeld=*/false);
+
+            const float fixedHalf = st.ringRadius + st.slotRadius + kGlowPad;
+            const ImVec2 ringCenter = ComputeHudCenter(io, fixedHalf);
+
+            float maxScale = SlotAnimator::MaxPossibleScale();
+            for (int i = 0; i < n; ++i) maxScale = std::max(maxScale, SlotAnimator::GetScale(i));
+            const float animHalf = st.ringRadius + st.slotRadius * maxScale + kGlowPad;
+
+            ImGui::SetNextWindowPos({ringCenter.x - animHalf, ringCenter.y - animHalf}, ImGuiCond_Always, {0.f, 0.f});
+            ImGui::SetNextWindowSize({animHalf * 2.f, animHalf * 2.f}, ImGuiCond_Always);
             ImGui::SetNextWindowBgAlpha(0.f);
 
             ImGui::Begin(kHudWindowID, nullptr,
@@ -341,21 +383,32 @@ namespace IntegratedMagic::HUD {
                              ImGuiWindowFlags_NoInputs);
 
             ImDrawList* dl = ImGui::GetWindowDrawList();
-            const auto n = static_cast<int>(Slots::GetSlotCount());
-            const int activeSlot = MagicState::Get().ActiveSlot();
 
             DrawRingCenter(dl, ringCenter);
 
+            const float dynR = DynamicRingRadius(n, st.slotRadius, st.ringRadius);
+
             for (int i = 0; i < n; ++i) {
-                const float dynR = DynamicRingRadius(n, st.slotRadius, st.ringRadius);
+                if (i == activeSlot) continue;
                 const ImVec2 center = SlotCenter(ringCenter, dynR, i, n);
+                const float slotR = st.slotRadius * SlotAnimator::GetScale(i);
                 const auto rID = Slots::GetSlotSpell(i, Slots::Hand::Right);
                 const auto lID = Slots::GetSlotSpell(i, Slots::Hand::Left);
                 const auto shoutID = Slots::GetSlotShout(i);
                 auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
                 auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
+                DrawSlotVisual(dl, center, slotR, false, rSp, lSp, shoutID);
+            }
 
-                DrawSlotVisual(dl, center, st.slotRadius, activeSlot == i, rSp, lSp, shoutID);
+            if (activeSlot >= 0 && activeSlot < n) {
+                const ImVec2 center = SlotCenter(ringCenter, dynR, activeSlot, n);
+                const float slotR = st.slotRadius * SlotAnimator::GetScale(activeSlot);
+                const auto rID = Slots::GetSlotSpell(activeSlot, Slots::Hand::Right);
+                const auto lID = Slots::GetSlotSpell(activeSlot, Slots::Hand::Left);
+                const auto shoutID = Slots::GetSlotShout(activeSlot);
+                auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
+                auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
+                DrawSlotVisual(dl, center, slotR, true, rSp, lSp, shoutID);
             }
 
             ImGui::End();
@@ -544,7 +597,6 @@ namespace IntegratedMagic::HUD {
     }
 
     void DrawHudElement() {
-        if (!g_hudVisible.load(std::memory_order_relaxed)) return;
         if (IsHardBlocked()) return;
         if (Slots::GetSlotCount() == 0) return;
 
@@ -555,6 +607,8 @@ namespace IntegratedMagic::HUD {
         if (inMagicMenu && Input::ConsumeHudToggle()) ToggleDetailPopup();
 
         if (!inMagicMenu && g_popupWindow && g_popupWindow->IsOpen.load()) g_popupWindow->IsOpen = false;
+
+        if (!g_hudVisible.load(std::memory_order_relaxed)) return;
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.f, 0.f});
