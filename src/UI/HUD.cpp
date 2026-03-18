@@ -364,7 +364,7 @@ namespace IntegratedMagic::HUD {
             const int n = static_cast<int>(Slots::GetSlotCount());
             const int activeSlot = MagicState::Get().ActiveSlot();
 
-            SlotAnimator::Update(n, activeSlot, /*modifierHeld=*/false);
+            SlotAnimator::Update(n, activeSlot, /*modifierHeld=*/false, st.hudLayout, st.gridColumns);
 
             const LayoutVec2 fixedHalf = [&] {
                 LayoutVec2 h = SlotLayout::BoundingHalf(st.hudLayout, n, st.slotRadius, st.ringRadius, st.slotSpacing,
