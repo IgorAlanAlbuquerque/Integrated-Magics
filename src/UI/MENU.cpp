@@ -197,7 +197,7 @@ namespace {
     }
 
     void DrawDetailPanel(IntegratedMagic::InputConfig& icfg, const char* title, bool& dirty,
-                         IntegratedMagic::MagicConfig& cfg) {
+                         IntegratedMagic::MagicConfig& cfg, bool showModifier = true) {
         ImGui::TextUnformatted(title);
         ImGui::Separator();
         ImGui::Spacing();
@@ -216,13 +216,13 @@ namespace {
 
             DrawInputDetailRow(IntegratedMagic::Strings::Get("Item_Key1", "Key 1").c_str(), icfg.KeyboardScanCode1,
                                IntegratedMagic::Strings::Get("Item_Btn1", "Btn 1").c_str(), icfg.GamepadButton1, dirty,
-                               1, cfg);
+                               showModifier ? 1 : 0, cfg);
             DrawInputDetailRow(IntegratedMagic::Strings::Get("Item_Key2", "Key 2").c_str(), icfg.KeyboardScanCode2,
                                IntegratedMagic::Strings::Get("Item_Btn2", "Btn 2").c_str(), icfg.GamepadButton2, dirty,
-                               2, cfg);
+                               showModifier ? 2 : 0, cfg);
             DrawInputDetailRow(IntegratedMagic::Strings::Get("Item_Key3", "Key 3").c_str(), icfg.KeyboardScanCode3,
                                IntegratedMagic::Strings::Get("Item_Btn3", "Btn 3").c_str(), icfg.GamepadButton3, dirty,
-                               3, cfg);
+                               showModifier ? 3 : 0, cfg);
 
             ImGui::EndTable();
         }
@@ -318,7 +318,7 @@ namespace {
 
         if (g_selectedSlot == kHudPopupSlot) {
             DrawDetailPanel(cfg.hudPopupInput, IntegratedMagic::Strings::Get("Detail_HudPopup", "HUD Popup").c_str(),
-                            dirty, cfg);
+                            dirty, cfg, false);
         } else if (g_selectedSlot >= 0 && g_selectedSlot < n) {
             const auto title = IntegratedMagic::Strings::Get(std::format("Detail_Magic{}", g_selectedSlot + 1),
                                                              std::format("Magic {}", g_selectedSlot + 1));

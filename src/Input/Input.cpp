@@ -677,7 +677,13 @@ namespace {
 
     bool IsHudComboDown() { return ComboDown(g_hudCache.kb, g_kbDown) || ComboDown(g_hudCache.gp, g_gpDown); }
 
-    bool ShouldFilterHudToggle(RE::INPUT_DEVICE dev, int convertedCode) { return IsHudToggleCombo(dev, convertedCode); }
+    bool ShouldFilterHudToggle(RE::INPUT_DEVICE dev, int convertedCode) {
+        if (!IsHudToggleCombo(dev, convertedCode)) return false;
+        auto* ui = RE::UI::GetSingleton();
+        if (!ui) return false;
+        static const RE::BSFixedString magicMenu{"MagicMenu"};
+        return ui->IsMenuOpen(magicMenu);
+    }
 
     void LoadHotkeyCache_FromConfig() {
         auto const& cfg = IntegratedMagic::GetMagicConfig();
@@ -778,12 +784,38 @@ namespace {
                 IntegratedMagic::HUD::FeedMouseDelta(static_cast<float>(mm->mouseInputX),
                                                      static_cast<float>(mm->mouseInputY));
                 remove = true;
+
+            } else if (cur->eventType == RE::INPUT_EVENT_TYPE::kThumbstick) {
+                auto const* ts = static_cast<RE::ThumbstickEvent*>(cur);
+                if (ts->IsLeft()) {
+                    constexpr float kDeadzone = 0.15f;
+                    constexpr float kSensitivity = 12.f;
+                    const float ax = (std::abs(ts->xValue) > kDeadzone) ? ts->xValue : 0.f;
+                    const float ay = (std::abs(ts->yValue) > kDeadzone) ? ts->yValue : 0.f;
+                    if (ax != 0.f || ay != 0.f)
+                        IntegratedMagic::HUD::FeedMouseDelta(ax * kSensitivity, -ay * kSensitivity);
+                }
+
+                remove = true;
+
             } else if (const auto* btn = cur->AsButtonEvent()) {
                 if (btn->GetDevice() == RE::INPUT_DEVICE::kMouse && btn->GetIDCode() == 0) {
                     if (btn->IsDown()) IntegratedMagic::HUD::FeedMouseClick();
                     remove = true;
                 } else if (btn->GetDevice() == RE::INPUT_DEVICE::kMouse && btn->GetIDCode() == 1) {
                     if (btn->IsDown()) IntegratedMagic::HUD::FeedMouseRightClick();
+                    remove = true;
+                } else if (btn->GetDevice() == RE::INPUT_DEVICE::kGamepad &&
+                           btn->GetIDCode() == static_cast<std::uint32_t>(RE::BSWin32GamepadDevice::Key::kX)) {
+                    if (btn->IsDown()) IntegratedMagic::HUD::FeedMouseClick();
+                    remove = true;
+                } else if (btn->GetDevice() == RE::INPUT_DEVICE::kGamepad &&
+                           btn->GetIDCode() == static_cast<std::uint32_t>(RE::BSWin32GamepadDevice::Key::kB)) {
+                    if (btn->IsDown()) IntegratedMagic::HUD::FeedMouseRightClick();
+                    remove = true;
+                } else if (btn->GetDevice() == RE::INPUT_DEVICE::kGamepad &&
+                           btn->GetIDCode() == static_cast<std::uint32_t>(RE::BSWin32GamepadDevice::Key::kY)) {
+                    if (btn->IsDown()) IntegratedMagic::HUD::CloseDetailPopup();
                     remove = true;
                 }
             }
