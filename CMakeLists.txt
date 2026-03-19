@@ -76,7 +76,7 @@ target_precompile_headers(${PROJECT_NAME}
     src/Input/Assign.h
     src/Input/Input.h
     src/State/State.h
-    src/State/MagicAction.h
+    src/State/Action.h
     src/State/AnimListener.h
     src/State/CastGuardEvents.h
     src/State/InventoryUtil.h
