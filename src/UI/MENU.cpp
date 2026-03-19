@@ -682,6 +682,21 @@ namespace {
                                                     "during combat or movement.")
                           .c_str());
         }
+
+        if (bool v4 = cfg.pressBothAtSamePatch; ImGui::Checkbox(
+                IntegratedMagic::Strings::Get("Item_PressBothAtSame", "Press both at the same time").c_str(), &v4)) {
+            cfg.pressBothAtSamePatch = v4;
+            dirty = true;
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(
+                "%s", IntegratedMagic::Strings::Get("Tooltip_PressBothAtSame",
+                                                    "When enabled, all keys in a combo must be pressed within\n"
+                                                    "0.2 seconds of each other.\n"
+                                                    "Holding one key and pressing the other later will not activate\n"
+                                                    "the slot.")
+                          .c_str());
+        }
     }
 }
 

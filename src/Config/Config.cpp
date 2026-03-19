@@ -97,9 +97,10 @@ namespace IntegratedMagic {
         skipEquipAnimationPatch = _getBool(ini, "Patches", "SkipEquipAnimationPatch", false);
         skipEquipAnimationOnReturnPatch = _getBool(ini, "Patches", "SkipEquipAnimationOnReturn", false);
         requireExclusiveHotkeyPatch = _getBool(ini, "Patches", "RequireExclusiveHotkeyPatch", false);
+        pressBothAtSamePatch = _getBool(ini, "Patches", "PressBothAtSamePatch", false);
 
         modifierKeyboardPosition = std::clamp(_getInt(ini, "Modifier", "KeyboardPosition", 0), 0, 3);
-        modifierGamepadPosition  = std::clamp(_getInt(ini, "Modifier", "GamepadPosition",  0), 0, 3);
+        modifierGamepadPosition = std::clamp(_getInt(ini, "Modifier", "GamepadPosition", 0), 0, 3);
 
         using FieldPtr = std::atomic<int> InputConfig::*;
 
@@ -107,21 +108,26 @@ namespace IntegratedMagic {
             if (pos <= 0) return;
             FieldPtr field = nullptr;
             if (isKb) {
-                if (pos == 1) field = &InputConfig::KeyboardScanCode1;
-                else if (pos == 2) field = &InputConfig::KeyboardScanCode2;
-                else field = &InputConfig::KeyboardScanCode3;
+                if (pos == 1)
+                    field = &InputConfig::KeyboardScanCode1;
+                else if (pos == 2)
+                    field = &InputConfig::KeyboardScanCode2;
+                else
+                    field = &InputConfig::KeyboardScanCode3;
             } else {
-                if (pos == 1) field = &InputConfig::GamepadButton1;
-                else if (pos == 2) field = &InputConfig::GamepadButton2;
-                else field = &InputConfig::GamepadButton3;
+                if (pos == 1)
+                    field = &InputConfig::GamepadButton1;
+                else if (pos == 2)
+                    field = &InputConfig::GamepadButton2;
+                else
+                    field = &InputConfig::GamepadButton3;
             }
             const int canonical = (slotInput[0].*field).load(std::memory_order_relaxed);
-            for (std::uint32_t i = 1; i < n; ++i)
-                (slotInput[i].*field).store(canonical, std::memory_order_relaxed);
+            for (std::uint32_t i = 1; i < n; ++i) (slotInput[i].*field).store(canonical, std::memory_order_relaxed);
         };
 
         propagateModifier(modifierKeyboardPosition, true);
-        propagateModifier(modifierGamepadPosition,  false);
+        propagateModifier(modifierGamepadPosition, false);
     }
 
     void MagicConfig::Save() const {
@@ -140,8 +146,9 @@ namespace IntegratedMagic {
         ini.SetBoolValue("Patches", "SkipEquipAnimationPatch", skipEquipAnimationPatch);
         ini.SetBoolValue("Patches", "SkipEquipAnimationOnReturn", skipEquipAnimationOnReturnPatch);
         ini.SetBoolValue("Patches", "RequireExclusiveHotkeyPatch", requireExclusiveHotkeyPatch);
+        ini.SetBoolValue("Patches", "PressBothAtSamePatch", pressBothAtSamePatch);
         ini.SetLongValue("Modifier", "KeyboardPosition", modifierKeyboardPosition);
-        ini.SetLongValue("Modifier", "GamepadPosition",  modifierGamepadPosition);
+        ini.SetLongValue("Modifier", "GamepadPosition", modifierGamepadPosition);
         std::error_code ec;
         std::filesystem::create_directories(path.parent_path(), ec);
         ini.SaveFile(path.string().c_str());
