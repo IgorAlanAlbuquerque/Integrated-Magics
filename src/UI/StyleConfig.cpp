@@ -4,7 +4,6 @@
 #include "SimpleIni.h"
 
 namespace IntegratedMagic {
-
     namespace {
         float GetFloat(const CSimpleIniA& ini, const char* section, const char* key, float def) {
             const char* v = ini.GetValue(section, key, nullptr);
@@ -40,15 +39,26 @@ namespace IntegratedMagic {
             const char* v = ini.GetValue(section, key, nullptr);
             if (!v) return def;
             const std::string s{v};
-            if (s == "TopLeft"      || s == "0") return HudAnchor::TopLeft;
-            if (s == "TopCenter"    || s == "1") return HudAnchor::TopCenter;
-            if (s == "TopRight"     || s == "2") return HudAnchor::TopRight;
-            if (s == "MiddleLeft"   || s == "3") return HudAnchor::MiddleLeft;
-            if (s == "Center"       || s == "4") return HudAnchor::Center;
-            if (s == "MiddleRight"  || s == "5") return HudAnchor::MiddleRight;
-            if (s == "BottomLeft"   || s == "6") return HudAnchor::BottomLeft;
+            if (s == "TopLeft" || s == "0") return HudAnchor::TopLeft;
+            if (s == "TopCenter" || s == "1") return HudAnchor::TopCenter;
+            if (s == "TopRight" || s == "2") return HudAnchor::TopRight;
+            if (s == "MiddleLeft" || s == "3") return HudAnchor::MiddleLeft;
+            if (s == "Center" || s == "4") return HudAnchor::Center;
+            if (s == "MiddleRight" || s == "5") return HudAnchor::MiddleRight;
+            if (s == "BottomLeft" || s == "6") return HudAnchor::BottomLeft;
             if (s == "BottomCenter" || s == "7") return HudAnchor::BottomCenter;
-            if (s == "BottomRight"  || s == "8") return HudAnchor::BottomRight;
+            if (s == "BottomRight" || s == "8") return HudAnchor::BottomRight;
+            return def;
+        }
+
+        HudLayoutType GetLayout(const CSimpleIniA& ini, const char* section, const char* key, HudLayoutType def) {
+            const char* v = ini.GetValue(section, key, nullptr);
+            if (!v) return def;
+            const std::string s{v};
+            if (s == "Circular" || s == "0") return HudLayoutType::Circular;
+            if (s == "Horizontal" || s == "1") return HudLayoutType::Horizontal;
+            if (s == "Vertical" || s == "2") return HudLayoutType::Vertical;
+            if (s == "Grid" || s == "3") return HudLayoutType::Grid;
             return def;
         }
     }
@@ -68,6 +78,7 @@ namespace IntegratedMagic {
         ringRadius = GetFloat(ini, "HUD", "RingRadius", ringRadius);
         popupSlotRadius = GetFloat(ini, "Popup", "SlotRadius", popupSlotRadius);
         popupRingRadius = GetFloat(ini, "Popup", "RingRadius", popupRingRadius);
+        popupSlotGap = GetFloat(ini, "Popup", "SlotGap", popupSlotGap);
         modeWidgetW = GetFloat(ini, "Popup", "ModeWidgetWidth", modeWidgetW);
         iconSizeFactor = GetFloat(ini, "Icons", "SizeFactor", iconSizeFactor);
         iconOffsetFactor = GetFloat(ini, "Icons", "OffsetFactor", iconOffsetFactor);
@@ -75,16 +86,26 @@ namespace IntegratedMagic {
 
         slotActiveScale = GetFloat(ini, "HUD", "SlotActiveScale", slotActiveScale);
         slotModifierScale = GetFloat(ini, "HUD", "SlotModifierScale", slotModifierScale);
+        slotNeighborScale = GetFloat(ini, "HUD", "SlotNeighborScale", slotNeighborScale);
         slotExpandTime = GetFloat(ini, "HUD", "SlotExpandTime", slotExpandTime);
         slotRetractTime = GetFloat(ini, "HUD", "SlotRetractTime", slotRetractTime);
-        hudAnchor  = GetAnchor(ini, "HUD", "Anchor",  hudAnchor);
-        hudOffsetX = GetFloat(ini,  "HUD", "OffsetX", hudOffsetX);
-        hudOffsetY = GetFloat(ini,  "HUD", "OffsetY", hudOffsetY);
+        hudAnchor = GetAnchor(ini, "HUD", "Anchor", hudAnchor);
+        hudOffsetX = GetFloat(ini, "HUD", "OffsetX", hudOffsetX);
+        hudOffsetY = GetFloat(ini, "HUD", "OffsetY", hudOffsetY);
+        hudLayout = GetLayout(ini, "HUD", "Layout", hudLayout);
+        slotSpacing = GetFloat(ini, "HUD", "SlotSpacing", slotSpacing);
+        gridColumns = static_cast<int>(GetFloat(ini, "HUD", "GridColumns", static_cast<float>(gridColumns)));
+
+        {
+            const char* v = ini.GetValue("HUD", "UseTextureForSlotBg", nullptr);
+            if (v) useTextureForSlotBg = (_stricmp(v, "true") == 0 || std::strcmp(v, "1") == 0);
+        }
 
         slotBgActive = GetColor(ini, "Colors", "SlotBgActive", slotBgActive);
         slotBgInactive = GetColor(ini, "Colors", "SlotBgInactive", slotBgInactive);
         slotRingInactive = GetColor(ini, "Colors", "SlotRingInactive", slotRingInactive);
         slotRingActiveAlpha = GetU8(ini, "Colors", "SlotRingActiveAlpha", slotRingActiveAlpha);
+        slotRingWidth = GetFloat(ini, "Colors", "SlotRingWidth", slotRingWidth);
         iconAlpha = GetU8(ini, "Colors", "IconAlpha", iconAlpha);
         emptySlotColor = GetColor(ini, "Colors", "EmptySlotColor", emptySlotColor);
 
@@ -106,5 +127,88 @@ namespace IntegratedMagic {
         emptyFill = GetColor(ini, "SchoolColors", "EmptyFill", emptyFill);
 
         spdlog::info("[StyleConfig] styles.ini carregado.");
+    }
+
+    void StyleConfig::Save() {
+        constexpr const char* kPath = R"(.\Data\SKSE\Plugins\IntegratedMagics\styles.ini)";
+
+        CSimpleIniA ini;
+        ini.SetUnicode();
+        ini.LoadFile(kPath);
+
+        auto setFloat = [&](const char* sec, const char* key, float v) {
+            std::string s = std::to_string(v);
+
+            if (s.find('.') != std::string::npos) {
+                s.erase(s.find_last_not_of('0') + 1);
+                if (s.back() == '.') s += '0';
+            }
+            ini.SetValue(sec, key, s.c_str());
+        };
+        auto setInt = [&](const char* sec, const char* key, int v) { ini.SetLongValue(sec, key, v); };
+        auto setBool = [&](const char* sec, const char* key, bool v) { ini.SetBoolValue(sec, key, v); };
+        auto setColor = [&](const char* sec, const char* key, std::uint32_t v) {
+            char buf[12];
+            std::snprintf(buf, sizeof(buf), "0x%08Xu", v);
+            ini.SetValue(sec, key, buf);
+        };
+        auto setU8 = [&](const char* sec, const char* key, std::uint8_t v) {
+            ini.SetLongValue(sec, key, static_cast<long>(v));
+        };
+
+        static const char* kAnchorNames[] = {"TopLeft",     "TopCenter",  "TopRight",     "MiddleLeft", "Center",
+                                             "MiddleRight", "BottomLeft", "BottomCenter", "BottomRight"};
+        static const char* kLayoutNames[] = {"Circular", "Horizontal", "Vertical", "Grid"};
+
+        setFloat("HUD", "SlotRadius", slotRadius);
+        setFloat("HUD", "RingRadius", ringRadius);
+        setFloat("HUD", "SlotActiveScale", slotActiveScale);
+        setFloat("HUD", "SlotModifierScale", slotModifierScale);
+        setFloat("HUD", "SlotNeighborScale", slotNeighborScale);
+        setFloat("HUD", "SlotExpandTime", slotExpandTime);
+        setFloat("HUD", "SlotRetractTime", slotRetractTime);
+        ini.SetValue("HUD", "Anchor", kAnchorNames[static_cast<int>(hudAnchor)]);
+        setFloat("HUD", "OffsetX", hudOffsetX);
+        setFloat("HUD", "OffsetY", hudOffsetY);
+        ini.SetValue("HUD", "Layout", kLayoutNames[static_cast<int>(hudLayout)]);
+        setFloat("HUD", "SlotSpacing", slotSpacing);
+        setInt("HUD", "GridColumns", gridColumns);
+        setBool("HUD", "UseTextureForSlotBg", useTextureForSlotBg);
+
+        setFloat("Popup", "SlotRadius", popupSlotRadius);
+        setFloat("Popup", "RingRadius", popupRingRadius);
+        setFloat("Popup", "SlotGap", popupSlotGap);
+        setFloat("Popup", "ModeWidgetWidth", modeWidgetW);
+        setU8("Popup", "OverlayAlpha", overlayAlpha);
+
+        setFloat("Icons", "SizeFactor", iconSizeFactor);
+        setFloat("Icons", "OffsetFactor", iconOffsetFactor);
+
+        setColor("Colors", "SlotBgActive", slotBgActive);
+        setColor("Colors", "SlotBgInactive", slotBgInactive);
+        setColor("Colors", "SlotRingInactive", slotRingInactive);
+        setU8("Colors", "SlotRingActiveAlpha", slotRingActiveAlpha);
+        setFloat("Colors", "SlotRingWidth", slotRingWidth);
+        setU8("Colors", "IconAlpha", iconAlpha);
+        setColor("Colors", "EmptySlotColor", emptySlotColor);
+        setColor("Colors", "RingCenterFill", ringCenterFill);
+        setColor("Colors", "RingCenterBorder", ringCenterBorder);
+
+        setColor("SchoolColors", "AlterationFill", alterationFill);
+        setColor("SchoolColors", "AlterationGlow", alterationGlow);
+        setColor("SchoolColors", "ConjurationFill", conjurationFill);
+        setColor("SchoolColors", "ConjurationGlow", conjurationGlow);
+        setColor("SchoolColors", "DestructionFill", destructionFill);
+        setColor("SchoolColors", "DestructionGlow", destructionGlow);
+        setColor("SchoolColors", "IllusionFill", illusionFill);
+        setColor("SchoolColors", "IllusionGlow", illusionGlow);
+        setColor("SchoolColors", "RestorationFill", restorationFill);
+        setColor("SchoolColors", "RestorationGlow", restorationGlow);
+        setColor("SchoolColors", "DefaultFill", defaultFill);
+        setColor("SchoolColors", "DefaultGlow", defaultGlow);
+        setColor("SchoolColors", "EmptyFill", emptyFill);
+
+        ini.SaveFile(kPath);
+        spdlog::info("[StyleConfig] styles.ini salvo.");
     }
 }

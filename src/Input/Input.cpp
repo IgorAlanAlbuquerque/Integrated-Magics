@@ -521,11 +521,11 @@ namespace {
         if (drained > 0)
             spdlog::info("[Input] DrainWhenBlocked: discarded {} pressed slot(s) (input blocked)", drained);
 #endif
-        for (auto s = Input::ConsumeReleasedSlot(); s.has_value(); s = Input::ConsumeReleasedSlot()) {
+        for (auto s2 = Input::ConsumeReleasedSlot(); s2.has_value(); s2 = Input::ConsumeReleasedSlot()) {
 #ifdef DEBUG
-            spdlog::info("[Input] DrainWhenBlocked: releasing slot={} while blocked", *s);
+            spdlog::info("[Input] DrainWhenBlocked: releasing slot={} while blocked", *s2);
 #endif
-            HandleSlotReleased(*s);
+            HandleSlotReleased(*s2);
         }
     }
 
@@ -953,6 +953,31 @@ std::optional<int> Input::ConsumePressedSlot() { return ConsumeBit(g_pressedMask
 std::optional<int> Input::ConsumeReleasedSlot() { return ConsumeBit(g_releasedMask); }
 
 bool Input::ConsumeHudToggle() { return g_hudTogglePending.exchange(false, std::memory_order_relaxed); }
+
+bool Input::IsModifierHeld() {
+    const auto& cfg = IntegratedMagic::GetMagicConfig();
+
+    const int kbPos = cfg.modifierKeyboardPosition;
+    const int gpPos = cfg.modifierGamepadPosition;
+
+    if (kbPos > 0) {
+        const auto& ic = cfg.slotInput[0];
+        const int code = kbPos == 1   ? ic.KeyboardScanCode1.load(std::memory_order_relaxed)
+                         : kbPos == 2 ? ic.KeyboardScanCode2.load(std::memory_order_relaxed)
+                                      : ic.KeyboardScanCode3.load(std::memory_order_relaxed);
+        if (code >= 0 && code < kMaxCode && g_kbDown[static_cast<std::size_t>(code)].load(std::memory_order_relaxed))
+            return true;
+    }
+    if (gpPos > 0) {
+        const auto& ic = cfg.slotInput[0];
+        const int code = gpPos == 1   ? ic.GamepadButton1.load(std::memory_order_relaxed)
+                         : gpPos == 2 ? ic.GamepadButton2.load(std::memory_order_relaxed)
+                                      : ic.GamepadButton3.load(std::memory_order_relaxed);
+        if (code >= 0 && code < kMaxCode && g_gpDown[static_cast<std::size_t>(code)].load(std::memory_order_relaxed))
+            return true;
+    }
+    return false;
+}
 
 void Input::CancelHotkeyCapture() {
     auto& cap = GetCaptureState();

@@ -72,13 +72,13 @@ namespace IntegratedMagic {
                     hm.beginCastWaitSecs = 0.f;
                     hm.beginCastRetries = 0;
                     _session.attackEnabled = false;
-                    _cast.pendingSkipFirstCastStop = true;
+                    _cast.castStopsToSkip = _session.wasHandsDown ? 2 : 1;
                 }
 #ifdef DEBUG
                 spdlog::info(
                     "[State] EnterHand: hand={} mode=Hold wantAutoAttack={} "
-                    "waitingAutoAfterEquip={} pendingSkipFirstCastStop={}",
-                    handStr, hm.wantAutoAttack, hm.waitingAutoAfterEquip, _cast.pendingSkipFirstCastStop);
+                    "waitingAutoAfterEquip={} castStopsToSkip={}",
+                    handStr, hm.wantAutoAttack, hm.waitingAutoAfterEquip, _cast.castStopsToSkip);
 #endif
                 break;
 
@@ -92,12 +92,12 @@ namespace IntegratedMagic {
                 hm.beginCastWaitSecs = 0.f;
                 hm.beginCastRetries = 0;
                 _session.attackEnabled = false;
-                _cast.pendingSkipFirstCastStop = true;
+                _cast.castStopsToSkip = _session.wasHandsDown ? 2 : 1;
 #ifdef DEBUG
                 spdlog::info(
                     "[State] EnterHand: hand={} mode=Automatic waitingChargeComplete=true "
-                    "waitingAutoAfterEquip=true pendingSkipFirstCastStop={}",
-                    handStr, _cast.pendingSkipFirstCastStop);
+                    "waitingAutoAfterEquip=true castStopsToSkip={}",
+                    handStr, _cast.castStopsToSkip);
 #endif
                 break;
 

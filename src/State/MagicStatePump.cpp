@@ -122,37 +122,42 @@ namespace IntegratedMagic {
         }
 #ifdef DEBUG
         spdlog::info(
-            "[State] OnCastStop: pendingSkipFirstCastStop={} isDualCasting={} "
+            "[State] OnCastStop: castStopsToSkip={} isDualCasting={} "
             "left.autoActive={} left.chargeComplete={} left.finished={} "
             "right.autoActive={} right.chargeComplete={} right.finished={} "
             "left.holdFired={} right.holdFired={}",
-            _cast.pendingSkipFirstCastStop, _session.isDualCasting, _left.autoActive, _left.chargeComplete,
-            _left.finished, _right.autoActive, _right.chargeComplete, _right.finished,
-            _left.holdFiredAndWaitingCastStop, _right.holdFiredAndWaitingCastStop);
+            _cast.castStopsToSkip, _session.isDualCasting, _left.autoActive, _left.chargeComplete, _left.finished,
+            _right.autoActive, _right.chargeComplete, _right.finished, _left.holdFiredAndWaitingCastStop,
+            _right.holdFiredAndWaitingCastStop);
 #endif
 
-        if (_cast.pendingSkipFirstCastStop) {
-            _cast.pendingSkipFirstCastStop = false;
+        if (_cast.castStopsToSkip > 0) {
+            --_cast.castStopsToSkip;
+            const bool isLastSkip = (_cast.castStopsToSkip == 0);
 #ifdef DEBUG
-            spdlog::info("[State] OnCastStop: SKIPPING first cast stop, scheduling delayed starts");
+            spdlog::info("[State] OnCastStop: SKIPPING cast stop (remaining={}), isLastSkip={}", _cast.castStopsToSkip,
+                         isLastSkip);
 #endif
-            auto stopAndDelay = [&](Slots::Hand h) {
-                auto& hm = ModeFor(h);
-                if ((hm.autoActive || (hm.holdActive && hm.wantAutoAttack)) && !hm.finished) {
-                    CancelDelayedStart(h);
-                    StopAutoAttack(h);
-                    hm.waitingBeginCast = true;
-                    hm.beginCastWaitSecs = 0.f;
-                    hm.beginCastRetries = 0;
-                    ScheduleDelayedStart(h);
+
+            if (isLastSkip) {
+                auto stopAndDelay = [&](Slots::Hand h) {
+                    auto& hm = ModeFor(h);
+                    if ((hm.autoActive || (hm.holdActive && hm.wantAutoAttack)) && !hm.finished) {
+                        CancelDelayedStart(h);
+                        StopAutoAttack(h);
+                        hm.waitingBeginCast = true;
+                        hm.beginCastWaitSecs = 0.f;
+                        hm.beginCastRetries = 0;
+                        ScheduleDelayedStart(h);
 #ifdef DEBUG
-                    spdlog::info("[State] OnCastStop: scheduled delayed start for hand={}",
-                                 IsLeft(h) ? "Left" : "Right");
+                        spdlog::info("[State] OnCastStop: scheduled delayed start for hand={}",
+                                     IsLeft(h) ? "Left" : "Right");
 #endif
-                }
-            };
-            stopAndDelay(Left);
-            stopAndDelay(Right);
+                    }
+                };
+                stopAndDelay(Left);
+                stopAndDelay(Right);
+            }
             return;
         }
 

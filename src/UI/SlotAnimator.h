@@ -11,20 +11,69 @@ namespace IntegratedMagic {
     public:
         static constexpr int kMaxSlots = 8;
 
-        static void Update(int n, int activeSlot, bool modifierHeld) {
+        static void Update(int n, int activeSlot, bool modifierHeld, HudLayoutType layout = HudLayoutType::Circular,
+                           int gridColumns = 2) {
             const float dt = ComputeDeltaTime();
             const auto& st = StyleConfig::Get();
             const float expandSpeed = st.slotExpandTime > 0.f ? 1.f / st.slotExpandTime : 9999.f;
             const float retractSpeed = st.slotRetractTime > 0.f ? 1.f / st.slotRetractTime : 9999.f;
 
+            const bool hasActive = (activeSlot >= 0 && activeSlot < n);
+
+            int neighbors[4]{-1, -1, -1, -1};
+            int neighborCount = 0;
+
+            if (hasActive && n > 1) {
+                auto add = [&](int idx) {
+                    if (idx >= 0 && idx < n && neighborCount < 4) neighbors[neighborCount++] = idx;
+                };
+
+                switch (layout) {
+                    case HudLayoutType::Circular:
+                        add((activeSlot - 1 + n) % n);
+                        add((activeSlot + 1) % n);
+                        break;
+
+                    case HudLayoutType::Horizontal:
+                    case HudLayoutType::Vertical:
+                        add(activeSlot - 1);
+                        add(activeSlot + 1);
+                        break;
+
+                    case HudLayoutType::Grid: {
+                        const int cols = std::max(1, std::min(gridColumns, n));
+                        const int col = activeSlot % cols;
+                        const int row = activeSlot / cols;
+                        if (col > 0) add(activeSlot - 1);
+                        if (col < cols - 1) add(activeSlot + 1);
+                        if (row > 0) add(activeSlot - cols);
+                        if (activeSlot + cols < n) add(activeSlot + cols);
+                        break;
+                    }
+                }
+            }
+
             for (int i = 0; i < kMaxSlots; ++i) {
                 float target = 1.f;
 
                 if (i < n) {
-                    if (activeSlot == i)
+                    if (hasActive && i == activeSlot) {
                         target = st.slotActiveScale;
-                    else if (modifierHeld)
-                        target = st.slotModifierScale;
+                    } else {
+                        bool isNeighbor = false;
+                        for (int k = 0; k < neighborCount; ++k)
+                            if (neighbors[k] == i) {
+                                isNeighbor = true;
+                                break;
+                            }
+
+                        if (isNeighbor) {
+                            target = modifierHeld ? std::max(st.slotNeighborScale, st.slotModifierScale)
+                                                  : st.slotNeighborScale;
+                        } else if (modifierHeld) {
+                            target = st.slotModifierScale;
+                        }
+                    }
                 }
 
                 s_slots[i].SetTarget(target);

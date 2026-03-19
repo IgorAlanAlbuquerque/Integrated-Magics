@@ -97,7 +97,7 @@ namespace IntegratedMagic {
     };
 
     struct CastFlags {
-        bool pendingSkipFirstCastStop{false};
+        int castStopsToSkip{0};
         void Reset() { *this = {}; }
     };
 
@@ -127,7 +127,7 @@ namespace IntegratedMagic {
         bool IsActive() const noexcept { return _session.active; }
         int ActiveSlot() const noexcept { return _session.activeSlot; }
         bool IsDualCasting() const noexcept { return _session.isDualCasting; }
-        bool PendingSkipFirstCastStop() const noexcept { return _cast.pendingSkipFirstCastStop; }
+        bool PendingSkipFirstCastStop() const noexcept { return _cast.castStopsToSkip > 0; }
         int DualCastSkipCount() const noexcept { return _session.dualCastSkipCastStops; }
         bool IsWaitingSheatheRestore() const noexcept {
             return _restore.pendingRestoreAfterSheathe && !_restore.sheatheAnimComplete;
@@ -280,5 +280,4 @@ namespace IntegratedMagic {
             if (!exists) _restore.prevExtraEquipped.push_back({base, nullptr});
         }
     }
-
 }

@@ -14,7 +14,9 @@
 #include "RE/U/UI.h"
 #include "SKSEMenuFramework.h"
 #include "State/State.h"
+#include "Strings.h"
 #include "UI/SlotAnimator.h"
+#include "UI/SlotLayout.h"
 #include "UI/StyleConfig.h"
 #include "UI/TextureManager.h"
 
@@ -155,7 +157,32 @@ namespace IntegratedMagic::HUD {
             }
 
             const auto& st = Style();
-            DL::AddCircleFilled(dl, center, r, isActive ? st.slotBgActive : st.slotBgInactive, 48);
+
+            if (st.useTextureForSlotBg) {
+                const bool isEmpty = (!rSpell && !lSpell && !shoutFormID);
+
+                const auto& bgImg = [&]() -> const TextureManager::Image& {
+                    if (isEmpty) {
+                        const auto& e = TextureManager::GetUiTexture(UiTextureType::slot_bg_empty);
+                        if (e.valid()) return e;
+                    } else if (isActive) {
+                        const auto& a = TextureManager::GetUiTexture(UiTextureType::slot_bg_active);
+                        if (a.valid()) return a;
+                    }
+                    return TextureManager::GetUiTexture(UiTextureType::slot_bg);
+                }();
+
+                if (bgImg.valid()) {
+                    const ImVec2 p0{center.x - r, center.y - r};
+                    const ImVec2 p1{center.x + r, center.y + r};
+                    DL::AddImage(dl, reinterpret_cast<ImTextureID>(bgImg.texture), p0, p1, {0.f, 0.f}, {1.f, 1.f},
+                                 IM_COL32(255, 255, 255, 255));
+                } else {
+                    DL::AddCircleFilled(dl, center, r, isActive ? st.slotBgActive : st.slotBgInactive, 48);
+                }
+            } else {
+                DL::AddCircleFilled(dl, center, r, isActive ? st.slotBgActive : st.slotBgInactive, 48);
+            }
 
             const float iconSize = r * st.iconSizeFactor;
 
@@ -179,10 +206,10 @@ namespace IntegratedMagic::HUD {
                 const double pulse = 0.65 + 0.35 * std::sin(t * 4.5);
                 const ImU32 ring =
                     IM_COL32(255, static_cast<int>(210 * pulse), static_cast<int>(50 * pulse), st.slotRingActiveAlpha);
-                DL::AddCircle(dl, center, r, ring, 48, 2.5f);
-                DL::AddCircle(dl, center, r + 3.f, (ring & 0x00FFFFFFu) | (70u << 24), 48, 1.0f);
+                DL::AddCircle(dl, center, r, ring, 48, st.slotRingWidth);
+                DL::AddCircle(dl, center, r + st.slotRingWidth + 0.5f, (ring & 0x00FFFFFFu) | (70u << 24), 48, 1.0f);
             } else {
-                DL::AddCircle(dl, center, r, st.slotRingInactive, 48, 1.2f);
+                DL::AddCircle(dl, center, r, st.slotRingInactive, 48, st.slotRingWidth * 0.5f);
             }
 
             if (!rSpell && !lSpell && !shoutFormID) {
@@ -256,13 +283,23 @@ namespace IntegratedMagic::HUD {
                    g_mousePos.y < pos.y + size.y;
         }
 
+        void MouseTooltip(const char* text) {
+            ImGui::SetNextWindowPos({g_mousePos.x + 16.f, g_mousePos.y + 8.f}, ImGuiCond_Always, {0.f, 0.f});
+            ImGui::BeginTooltip();
+            ImGui::TextUnformatted(text);
+            ImGui::EndTooltip();
+        }
+
         void DrawSpellModeWidget(ImDrawList* dl, bool clicked, ImVec2 origin, float availW, std::uint32_t formID,
                                  const char*) {
             if (!formID) return;
             auto s = SpellSettingsDB::Get().GetOrCreate(formID);
 
             static const char* kLabels[] = {"H", "P", "A"};
-            static const char* kTips[] = {"Hold", "Press", "Auto"};
+            const std::string kTipHold = Strings::Get("Mode_Hold", "Hold");
+            const std::string kTipPress = Strings::Get("Mode_Press", "Press");
+            const std::string kTipAuto = Strings::Get("Mode_Auto", "Auto");
+            const char* kTips[] = {kTipHold.c_str(), kTipPress.c_str(), kTipAuto.c_str()};
             constexpr int kNumModes = 3;
             const float btnR = 8.f;
             const float stepX = availW / kNumModes;
@@ -286,8 +323,7 @@ namespace IntegratedMagic::HUD {
                     ImGui::TextDisabled("%s", kLabels[m]);
 
                 if (hov) {
-                    ImGui::SetCursorScreenPos({bc.x + btnR + 2.f, bc.y - 7.f});
-                    ImGui::TextDisabled("%s", kTips[m]);
+                    MouseTooltip(kTips[m]);
                 }
 
                 if (ManualClick(clicked, {bc.x - btnR, bc.y - btnR}, {btnR * 2.f, btnR * 2.f})) {
@@ -325,36 +361,36 @@ namespace IntegratedMagic::HUD {
             }
         }
 
-        ImVec2 ComputeHudCenter(const ImGuiIO* io, float half) {
+        ImVec2 ComputeHudCenter(const ImGuiIO* io, ImVec2 halfSize) {
             const float W = io->DisplaySize.x;
             const float H = io->DisplaySize.y;
             const auto& st = Style();
+            const float mx = halfSize.x + 4.f;
+            const float my = halfSize.y + 4.f;
             const float ox = st.hudOffsetX;
             const float oy = st.hudOffsetY;
-
-            const float m = half + 4.f;
 
             switch (st.hudAnchor) {
                 using enum HudAnchor;
                 case TopLeft:
-                    return {m + ox, m + oy};
+                    return {mx + ox, my + oy};
                 case TopCenter:
-                    return {W * 0.5f + ox, m + oy};
+                    return {W * 0.5f + ox, my + oy};
                 case TopRight:
-                    return {W - m + ox, m + oy};
+                    return {W - mx + ox, my + oy};
                 case MiddleLeft:
-                    return {m + ox, H * 0.5f + oy};
+                    return {mx + ox, H * 0.5f + oy};
                 case Center:
                     return {W * 0.5f + ox, H * 0.5f + oy};
                 case MiddleRight:
-                    return {W - m + ox, H * 0.5f + oy};
+                    return {W - mx + ox, H * 0.5f + oy};
                 case BottomLeft:
-                    return {m + ox, H - m + oy};
+                    return {mx + ox, H - my + oy};
                 case BottomCenter:
-                    return {W * 0.5f + ox, H - m + oy};
+                    return {W * 0.5f + ox, H - my + oy};
                 case BottomRight:
                 default:
-                    return {W - m + ox, H - m + oy};
+                    return {W - mx + ox, H - my + oy};
             }
         }
 
@@ -363,17 +399,31 @@ namespace IntegratedMagic::HUD {
             const int n = static_cast<int>(Slots::GetSlotCount());
             const int activeSlot = MagicState::Get().ActiveSlot();
 
-            SlotAnimator::Update(n, activeSlot, /*modifierHeld=*/false);
+            const bool modHeld = !MagicState::Get().IsActive() && Input::IsModifierHeld();
+            SlotAnimator::Update(n, activeSlot, modHeld, st.hudLayout, st.gridColumns);
 
-            const float fixedHalf = st.ringRadius + st.slotRadius + kGlowPad;
-            const ImVec2 ringCenter = ComputeHudCenter(io, fixedHalf);
+            const LayoutVec2 fixedHalf = [&] {
+                LayoutVec2 h = SlotLayout::BoundingHalf(st.hudLayout, n, st.slotRadius, st.ringRadius, st.slotSpacing,
+                                                        st.gridColumns);
+                return LayoutVec2{h.x + kGlowPad, h.y + kGlowPad};
+            }();
 
             float maxScale = SlotAnimator::MaxPossibleScale();
             for (int i = 0; i < n; ++i) maxScale = std::max(maxScale, SlotAnimator::GetScale(i));
-            const float animHalf = st.ringRadius + st.slotRadius * maxScale + kGlowPad;
 
-            ImGui::SetNextWindowPos({ringCenter.x - animHalf, ringCenter.y - animHalf}, ImGuiCond_Always, {0.f, 0.f});
-            ImGui::SetNextWindowSize({animHalf * 2.f, animHalf * 2.f}, ImGuiCond_Always);
+            const LayoutVec2 animHalf = [&] {
+                LayoutVec2 h = SlotLayout::BoundingHalf(st.hudLayout, n, st.slotRadius * maxScale, st.ringRadius,
+                                                        st.slotSpacing, st.gridColumns);
+                return LayoutVec2{h.x + kGlowPad, h.y + kGlowPad};
+            }();
+
+            const ImVec2 hudOrigin = ComputeHudCenter(io, {fixedHalf.x, fixedHalf.y});
+
+            LayoutVec2 relPos[SlotLayout::kMaxSlots]{};
+            SlotLayout::Compute(st.hudLayout, n, st.slotRadius, st.ringRadius, st.slotSpacing, st.gridColumns, relPos);
+
+            ImGui::SetNextWindowPos({hudOrigin.x - animHalf.x, hudOrigin.y - animHalf.y}, ImGuiCond_Always, {0.f, 0.f});
+            ImGui::SetNextWindowSize({animHalf.x * 2.f, animHalf.y * 2.f}, ImGuiCond_Always);
             ImGui::SetNextWindowBgAlpha(0.f);
 
             ImGui::Begin(kHudWindowID, nullptr,
@@ -384,13 +434,11 @@ namespace IntegratedMagic::HUD {
 
             ImDrawList* dl = ImGui::GetWindowDrawList();
 
-            DrawRingCenter(dl, ringCenter);
-
-            const float dynR = DynamicRingRadius(n, st.slotRadius, st.ringRadius);
+            if (SlotLayout::HasCenter(st.hudLayout)) DrawRingCenter(dl, hudOrigin);
 
             for (int i = 0; i < n; ++i) {
                 if (i == activeSlot) continue;
-                const ImVec2 center = SlotCenter(ringCenter, dynR, i, n);
+                const ImVec2 center = {hudOrigin.x + relPos[i].x, hudOrigin.y + relPos[i].y};
                 const float slotR = st.slotRadius * SlotAnimator::GetScale(i);
                 const auto rID = Slots::GetSlotSpell(i, Slots::Hand::Right);
                 const auto lID = Slots::GetSlotSpell(i, Slots::Hand::Left);
@@ -401,7 +449,7 @@ namespace IntegratedMagic::HUD {
             }
 
             if (activeSlot >= 0 && activeSlot < n) {
-                const ImVec2 center = SlotCenter(ringCenter, dynR, activeSlot, n);
+                const ImVec2 center = {hudOrigin.x + relPos[activeSlot].x, hudOrigin.y + relPos[activeSlot].y};
                 const float slotR = st.slotRadius * SlotAnimator::GetScale(activeSlot);
                 const auto rID = Slots::GetSlotSpell(activeSlot, Slots::Hand::Right);
                 const auto lID = Slots::GetSlotSpell(activeSlot, Slots::Hand::Left);
@@ -426,7 +474,7 @@ namespace IntegratedMagic::HUD {
 
             const int n = static_cast<int>(Slots::GetSlotCount());
             const auto& st = Style();
-            const float dynPopupR = DynamicRingRadius(n, st.popupSlotRadius, st.popupRingRadius);
+            const float dynPopupR = DynamicRingRadius(n, st.popupSlotRadius, st.popupRingRadius, st.popupSlotGap);
             const float popupHalf = dynPopupR + st.popupSlotRadius + kGlowPad + st.modeWidgetW + 12.f;
             const ImVec2 popupSize = {popupHalf * 2.f, popupHalf * 2.f + 48.f};
             const ImVec2 popupPos = {io->DisplaySize.x * 0.5f - popupSize.x * 0.5f,
@@ -465,7 +513,8 @@ namespace IntegratedMagic::HUD {
                     DrawSlotVisual(dl, center, st.popupSlotRadius, activeSlot == i, rSp, lSp, shoutID);
 
                     {
-                        const std::string slotLabel = "Slot " + std::to_string(i + 1);
+                        const std::string slotLabel =
+                            Strings::Get("Popup_SlotLabel", "Slot") + " " + std::to_string(i + 1);
                         ImVec2 textSize{};
                         ImGui::CalcTextSize(&textSize, slotLabel.c_str(), nullptr, false, -1.0f);
                         ImGui::SetCursorScreenPos(
@@ -479,10 +528,10 @@ namespace IntegratedMagic::HUD {
                             const char* shoutName = shoutForm ? shoutForm->GetName() : "???";
                             ImGui::SetCursorScreenPos(
                                 {center.x - st.popupSlotRadius, center.y - st.popupSlotRadius - 16.f});
-                            ImGui::TextDisabled("[S] %s", shoutName);
+                            ImGui::TextDisabled("%s %s", Strings::Get("Popup_ShoutPrefix", "[S]").c_str(), shoutName);
                         } else if (rSp || lSp) {
                             const std::string label =
-                                std::string(rSp ? rSp->GetName() : "---") + " | " + (lSp ? lSp->GetName() : "---");
+                                std::string(lSp ? lSp->GetName() : "---") + " | " + (rSp ? rSp->GetName() : "---");
                             ImGui::SetCursorScreenPos(
                                 {center.x - st.popupSlotRadius, center.y - st.popupSlotRadius - 16.f});
                             ImGui::TextDisabled("%s", label.c_str());
@@ -499,8 +548,8 @@ namespace IntegratedMagic::HUD {
                                 DL::AddCircleFilled(dl, center, st.popupSlotRadius - 1.f, IM_COL32(255, 200, 80, 40),
                                                     48);
 
-                                ImGui::SetCursorScreenPos({g_mousePos.x + 14.f, g_mousePos.y + 4.f});
-                                ImGui::TextDisabled("LMB assign  |  RMB clear  [Shout/Power]");
+                                MouseTooltip(
+                                    Strings::Get("Popup_TipShout", "LMB assign  |  RMB clear  [Shout/Power]").c_str());
 
                                 if (clicked) MagicAssign::TryAssignHoveredShoutToSlot(i);
                                 if (rightClicked) {
@@ -519,10 +568,12 @@ namespace IntegratedMagic::HUD {
                                 else
                                     FillSector(dl, center, st.popupSlotRadius - 1.f, kPI * 0.5f, kPI * 1.5f, hlColor);
 
-                                const char* tip = hoverRight ? "LMB assign  |  RMB clear  [Right]"
-                                                             : "LMB assign  |  RMB clear  [Left]";
-                                ImGui::SetCursorScreenPos({g_mousePos.x + 14.f, g_mousePos.y + 4.f});
-                                ImGui::TextDisabled("%s", tip);
+                                const std::string tipRight =
+                                    Strings::Get("Popup_TipRight", "LMB assign  |  RMB clear  [Right]");
+                                const std::string tipLeft =
+                                    Strings::Get("Popup_TipLeft", "LMB assign  |  RMB clear  [Left]");
+                                const char* tip = hoverRight ? tipRight.c_str() : tipLeft.c_str();
+                                MouseTooltip(tip);
 
                                 if (clicked) {
                                     if (hoverRight)
@@ -597,6 +648,7 @@ namespace IntegratedMagic::HUD {
     }
 
     void DrawHudElement() {
+        if (!g_hudVisible.load(std::memory_order_relaxed)) return;
         if (IsHardBlocked()) return;
         if (Slots::GetSlotCount() == 0) return;
 
@@ -607,8 +659,6 @@ namespace IntegratedMagic::HUD {
         if (inMagicMenu && Input::ConsumeHudToggle()) ToggleDetailPopup();
 
         if (!inMagicMenu && g_popupWindow && g_popupWindow->IsOpen.load()) g_popupWindow->IsOpen = false;
-
-        if (!g_hudVisible.load(std::memory_order_relaxed)) return;
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.f, 0.f});
