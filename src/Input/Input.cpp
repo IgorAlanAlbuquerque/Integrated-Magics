@@ -677,7 +677,13 @@ namespace {
 
     bool IsHudComboDown() { return ComboDown(g_hudCache.kb, g_kbDown) || ComboDown(g_hudCache.gp, g_gpDown); }
 
-    bool ShouldFilterHudToggle(RE::INPUT_DEVICE dev, int convertedCode) { return IsHudToggleCombo(dev, convertedCode); }
+    bool ShouldFilterHudToggle(RE::INPUT_DEVICE dev, int convertedCode) {
+        if (!IsHudToggleCombo(dev, convertedCode)) return false;
+        auto* ui = RE::UI::GetSingleton();
+        if (!ui) return false;
+        static const RE::BSFixedString magicMenu{"MagicMenu"};
+        return ui->IsMenuOpen(magicMenu);
+    }
 
     void LoadHotkeyCache_FromConfig() {
         auto const& cfg = IntegratedMagic::GetMagicConfig();
@@ -800,7 +806,7 @@ namespace {
                     if (btn->IsDown()) IntegratedMagic::HUD::FeedMouseRightClick();
                     remove = true;
                 } else if (btn->GetDevice() == RE::INPUT_DEVICE::kGamepad &&
-                           btn->GetIDCode() == static_cast<std::uint32_t>(RE::BSWin32GamepadDevice::Key::kA)) {
+                           btn->GetIDCode() == static_cast<std::uint32_t>(RE::BSWin32GamepadDevice::Key::kX)) {
                     if (btn->IsDown()) IntegratedMagic::HUD::FeedMouseClick();
                     remove = true;
                 } else if (btn->GetDevice() == RE::INPUT_DEVICE::kGamepad &&
