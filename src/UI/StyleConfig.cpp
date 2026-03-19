@@ -96,10 +96,16 @@ namespace IntegratedMagic {
         slotSpacing = GetFloat(ini, "HUD", "SlotSpacing", slotSpacing);
         gridColumns = static_cast<int>(GetFloat(ini, "HUD", "GridColumns", static_cast<float>(gridColumns)));
 
+        {
+            const char* v = ini.GetValue("HUD", "UseTextureForSlotBg", nullptr);
+            if (v) useTextureForSlotBg = (_stricmp(v, "true") == 0 || std::strcmp(v, "1") == 0);
+        }
+
         slotBgActive = GetColor(ini, "Colors", "SlotBgActive", slotBgActive);
         slotBgInactive = GetColor(ini, "Colors", "SlotBgInactive", slotBgInactive);
         slotRingInactive = GetColor(ini, "Colors", "SlotRingInactive", slotRingInactive);
         slotRingActiveAlpha = GetU8(ini, "Colors", "SlotRingActiveAlpha", slotRingActiveAlpha);
+        slotRingWidth = GetFloat(ini, "Colors", "SlotRingWidth", slotRingWidth);
         iconAlpha = GetU8(ini, "Colors", "IconAlpha", iconAlpha);
         emptySlotColor = GetColor(ini, "Colors", "EmptySlotColor", emptySlotColor);
 
@@ -121,5 +127,88 @@ namespace IntegratedMagic {
         emptyFill = GetColor(ini, "SchoolColors", "EmptyFill", emptyFill);
 
         spdlog::info("[StyleConfig] styles.ini carregado.");
+    }
+
+    void StyleConfig::Save() {
+        constexpr const char* kPath = R"(.\Data\SKSE\Plugins\IntegratedMagics\styles.ini)";
+
+        CSimpleIniA ini;
+        ini.SetUnicode();
+        ini.LoadFile(kPath);
+
+        auto setFloat = [&](const char* sec, const char* key, float v) {
+            std::string s = std::to_string(v);
+
+            if (s.find('.') != std::string::npos) {
+                s.erase(s.find_last_not_of('0') + 1);
+                if (s.back() == '.') s += '0';
+            }
+            ini.SetValue(sec, key, s.c_str());
+        };
+        auto setInt = [&](const char* sec, const char* key, int v) { ini.SetLongValue(sec, key, v); };
+        auto setBool = [&](const char* sec, const char* key, bool v) { ini.SetBoolValue(sec, key, v); };
+        auto setColor = [&](const char* sec, const char* key, std::uint32_t v) {
+            char buf[12];
+            std::snprintf(buf, sizeof(buf), "0x%08Xu", v);
+            ini.SetValue(sec, key, buf);
+        };
+        auto setU8 = [&](const char* sec, const char* key, std::uint8_t v) {
+            ini.SetLongValue(sec, key, static_cast<long>(v));
+        };
+
+        static const char* kAnchorNames[] = {"TopLeft",     "TopCenter",  "TopRight",     "MiddleLeft", "Center",
+                                             "MiddleRight", "BottomLeft", "BottomCenter", "BottomRight"};
+        static const char* kLayoutNames[] = {"Circular", "Horizontal", "Vertical", "Grid"};
+
+        setFloat("HUD", "SlotRadius", slotRadius);
+        setFloat("HUD", "RingRadius", ringRadius);
+        setFloat("HUD", "SlotActiveScale", slotActiveScale);
+        setFloat("HUD", "SlotModifierScale", slotModifierScale);
+        setFloat("HUD", "SlotNeighborScale", slotNeighborScale);
+        setFloat("HUD", "SlotExpandTime", slotExpandTime);
+        setFloat("HUD", "SlotRetractTime", slotRetractTime);
+        ini.SetValue("HUD", "Anchor", kAnchorNames[static_cast<int>(hudAnchor)]);
+        setFloat("HUD", "OffsetX", hudOffsetX);
+        setFloat("HUD", "OffsetY", hudOffsetY);
+        ini.SetValue("HUD", "Layout", kLayoutNames[static_cast<int>(hudLayout)]);
+        setFloat("HUD", "SlotSpacing", slotSpacing);
+        setInt("HUD", "GridColumns", gridColumns);
+        setBool("HUD", "UseTextureForSlotBg", useTextureForSlotBg);
+
+        setFloat("Popup", "SlotRadius", popupSlotRadius);
+        setFloat("Popup", "RingRadius", popupRingRadius);
+        setFloat("Popup", "SlotGap", popupSlotGap);
+        setFloat("Popup", "ModeWidgetWidth", modeWidgetW);
+        setU8("Popup", "OverlayAlpha", overlayAlpha);
+
+        setFloat("Icons", "SizeFactor", iconSizeFactor);
+        setFloat("Icons", "OffsetFactor", iconOffsetFactor);
+
+        setColor("Colors", "SlotBgActive", slotBgActive);
+        setColor("Colors", "SlotBgInactive", slotBgInactive);
+        setColor("Colors", "SlotRingInactive", slotRingInactive);
+        setU8("Colors", "SlotRingActiveAlpha", slotRingActiveAlpha);
+        setFloat("Colors", "SlotRingWidth", slotRingWidth);
+        setU8("Colors", "IconAlpha", iconAlpha);
+        setColor("Colors", "EmptySlotColor", emptySlotColor);
+        setColor("Colors", "RingCenterFill", ringCenterFill);
+        setColor("Colors", "RingCenterBorder", ringCenterBorder);
+
+        setColor("SchoolColors", "AlterationFill", alterationFill);
+        setColor("SchoolColors", "AlterationGlow", alterationGlow);
+        setColor("SchoolColors", "ConjurationFill", conjurationFill);
+        setColor("SchoolColors", "ConjurationGlow", conjurationGlow);
+        setColor("SchoolColors", "DestructionFill", destructionFill);
+        setColor("SchoolColors", "DestructionGlow", destructionGlow);
+        setColor("SchoolColors", "IllusionFill", illusionFill);
+        setColor("SchoolColors", "IllusionGlow", illusionGlow);
+        setColor("SchoolColors", "RestorationFill", restorationFill);
+        setColor("SchoolColors", "RestorationGlow", restorationGlow);
+        setColor("SchoolColors", "DefaultFill", defaultFill);
+        setColor("SchoolColors", "DefaultGlow", defaultGlow);
+        setColor("SchoolColors", "EmptyFill", emptyFill);
+
+        ini.SaveFile(kPath);
+        spdlog::info("[StyleConfig] styles.ini salvo.");
     }
 }

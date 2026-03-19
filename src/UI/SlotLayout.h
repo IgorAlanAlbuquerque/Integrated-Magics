@@ -31,7 +31,7 @@ namespace IntegratedMagic {
                     break;
                 case HudLayoutType::Circular:
                 default:
-                    ComputeCircular(n, slotRadius, ringRadius, out);
+                    ComputeCircular(n, slotRadius, ringRadius, spacing, out);
                     break;
             }
         }
@@ -51,7 +51,7 @@ namespace IntegratedMagic {
                 }
                 case HudLayoutType::Circular:
                 default: {
-                    const float r = CircularRadius(n, slotRadius, ringRadius);
+                    const float r = CircularRadius(n, slotRadius, ringRadius, spacing);
                     return {r + slotRadius, r + slotRadius};
                 }
             }
@@ -59,19 +59,19 @@ namespace IntegratedMagic {
 
         static bool HasCenter(HudLayoutType type) noexcept { return type == HudLayoutType::Circular; }
 
-        static float CircularRadius(int n, float slotRadius, float baseR, float gap = 8.f) {
+        static float CircularRadius(int n, float slotRadius, float baseR, float gap = 0.f) {
             if (n <= 1) return baseR;
             const float minR = (slotRadius + gap * 0.5f) / std::sin(kPI / static_cast<float>(n));
-            return std::max(baseR, minR);
+            return (gap >= 0.f) ? std::max(baseR, minR) : minR;
         }
 
     private:
         static float LinearExtent(int count, float slotRadius, float spacing) {
-            return count * slotRadius * 2.f + std::max(0, count - 1) * spacing;
+            return count * slotRadius * 2.f + (count - 1) * spacing;
         }
 
-        static void ComputeCircular(int n, float slotRadius, float ringRadius, LayoutVec2* out) {
-            const float r = CircularRadius(n, slotRadius, ringRadius);
+        static void ComputeCircular(int n, float slotRadius, float ringRadius, float spacing, LayoutVec2* out) {
+            const float r = CircularRadius(n, slotRadius, ringRadius, spacing);
             for (int i = 0; i < n; ++i) {
                 const float angle = kPI + (2.f * kPI / static_cast<float>(n)) * static_cast<float>(i);
                 out[i] = {r * std::cos(angle), r * std::sin(angle)};

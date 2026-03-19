@@ -47,12 +47,14 @@ namespace IntegratedMagic {
         float slotSpacing = 8.f;
         int gridColumns = 2;
 
+        bool useTextureForSlotBg = false;
+
         std::uint32_t slotBgActive = 0xE60F161Eu;
         std::uint32_t slotBgInactive = 0xC80C0C0Cu;
 
         std::uint32_t slotRingInactive = 0x96464646u;
-
-        std::uint8_t slotRingActiveAlpha = 245;
+        std::uint8_t  slotRingActiveAlpha = 245;
+        float         slotRingWidth = 2.5f;
 
         std::uint8_t iconAlpha = 220;
 
@@ -76,6 +78,7 @@ namespace IntegratedMagic {
         std::uint32_t emptyFill = 0x78282828u;
 
         void Load();
+        void Save();
 
         static StyleConfig& Get() {
             static StyleConfig inst;

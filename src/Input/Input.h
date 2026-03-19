@@ -15,4 +15,5 @@ namespace Input {
     std::optional<int> ConsumePressedSlot();
     std::optional<int> ConsumeReleasedSlot();
     bool ConsumeHudToggle();
+    bool IsModifierHeld();
 }

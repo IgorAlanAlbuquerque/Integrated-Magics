@@ -14,6 +14,7 @@
 #include "RE/U/UI.h"
 #include "SKSEMenuFramework.h"
 #include "State/State.h"
+#include "Strings.h"
 #include "UI/SlotAnimator.h"
 #include "UI/SlotLayout.h"
 #include "UI/StyleConfig.h"
@@ -156,7 +157,32 @@ namespace IntegratedMagic::HUD {
             }
 
             const auto& st = Style();
-            DL::AddCircleFilled(dl, center, r, isActive ? st.slotBgActive : st.slotBgInactive, 48);
+
+            if (st.useTextureForSlotBg) {
+                const bool isEmpty = (!rSpell && !lSpell && !shoutFormID);
+
+                const auto& bgImg = [&]() -> const TextureManager::Image& {
+                    if (isEmpty) {
+                        const auto& e = TextureManager::GetUiTexture(UiTextureType::slot_bg_empty);
+                        if (e.valid()) return e;
+                    } else if (isActive) {
+                        const auto& a = TextureManager::GetUiTexture(UiTextureType::slot_bg_active);
+                        if (a.valid()) return a;
+                    }
+                    return TextureManager::GetUiTexture(UiTextureType::slot_bg);
+                }();
+
+                if (bgImg.valid()) {
+                    const ImVec2 p0{center.x - r, center.y - r};
+                    const ImVec2 p1{center.x + r, center.y + r};
+                    DL::AddImage(dl, reinterpret_cast<ImTextureID>(bgImg.texture), p0, p1, {0.f, 0.f}, {1.f, 1.f},
+                                 IM_COL32(255, 255, 255, 255));
+                } else {
+                    DL::AddCircleFilled(dl, center, r, isActive ? st.slotBgActive : st.slotBgInactive, 48);
+                }
+            } else {
+                DL::AddCircleFilled(dl, center, r, isActive ? st.slotBgActive : st.slotBgInactive, 48);
+            }
 
             const float iconSize = r * st.iconSizeFactor;
 
@@ -180,10 +206,10 @@ namespace IntegratedMagic::HUD {
                 const double pulse = 0.65 + 0.35 * std::sin(t * 4.5);
                 const ImU32 ring =
                     IM_COL32(255, static_cast<int>(210 * pulse), static_cast<int>(50 * pulse), st.slotRingActiveAlpha);
-                DL::AddCircle(dl, center, r, ring, 48, 2.5f);
-                DL::AddCircle(dl, center, r + 3.f, (ring & 0x00FFFFFFu) | (70u << 24), 48, 1.0f);
+                DL::AddCircle(dl, center, r, ring, 48, st.slotRingWidth);
+                DL::AddCircle(dl, center, r + st.slotRingWidth + 0.5f, (ring & 0x00FFFFFFu) | (70u << 24), 48, 1.0f);
             } else {
-                DL::AddCircle(dl, center, r, st.slotRingInactive, 48, 1.2f);
+                DL::AddCircle(dl, center, r, st.slotRingInactive, 48, st.slotRingWidth * 0.5f);
             }
 
             if (!rSpell && !lSpell && !shoutFormID) {
@@ -257,13 +283,23 @@ namespace IntegratedMagic::HUD {
                    g_mousePos.y < pos.y + size.y;
         }
 
+        void MouseTooltip(const char* text) {
+            ImGui::SetNextWindowPos({g_mousePos.x + 16.f, g_mousePos.y + 8.f}, ImGuiCond_Always, {0.f, 0.f});
+            ImGui::BeginTooltip();
+            ImGui::TextUnformatted(text);
+            ImGui::EndTooltip();
+        }
+
         void DrawSpellModeWidget(ImDrawList* dl, bool clicked, ImVec2 origin, float availW, std::uint32_t formID,
                                  const char*) {
             if (!formID) return;
             auto s = SpellSettingsDB::Get().GetOrCreate(formID);
 
             static const char* kLabels[] = {"H", "P", "A"};
-            static const char* kTips[] = {"Hold", "Press", "Auto"};
+            const std::string kTipHold = Strings::Get("Mode_Hold", "Hold");
+            const std::string kTipPress = Strings::Get("Mode_Press", "Press");
+            const std::string kTipAuto = Strings::Get("Mode_Auto", "Auto");
+            const char* kTips[] = {kTipHold.c_str(), kTipPress.c_str(), kTipAuto.c_str()};
             constexpr int kNumModes = 3;
             const float btnR = 8.f;
             const float stepX = availW / kNumModes;
@@ -287,8 +323,7 @@ namespace IntegratedMagic::HUD {
                     ImGui::TextDisabled("%s", kLabels[m]);
 
                 if (hov) {
-                    ImGui::SetCursorScreenPos({bc.x + btnR + 2.f, bc.y - 7.f});
-                    ImGui::TextDisabled("%s", kTips[m]);
+                    MouseTooltip(kTips[m]);
                 }
 
                 if (ManualClick(clicked, {bc.x - btnR, bc.y - btnR}, {btnR * 2.f, btnR * 2.f})) {
@@ -364,7 +399,8 @@ namespace IntegratedMagic::HUD {
             const int n = static_cast<int>(Slots::GetSlotCount());
             const int activeSlot = MagicState::Get().ActiveSlot();
 
-            SlotAnimator::Update(n, activeSlot, /*modifierHeld=*/false, st.hudLayout, st.gridColumns);
+            const bool modHeld = !MagicState::Get().IsActive() && Input::IsModifierHeld();
+            SlotAnimator::Update(n, activeSlot, modHeld, st.hudLayout, st.gridColumns);
 
             const LayoutVec2 fixedHalf = [&] {
                 LayoutVec2 h = SlotLayout::BoundingHalf(st.hudLayout, n, st.slotRadius, st.ringRadius, st.slotSpacing,
@@ -477,7 +513,8 @@ namespace IntegratedMagic::HUD {
                     DrawSlotVisual(dl, center, st.popupSlotRadius, activeSlot == i, rSp, lSp, shoutID);
 
                     {
-                        const std::string slotLabel = "Slot " + std::to_string(i + 1);
+                        const std::string slotLabel =
+                            Strings::Get("Popup_SlotLabel", "Slot") + " " + std::to_string(i + 1);
                         ImVec2 textSize{};
                         ImGui::CalcTextSize(&textSize, slotLabel.c_str(), nullptr, false, -1.0f);
                         ImGui::SetCursorScreenPos(
@@ -491,10 +528,10 @@ namespace IntegratedMagic::HUD {
                             const char* shoutName = shoutForm ? shoutForm->GetName() : "???";
                             ImGui::SetCursorScreenPos(
                                 {center.x - st.popupSlotRadius, center.y - st.popupSlotRadius - 16.f});
-                            ImGui::TextDisabled("[S] %s", shoutName);
+                            ImGui::TextDisabled("%s %s", Strings::Get("Popup_ShoutPrefix", "[S]").c_str(), shoutName);
                         } else if (rSp || lSp) {
                             const std::string label =
-                                std::string(rSp ? rSp->GetName() : "---") + " | " + (lSp ? lSp->GetName() : "---");
+                                std::string(lSp ? lSp->GetName() : "---") + " | " + (rSp ? rSp->GetName() : "---");
                             ImGui::SetCursorScreenPos(
                                 {center.x - st.popupSlotRadius, center.y - st.popupSlotRadius - 16.f});
                             ImGui::TextDisabled("%s", label.c_str());
@@ -511,8 +548,8 @@ namespace IntegratedMagic::HUD {
                                 DL::AddCircleFilled(dl, center, st.popupSlotRadius - 1.f, IM_COL32(255, 200, 80, 40),
                                                     48);
 
-                                ImGui::SetCursorScreenPos({g_mousePos.x + 14.f, g_mousePos.y + 4.f});
-                                ImGui::TextDisabled("LMB assign  |  RMB clear  [Shout/Power]");
+                                MouseTooltip(
+                                    Strings::Get("Popup_TipShout", "LMB assign  |  RMB clear  [Shout/Power]").c_str());
 
                                 if (clicked) MagicAssign::TryAssignHoveredShoutToSlot(i);
                                 if (rightClicked) {
@@ -531,10 +568,12 @@ namespace IntegratedMagic::HUD {
                                 else
                                     FillSector(dl, center, st.popupSlotRadius - 1.f, kPI * 0.5f, kPI * 1.5f, hlColor);
 
-                                const char* tip = hoverRight ? "LMB assign  |  RMB clear  [Right]"
-                                                             : "LMB assign  |  RMB clear  [Left]";
-                                ImGui::SetCursorScreenPos({g_mousePos.x + 14.f, g_mousePos.y + 4.f});
-                                ImGui::TextDisabled("%s", tip);
+                                const std::string tipRight =
+                                    Strings::Get("Popup_TipRight", "LMB assign  |  RMB clear  [Right]");
+                                const std::string tipLeft =
+                                    Strings::Get("Popup_TipLeft", "LMB assign  |  RMB clear  [Left]");
+                                const char* tip = hoverRight ? tipRight.c_str() : tipLeft.c_str();
+                                MouseTooltip(tip);
 
                                 if (clicked) {
                                     if (hoverRight)

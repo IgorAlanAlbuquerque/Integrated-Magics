@@ -12,6 +12,7 @@
 #include "SKSEMenuFramework.h"
 #include "Strings.h"
 #include "UI/HUD.h"
+#include "UI/StyleConfig.h"
 
 namespace ImGui = ImGuiMCP;
 
@@ -66,7 +67,8 @@ namespace {
         }
     }
 
-    void DrawKeyValueCapture(std::atomic<int>& field, bool wantKeyboard, bool& dirty) {
+    void DrawKeyValueCapture(std::atomic<int>& field, bool wantKeyboard, bool& dirty, int rowPos = 0,
+                             IntegratedMagic::MagicConfig* cfg = nullptr) {
         ImGui::PushID(static_cast<void*>(&field));
 
         ImGui::SetNextItemWidth(70.0f);
@@ -104,27 +106,98 @@ namespace {
             if (g_fieldCapture.active) ImGui::EndDisabled();
         }
 
+        if (cfg && rowPos > 0) {
+            ImGui::SameLine();
+            int& modPos = wantKeyboard ? cfg->modifierKeyboardPosition : cfg->modifierGamepadPosition;
+            const bool isMod = (modPos == rowPos);
+            if (isMod) ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
+            ImGui::PushID(wantKeyboard ? "kbm" : "gpm");
+            if (ImGui::SmallButton("M")) {
+                if (isMod) {
+                    modPos = 0;
+                } else {
+                    modPos = rowPos;
+
+                    const int val = field.load(std::memory_order_relaxed);
+                    const auto n = cfg->SlotCount();
+                    for (std::uint32_t i = 0; i < n; ++i) {
+                        auto& ic = cfg->slotInput[i];
+                        std::atomic<int>* target = nullptr;
+                        if (wantKeyboard) {
+                            if (rowPos == 1)
+                                target = &ic.KeyboardScanCode1;
+                            else if (rowPos == 2)
+                                target = &ic.KeyboardScanCode2;
+                            else
+                                target = &ic.KeyboardScanCode3;
+                        } else {
+                            if (rowPos == 1)
+                                target = &ic.GamepadButton1;
+                            else if (rowPos == 2)
+                                target = &ic.GamepadButton2;
+                            else
+                                target = &ic.GamepadButton3;
+                        }
+                        target->store(val, std::memory_order_relaxed);
+                    }
+                }
+                dirty = true;
+            }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip(isMod ? "Unmark as modifier" : "Mark as modifier");
+            ImGui::PopID();
+            if (isMod) ImGui::PopStyleColor();
+        }
+
         ImGui::PopID();
     }
 
     void DrawInputDetailRow(const char* kbLabel, std::atomic<int>& kbField, const char* gpLabel,
-                            std::atomic<int>& gpField, bool& dirty) {
+                            std::atomic<int>& gpField, bool& dirty, int rowPos, IntegratedMagic::MagicConfig& cfg) {
         ImGui::TableNextRow();
 
         ImGui::TableSetColumnIndex(0);
         ImGui::TextUnformatted(kbLabel);
 
         ImGui::TableSetColumnIndex(1);
-        DrawKeyValueCapture(kbField, true, dirty);
+        {
+            const bool dirtyBefore = dirty;
+            DrawKeyValueCapture(kbField, true, dirty, rowPos, &cfg);
+            if (dirty && !dirtyBefore && cfg.modifierKeyboardPosition == rowPos) {
+                const int val = kbField.load(std::memory_order_relaxed);
+                const auto n = cfg.SlotCount();
+                for (std::uint32_t i = 0; i < n; ++i) {
+                    auto& ic = cfg.slotInput[i];
+                    auto* field = rowPos == 1   ? &ic.KeyboardScanCode1
+                                  : rowPos == 2 ? &ic.KeyboardScanCode2
+                                                : &ic.KeyboardScanCode3;
+                    field->store(val, std::memory_order_relaxed);
+                }
+            }
+        }
 
         ImGui::TableSetColumnIndex(2);
         ImGui::TextUnformatted(gpLabel);
 
         ImGui::TableSetColumnIndex(3);
-        DrawKeyValueCapture(gpField, false, dirty);
+        {
+            const bool dirtyBefore = dirty;
+            DrawKeyValueCapture(gpField, false, dirty, rowPos, &cfg);
+            if (dirty && !dirtyBefore && cfg.modifierGamepadPosition == rowPos) {
+                const int val = gpField.load(std::memory_order_relaxed);
+                const auto n = cfg.SlotCount();
+                for (std::uint32_t i = 0; i < n; ++i) {
+                    auto& ic = cfg.slotInput[i];
+                    auto* field = rowPos == 1   ? &ic.GamepadButton1
+                                  : rowPos == 2 ? &ic.GamepadButton2
+                                                : &ic.GamepadButton3;
+                    field->store(val, std::memory_order_relaxed);
+                }
+            }
+        }
     }
 
-    void DrawDetailPanel(IntegratedMagic::InputConfig& icfg, const char* title, bool& dirty) {
+    void DrawDetailPanel(IntegratedMagic::InputConfig& icfg, const char* title, bool& dirty,
+                         IntegratedMagic::MagicConfig& cfg) {
         ImGui::TextUnformatted(title);
         ImGui::Separator();
         ImGui::Spacing();
@@ -135,18 +208,21 @@ namespace {
             ImGui::BeginTable("##InputDetail", 4, kTableFlags)) {
             ImGui::TableSetupColumn(IntegratedMagic::Strings::Get("Col_Keyboard", "Keyboard").c_str(),
                                     ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, 90.0f);
-            ImGui::TableSetupColumn("##kbv", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, 200.0f);
+            ImGui::TableSetupColumn("##kbv", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, 220.0f);
             ImGui::TableSetupColumn(IntegratedMagic::Strings::Get("Col_Gamepad", "Gamepad").c_str(),
                                     ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, 90.0f);
-            ImGui::TableSetupColumn("##gpv", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, 200.0f);
+            ImGui::TableSetupColumn("##gpv", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, 220.0f);
             ImGui::TableHeadersRow();
 
             DrawInputDetailRow(IntegratedMagic::Strings::Get("Item_Key1", "Key 1").c_str(), icfg.KeyboardScanCode1,
-                               IntegratedMagic::Strings::Get("Item_Btn1", "Btn 1").c_str(), icfg.GamepadButton1, dirty);
+                               IntegratedMagic::Strings::Get("Item_Btn1", "Btn 1").c_str(), icfg.GamepadButton1, dirty,
+                               1, cfg);
             DrawInputDetailRow(IntegratedMagic::Strings::Get("Item_Key2", "Key 2").c_str(), icfg.KeyboardScanCode2,
-                               IntegratedMagic::Strings::Get("Item_Btn2", "Btn 2").c_str(), icfg.GamepadButton2, dirty);
+                               IntegratedMagic::Strings::Get("Item_Btn2", "Btn 2").c_str(), icfg.GamepadButton2, dirty,
+                               2, cfg);
             DrawInputDetailRow(IntegratedMagic::Strings::Get("Item_Key3", "Key 3").c_str(), icfg.KeyboardScanCode3,
-                               IntegratedMagic::Strings::Get("Item_Btn3", "Btn 3").c_str(), icfg.GamepadButton3, dirty);
+                               IntegratedMagic::Strings::Get("Item_Btn3", "Btn 3").c_str(), icfg.GamepadButton3, dirty,
+                               3, cfg);
 
             ImGui::EndTable();
         }
@@ -192,7 +268,7 @@ namespace {
         bool hudVisible = IntegratedMagic::HUD::IsHudVisible();
         if (ImGui::Checkbox(IntegratedMagic::Strings::Get("Item_ShowHud", "Show HUD").c_str(), &hudVisible)) {
             IntegratedMagic::HUD::SetHudVisible(hudVisible);
-            cfg.hudVisible = hudVisible; 
+            cfg.hudVisible = hudVisible;
             dirty = true;
         }
     }
@@ -242,19 +318,325 @@ namespace {
 
         if (g_selectedSlot == kHudPopupSlot) {
             DrawDetailPanel(cfg.hudPopupInput, IntegratedMagic::Strings::Get("Detail_HudPopup", "HUD Popup").c_str(),
-                            dirty);
+                            dirty, cfg);
         } else if (g_selectedSlot >= 0 && g_selectedSlot < n) {
             const auto title = IntegratedMagic::Strings::Get(std::format("Detail_Magic{}", g_selectedSlot + 1),
                                                              std::format("Magic {}", g_selectedSlot + 1));
-            DrawDetailPanel(cfg.slotInput[static_cast<std::size_t>(g_selectedSlot)], title.c_str(), dirty);
+            DrawDetailPanel(cfg.slotInput[static_cast<std::size_t>(g_selectedSlot)], title.c_str(), dirty, cfg);
         }
 
         ImGui::EndChild();
     }
 
-    void DrawHudTab(IntegratedMagic::MagicConfig&, bool&) {
-        ImGui::TextDisabled("%s",
-                            IntegratedMagic::Strings::Get("HUD_Placeholder", "HUD settings coming soon.").c_str());
+    void DrawAnchorWidget(bool& dirty) {
+        using Anchor = IntegratedMagic::HudAnchor;
+        struct AnchorCell {
+            Anchor anchor;
+            const char* label;
+        };
+        static constexpr AnchorCell kGrid[3][3] = {
+            {{Anchor::TopLeft, "##TL"}, {Anchor::TopCenter, "##TC"}, {Anchor::TopRight, "##TR"}},
+            {{Anchor::MiddleLeft, "##ML"}, {Anchor::Center, "##CC"}, {Anchor::MiddleRight, "##MR"}},
+            {{Anchor::BottomLeft, "##BL"}, {Anchor::BottomCenter, "##BC"}, {Anchor::BottomRight, "##BR"}},
+        };
+        auto& st = IntegratedMagic::StyleConfig::Get();
+        for (int row = 0; row < 3; ++row) {
+            for (int col = 0; col < 3; ++col) {
+                if (col > 0) ImGui::SameLine(0.f, 2.f);
+                const auto& cell = kGrid[row][col];
+                const bool active = (st.hudAnchor == cell.anchor);
+                if (active) ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
+                if (ImGui::Button(cell.label, {28.f, 20.f})) {
+                    st.hudAnchor = cell.anchor;
+                    dirty = true;
+                }
+                if (active) ImGui::PopStyleColor();
+            }
+        }
+    }
+
+    void DrawHudTab(bool& dirty) {
+        namespace S = IntegratedMagic::Strings;
+        auto& st = IntegratedMagic::StyleConfig::Get();
+
+        ImGui::SeparatorText(S::Get("HUD_Section_Layout", "Layout").c_str());
+        ImGui::Spacing();
+
+        {
+            using LT = IntegratedMagic::HudLayoutType;
+            const std::string layoutNames =
+                S::Get("HUD_Layout_Circular", "Circular") + '\0' + S::Get("HUD_Layout_Horizontal", "Horizontal") +
+                '\0' + S::Get("HUD_Layout_Vertical", "Vertical") + '\0' + S::Get("HUD_Layout_Grid", "Grid") + '\0';
+            int layoutIdx = static_cast<int>(st.hudLayout);
+            ImGui::SetNextItemWidth(150.f);
+            if (ImGui::Combo(S::Get("HUD_Layout_Label", "Layout##hudlayout").c_str(), &layoutIdx,
+                             layoutNames.c_str())) {
+                st.hudLayout = static_cast<LT>(layoutIdx);
+                dirty = true;
+            }
+
+            {
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(150.f);
+                float spacing = st.slotSpacing;
+                if (ImGui::InputFloat(S::Get("HUD_Spacing_Label", "Spacing##slotspacing").c_str(), &spacing, 1.f, 5.f,
+                                      "%.1f")) {
+                    st.slotSpacing = spacing;
+                    dirty = true;
+                }
+            }
+            if (st.hudLayout == LT::Grid) {
+                ImGui::SetNextItemWidth(150.f);
+                int cols = st.gridColumns;
+                if (ImGui::InputInt(S::Get("HUD_Columns_Label", "Columns##gridcols").c_str(), &cols, 1, 1)) {
+                    st.gridColumns = std::max(1, cols);
+                    dirty = true;
+                }
+            }
+            if (st.hudLayout == LT::Circular) {
+                ImGui::SetNextItemWidth(150.f);
+                float rr = st.ringRadius;
+                if (ImGui::InputFloat(S::Get("HUD_RingRadius_Label", "Ring R##ringradius").c_str(), &rr, 1.f, 5.f,
+                                      "%.1f")) {
+                    st.ringRadius = rr;
+                    dirty = true;
+                }
+            }
+        }
+
+        ImGui::Spacing();
+
+        ImGui::SeparatorText(S::Get("HUD_Section_Position", "Position").c_str());
+        ImGui::Spacing();
+
+        DrawAnchorWidget(dirty);
+
+        ImGui::SameLine(0.f, 16.f);
+        ImGui::BeginGroup();
+        ImGui::SetNextItemWidth(150.f);
+        float ox = st.hudOffsetX;
+        if (ImGui::InputFloat(S::Get("HUD_OffsetX_Label", "X##hudox").c_str(), &ox, 1.f, 5.f, "%.0f")) {
+            st.hudOffsetX = ox;
+            dirty = true;
+        }
+        ImGui::SetNextItemWidth(150.f);
+        float oy = st.hudOffsetY;
+        if (ImGui::InputFloat(S::Get("HUD_OffsetY_Label", "Y##hudoy").c_str(), &oy, 1.f, 5.f, "%.0f")) {
+            st.hudOffsetY = oy;
+            dirty = true;
+        }
+        ImGui::EndGroup();
+
+        ImGui::Spacing();
+
+        ImGui::SeparatorText(S::Get("HUD_Section_Slots", "Slots").c_str());
+        ImGui::Spacing();
+
+        {
+            ImGui::SetNextItemWidth(150.f);
+            float sr = st.slotRadius;
+            if (ImGui::InputFloat(S::Get("HUD_SlotRadius_Label", "Radius##slotradius").c_str(), &sr, 1.f, 5.f,
+                                  "%.1f")) {
+                st.slotRadius = sr;
+                dirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.f);
+            float rw = st.slotRingWidth;
+            if (ImGui::InputFloat(S::Get("HUD_RingWidth_Label", "Ring Width##ringwidth").c_str(), &rw, 0.5f, 1.f,
+                                  "%.1f")) {
+                st.slotRingWidth = std::max(0.f, rw);
+                dirty = true;
+            }
+            ImGui::Spacing();
+
+            ImGui::SetNextItemWidth(150.f);
+            float as = st.slotActiveScale;
+            if (ImGui::InputFloat(S::Get("HUD_ActiveScale_Label", "Active##activescale").c_str(), &as, 0.05f, 0.1f,
+                                  "%.2f")) {
+                st.slotActiveScale = as;
+                dirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.f);
+            float ms = st.slotModifierScale;
+            if (ImGui::InputFloat(S::Get("HUD_ModifierScale_Label", "Modifier##modscale").c_str(), &ms, 0.05f, 0.1f,
+                                  "%.2f")) {
+                st.slotModifierScale = ms;
+                dirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.f);
+            float ns = st.slotNeighborScale;
+            if (ImGui::InputFloat(S::Get("HUD_NeighborScale_Label", "Neighbor##neighborscale").c_str(), &ns, 0.05f,
+                                  0.1f, "%.2f")) {
+                st.slotNeighborScale = ns;
+                dirty = true;
+            }
+            ImGui::Spacing();
+
+            ImGui::SetNextItemWidth(150.f);
+            float et = st.slotExpandTime;
+            if (ImGui::InputFloat(S::Get("HUD_ExpandTime_Label", "Expand##expandtime").c_str(), &et, 0.01f, 0.05f,
+                                  "%.2f")) {
+                st.slotExpandTime = std::max(0.f, et);
+                dirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.f);
+            float rt = st.slotRetractTime;
+            if (ImGui::InputFloat(S::Get("HUD_RetractTime_Label", "Retract##retracttime").c_str(), &rt, 0.01f, 0.05f,
+                                  "%.2f")) {
+                st.slotRetractTime = std::max(0.f, rt);
+                dirty = true;
+            }
+        }
+
+        ImGui::Spacing();
+
+        ImGui::SeparatorText(S::Get("HUD_Section_Icons", "Icons").c_str());
+        ImGui::Spacing();
+
+        {
+            ImGui::SetNextItemWidth(150.f);
+            float isf = st.iconSizeFactor;
+            if (ImGui::InputFloat(S::Get("HUD_IconSize_Label", "Size##iconsizefactor").c_str(), &isf, 0.05f, 0.1f,
+                                  "%.2f")) {
+                st.iconSizeFactor = std::clamp(isf, 0.1f, 2.f);
+                dirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.f);
+            float iof = st.iconOffsetFactor;
+            if (ImGui::InputFloat(S::Get("HUD_IconOffset_Label", "Offset##iconoffsetfactor").c_str(), &iof, 0.05f, 0.1f,
+                                  "%.2f")) {
+                st.iconOffsetFactor = std::clamp(iof, 0.f, 1.f);
+                dirty = true;
+            }
+        }
+
+        ImGui::Spacing();
+
+        ImGui::SeparatorText(S::Get("HUD_Section_Popup", "Popup").c_str());
+        ImGui::Spacing();
+
+        {
+            ImGui::SetNextItemWidth(150.f);
+            float psr = st.popupSlotRadius;
+            if (ImGui::InputFloat(S::Get("HUD_PopupSlotR_Label", "Slot R##popupslotradius").c_str(), &psr, 1.f, 5.f,
+                                  "%.0f")) {
+                st.popupSlotRadius = std::max(1.f, psr);
+                dirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.f);
+            float prr = st.popupRingRadius;
+            if (ImGui::InputFloat(S::Get("HUD_PopupRingR_Label", "Ring R##popupringradius").c_str(), &prr, 1.f, 5.f,
+                                  "%.0f")) {
+                st.popupRingRadius = std::max(1.f, prr);
+                dirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.f);
+            float psg = st.popupSlotGap;
+            if (ImGui::InputFloat(S::Get("HUD_PopupGap_Label", "Gap##popupslotgap").c_str(), &psg, 1.f, 5.f, "%.0f")) {
+                st.popupSlotGap = psg;
+                dirty = true;
+            }
+            ImGui::Spacing();
+
+            ImGui::SetNextItemWidth(150.f);
+            float mww = st.modeWidgetW;
+            if (ImGui::InputFloat(S::Get("HUD_ModeWidgetW_Label", "Widget W##modewidgetw").c_str(), &mww, 1.f, 5.f,
+                                  "%.0f")) {
+                st.modeWidgetW = std::max(1.f, mww);
+                dirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.f);
+            int oa = static_cast<int>(st.overlayAlpha);
+            if (ImGui::InputInt(S::Get("HUD_OverlayAlpha_Label", "Overlay Alpha##overlayalpha").c_str(), &oa, 5, 20)) {
+                st.overlayAlpha = static_cast<std::uint8_t>(std::clamp(oa, 0, 255));
+                dirty = true;
+            }
+        }
+
+        ImGui::Spacing();
+
+        if (ImGui::CollapsingHeader(S::Get("HUD_Section_Colors", "Colors").c_str())) {
+            ImGui::Spacing();
+
+            auto colorEdit = [&](const char* label, std::uint32_t& col) {
+                float c[4];
+                c[0] = ((col >> 0) & 0xFF) / 255.f;
+                c[1] = ((col >> 8) & 0xFF) / 255.f;
+                c[2] = ((col >> 16) & 0xFF) / 255.f;
+                c[3] = ((col >> 24) & 0xFF) / 255.f;
+                if (ImGui::ColorEdit4(
+                        label, c,
+                        ImGuiMCP::ImGuiColorEditFlags_AlphaBar | ImGuiMCP::ImGuiColorEditFlags_AlphaPreview)) {
+                    col = (static_cast<std::uint32_t>(c[3] * 255.f + .5f) << 24) |
+                          (static_cast<std::uint32_t>(c[2] * 255.f + .5f) << 16) |
+                          (static_cast<std::uint32_t>(c[1] * 255.f + .5f) << 8) |
+                          static_cast<std::uint32_t>(c[0] * 255.f + .5f);
+                    dirty = true;
+                }
+            };
+            auto u8Edit = [&](const char* label, std::uint8_t& val) {
+                int v = static_cast<int>(val);
+                ImGui::SetNextItemWidth(150.f);
+                if (ImGui::InputInt(label, &v, 5, 20)) {
+                    val = static_cast<std::uint8_t>(std::clamp(v, 0, 255));
+                    dirty = true;
+                }
+            };
+
+            ImGui::SeparatorText(S::Get("HUD_Colors_Slots", "Slots").c_str());
+            colorEdit(S::Get("HUD_Color_BgActive", "Bg Active##slotbgactive").c_str(), st.slotBgActive);
+            colorEdit(S::Get("HUD_Color_BgInactive", "Bg Inactive##slotbginactive").c_str(), st.slotBgInactive);
+            colorEdit(S::Get("HUD_Color_RingInactive", "Ring Inactive##slotringinactive").c_str(), st.slotRingInactive);
+            u8Edit(S::Get("HUD_Color_RingActiveAlpha", "Ring Active Alpha##slotringactivealpha").c_str(),
+                   st.slotRingActiveAlpha);
+            u8Edit(S::Get("HUD_Color_IconAlpha", "Icon Alpha##iconalpha").c_str(), st.iconAlpha);
+            colorEdit(S::Get("HUD_Color_EmptySlot", "Empty Slot##emptyslotcolor").c_str(), st.emptySlotColor);
+
+            ImGui::Spacing();
+            ImGui::SeparatorText(S::Get("HUD_Colors_RingCenter", "Ring Center").c_str());
+            colorEdit(S::Get("HUD_Color_RingCenterFill", "Fill##ringcenterfill").c_str(), st.ringCenterFill);
+            colorEdit(S::Get("HUD_Color_RingCenterBorder", "Border##ringcenterborder").c_str(), st.ringCenterBorder);
+
+            ImGui::Spacing();
+            ImGui::SeparatorText(S::Get("HUD_Colors_Schools", "School Colors").c_str());
+
+            if (ImGui::BeginTable("##schoolcolors", 2, ImGuiMCP::ImGuiTableFlags_BordersInnerV)) {
+                ImGui::TableSetupColumn(S::Get("HUD_Colors_Fill", "Fill").c_str(),
+                                        ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableSetupColumn(S::Get("HUD_Colors_Glow", "Glow").c_str(),
+                                        ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableHeadersRow();
+
+                auto schoolRow = [&](std::string_view nameKey, std::string_view nameFallback, std::uint32_t& fill,
+                                     std::uint32_t& glow) {
+                    const std::string name = S::Get(nameKey, nameFallback);
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    colorEdit((name + "##f").c_str(), fill);
+                    ImGui::TableSetColumnIndex(1);
+                    colorEdit((name + "##g").c_str(), glow);
+                };
+
+                schoolRow("HUD_School_Alteration", "Alteration", st.alterationFill, st.alterationGlow);
+                schoolRow("HUD_School_Conjuration", "Conjuration", st.conjurationFill, st.conjurationGlow);
+                schoolRow("HUD_School_Destruction", "Destruction", st.destructionFill, st.destructionGlow);
+                schoolRow("HUD_School_Illusion", "Illusion", st.illusionFill, st.illusionGlow);
+                schoolRow("HUD_School_Restoration", "Restoration", st.restorationFill, st.restorationGlow);
+                schoolRow("HUD_School_Default", "Default", st.defaultFill, st.defaultGlow);
+                schoolRow("HUD_School_Empty", "Empty", st.emptyFill, st.emptyFill);
+
+                ImGui::EndTable();
+            }
+            ImGui::Spacing();
+        }
     }
 
     void DrawPatchesTab(IntegratedMagic::MagicConfig& cfg, bool& dirty) {
@@ -317,6 +699,7 @@ void __stdcall IntegratedMagic::MENU::DrawSettings() {
         if (ImGui::Button(IntegratedMagic::Strings::Get("Item_Apply", "Apply changes").c_str(),
                           ImGui::ImVec2{kButtonWidth, 0.0f})) {
             cfg.Save();
+            IntegratedMagic::StyleConfig::Get().Save();
             if (IntegratedMagic::SpellSettingsDB::Get().IsDirty()) {
                 IntegratedMagic::SpellSettingsDB::Get().Save();
                 IntegratedMagic::SpellSettingsDB::Get().ClearDirty();
@@ -338,7 +721,7 @@ void __stdcall IntegratedMagic::MENU::DrawSettings() {
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem(IntegratedMagic::Strings::Get("Tab_HUD", "HUD").c_str())) {
-            DrawHudTab(cfg, dirty);
+            DrawHudTab(dirty);
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem(IntegratedMagic::Strings::Get("Tab_Patches", "Patches").c_str())) {

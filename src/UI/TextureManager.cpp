@@ -13,36 +13,83 @@ namespace IntegratedMagic {
     void TextureManager::Init() {
         if (!std::filesystem::exists(icon_dir_)) {
             spdlog::warn("[TextureManager] Icon directory not found: {}", icon_dir_);
-            return;
+        } else {
+            for (const auto& entry : std::filesystem::directory_iterator(icon_dir_)) {
+                const auto& path = entry.path();
+                if (path.extension() != ".svg") continue;
+
+                const std::string filename = path.filename().string();
+                auto it = filename_map_.find(filename);
+                if (it == filename_map_.end()) continue;
+
+                const auto idx = std::to_underlying(it->second);
+                Image img;
+                if (LoadSVG(path.string().c_str(), img)) {
+                    icons_[idx] = img;
+                } else {
+                    spdlog::error("[TextureManager] Failed to load: {}", filename);
+                }
+            }
         }
 
-        for (const auto& entry : std::filesystem::directory_iterator(icon_dir_)) {
-            const auto& path = entry.path();
-            if (path.extension() != ".svg") continue;
+        formid_icons_.clear();
+        if (std::filesystem::exists(spell_icon_dir_)) {
+            for (const auto& entry : std::filesystem::directory_iterator(spell_icon_dir_)) {
+                const auto& path = entry.path();
+                if (path.extension() != ".svg") continue;
 
-            const std::string filename = path.filename().string();
-            auto it = filename_map_.find(filename);
-            if (it == filename_map_.end()) {
-                spdlog::warn("[TextureManager] Unknown icon file (ignored): {}", filename);
-                continue;
+                const std::string stem = path.stem().string();
+                if (stem.size() != 8) continue;
+
+                try {
+                    const auto formID = static_cast<RE::FormID>(std::stoul(stem, nullptr, 16));
+                    Image img;
+                    if (LoadSVG(path.string().c_str(), img)) {
+                        formid_icons_[formID] = img;
+                        spdlog::info("[TextureManager] Loaded spell icon: {} -> FormID {:#010x}", stem, formID);
+                    } else {
+                        spdlog::error("[TextureManager] Failed to load spell icon: {}", stem);
+                    }
+                } catch (...) {
+                    spdlog::warn("[TextureManager] Invalid spell icon filename (not hex8): {}", stem);
+                }
             }
+            spdlog::info("[TextureManager] Loaded {} per-spell icon(s).", formid_icons_.size());
+        }
 
-            const auto idx = std::to_underlying(it->second);
-            Image img;
-            if (LoadSVG(path.string().c_str(), img)) {
-                icons_[idx] = img;
-            } else {
-                spdlog::error("[TextureManager] Failed to load: {}", filename);
+        ui_icons_.clear();
+        if (std::filesystem::exists(ui_icon_dir_)) {
+            for (const auto& entry : std::filesystem::directory_iterator(ui_icon_dir_)) {
+                const auto& path = entry.path();
+                if (path.extension() != ".svg") continue;
+
+                const std::string filename = path.filename().string();
+                auto it = ui_filename_map_.find(filename);
+                if (it == ui_filename_map_.end()) continue;
+
+                Image img;
+                if (LoadSVG(path.string().c_str(), img, 256)) {
+                    const auto idx = std::to_underlying(it->second);
+                    ui_icons_[idx] = img;
+                    spdlog::info("[TextureManager] Loaded UI texture: {}", filename);
+                } else {
+                    spdlog::error("[TextureManager] Failed to load UI texture: {}", filename);
+                }
             }
         }
     }
 
     const TextureManager::Image& TextureManager::GetSpellIcon(const RE::SpellItem* spell) {
+        if (spell) {
+            if (auto it = formid_icons_.find(spell->GetFormID()); it != formid_icons_.end()) return it->second;
+        }
         return GetIcon(ClassifySpell(spell));
     }
 
     const TextureManager::Image& TextureManager::GetIconForForm(RE::FormID formID) {
         if (!formID) return GetIcon(SpellIconType::spell_default);
+
+        if (auto it = formid_icons_.find(formID); it != formid_icons_.end()) return it->second;
 
         auto* form = RE::TESForm::LookupByID(formID);
         if (!form) return GetIcon(SpellIconType::spell_default);
@@ -59,6 +106,13 @@ namespace IntegratedMagic {
         if (auto it = icons_.find(idx); it != icons_.end() && it->second.valid()) return it->second;
         const auto defIdx = std::to_underlying(SpellIconType::spell_default);
         if (auto defIt = icons_.find(defIdx); defIt != icons_.end() && defIt->second.valid()) return defIt->second;
+        static const Image kEmpty{};
+        return kEmpty;
+    }
+
+    const TextureManager::Image& TextureManager::GetUiTexture(UiTextureType type) {
+        const auto idx = std::to_underlying(type);
+        if (auto it = ui_icons_.find(idx); it != ui_icons_.end() && it->second.valid()) return it->second;
         static const Image kEmpty{};
         return kEmpty;
     }
@@ -103,7 +157,7 @@ namespace IntegratedMagic {
         }
     }
 
-    bool TextureManager::LoadSVG(const char* path, Image& out) {
+    bool TextureManager::LoadSVG(const char* path, Image& out, int targetSize) {
         auto* device = RE::BSGraphics::Renderer::GetDevice();
         if (!device) {
             spdlog::error("[TextureManager] BSGraphics::Renderer::GetDevice() retornou null.");
@@ -114,17 +168,31 @@ namespace IntegratedMagic {
         if (!svg) return false;
 
         auto* rast = nsvgCreateRasterizer();
-        const auto w = static_cast<int>(svg->width);
-        const auto h = static_cast<int>(svg->height);
+        const float svgW = svg->width;
+        const float svgH = svg->height;
 
-        if (w <= 0 || h <= 0) {
+        if (svgW <= 0.f || svgH <= 0.f) {
             nsvgDelete(svg);
             nsvgDeleteRasterizer(rast);
             return false;
         }
 
+        float scale = 1.f;
+        int w, h;
+        if (targetSize > 0) {
+            scale = static_cast<float>(targetSize) / std::max(svgW, svgH);
+            w = targetSize;
+            h = targetSize;
+        } else {
+            w = static_cast<int>(svgW);
+            h = static_cast<int>(svgH);
+        }
+
         auto* data = static_cast<unsigned char*>(malloc(w * h * 4));
-        nsvgRasterize(rast, svg, 0, 0, 1, data, w, h, w * 4);
+
+        const float tx = (w - svgW * scale) * 0.5f;
+        const float ty = (h - svgH * scale) * 0.5f;
+        nsvgRasterize(rast, svg, tx, ty, scale, data, w, h, w * 4);
         nsvgDelete(svg);
         nsvgDeleteRasterizer(rast);
 
