@@ -19,6 +19,7 @@ namespace {
     constexpr int kMaxSlots = static_cast<int>(IntegratedMagic::MagicConfig::kMaxSlots);
     constexpr int kMaxCode = 400;
     constexpr float kExclusiveConfirmDelaySec = 0.10f;
+    constexpr float kSimultaneousWindowSec = 0.20f;
     constexpr int kDIK_W = 0x11;
     constexpr int kDIK_A = 0x1E;
     constexpr int kDIK_S = 0x1F;
@@ -38,6 +39,10 @@ namespace {
     std::array<bool, kMaxSlots> g_slotFullComboSeen{};
     std::array<bool, kMaxSlots> g_prevRawGpDown{};
     std::array<float, kMaxSlots> g_exclusivePendingTimer{};
+
+    std::array<bool, kMaxSlots> g_prevAnyKeyDown{};
+    std::array<bool, kMaxSlots> g_simWindowActive{};
+    std::array<float, kMaxSlots> g_simWindowRemaining{};
 
     enum class PendingSrc : std::uint8_t { None = 0, Kb = 1, Gp = 2 };
     std::array<PendingSrc, kMaxSlots> g_exclusivePendingSrc{};
@@ -199,6 +204,9 @@ namespace {
             g_slotFullComboSeen[s] = false;
             g_prevRawKbDown[s] = false;
             g_prevRawGpDown[s] = false;
+            g_prevAnyKeyDown[s] = false;
+            g_simWindowActive[s] = false;
+            g_simWindowRemaining[s] = 0.f;
             DiscardExclusivePending(s);
         }
         g_pressedMask.store(0uLL, std::memory_order_relaxed);
@@ -238,6 +246,9 @@ namespace {
             const auto s = static_cast<std::size_t>(slot);
             g_prevRawKbDown[s] = false;
             g_prevRawGpDown[s] = false;
+            g_prevAnyKeyDown[s] = false;
+            g_simWindowActive[s] = false;
+            g_simWindowRemaining[s] = 0.f;
             DiscardExclusivePending(s);
             g_slotDown[s].store(false, std::memory_order_relaxed);
             g_slotWasAccepted[s] = false;
@@ -287,6 +298,33 @@ namespace {
         g_prevRawKbDown[s] = kbNow;
         g_prevRawGpDown[s] = gpNow;
 
+        const bool simPatch = IntegratedMagic::GetMagicConfig().pressBothAtSamePatch && isMulti;
+        {
+            const bool anyComboNow = AnyComboKeyDown(hk.kb, g_kbDown) || AnyComboKeyDown(hk.gp, g_gpDown);
+            const bool prevAnyDown = g_prevAnyKeyDown[s];
+            g_prevAnyKeyDown[s] = anyComboNow;
+
+            if (!anyComboNow) {
+                g_simWindowActive[s] = false;
+                g_simWindowRemaining[s] = 0.f;
+            } else if (anyComboNow && !prevAnyDown) {
+                g_simWindowActive[s] = true;
+                g_simWindowRemaining[s] = kSimultaneousWindowSec;
+#ifdef DEBUG
+                spdlog::info("[Input] ComputeAcceptedExclusive: slot={} sim-window OPENED ({:.2f}s)", slot,
+                             kSimultaneousWindowSec);
+#endif
+            } else if (g_simWindowActive[s]) {
+                g_simWindowRemaining[s] -= dt;
+                if (g_simWindowRemaining[s] <= 0.f) {
+                    g_simWindowActive[s] = false;
+#ifdef DEBUG
+                    spdlog::info("[Input] ComputeAcceptedExclusive: slot={} sim-window EXPIRED", slot);
+#endif
+                }
+            }
+        }
+
         if (prevAccepted) {
             DiscardExclusivePending(s);
             return rawNow;
@@ -309,6 +347,15 @@ namespace {
 
             if (isMulti) {
                 if (stillDown && !g_slotFullComboSeen[s]) {
+                    if (simPatch && !g_simWindowActive[s]) {
+#ifdef DEBUG
+                        spdlog::info(
+                            "[Input] ComputeAcceptedExclusive: slot={} full combo REJECTED by sim-window (expired)",
+                            slot);
+#endif
+                        ClearExclusivePending(s, ClearReason::Cancelled);
+                        return false;
+                    }
                     g_slotFullComboSeen[s] = true;
                     g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;
 #ifdef DEBUG
@@ -390,6 +437,14 @@ namespace {
         const bool gpEdge = gpNow && !gpPrev;
 
         if (kbEdge && ComboExclusiveNow(hk.kb, g_kbDown, IsAllowedExtra_Keyboard_MoveOrCamera)) {
+            if (simPatch && !g_simWindowActive[s]) {
+#ifdef DEBUG
+                spdlog::info(
+                    "[Input] ComputeAcceptedExclusive: slot={} KB edge REJECTED by sim-window (expired/inactive)",
+                    slot);
+#endif
+                return false;
+            }
 #ifdef DEBUG
             spdlog::info(
                 "[Input] ComputeAcceptedExclusive: slot={} KB edge detected, starting exclusive pending (isMulti={})",
@@ -401,6 +456,14 @@ namespace {
             return false;
         }
         if (gpEdge && ComboExclusiveNow(hk.gp, g_gpDown, IsAllowedExtra_Gamepad_MoveOrCamera)) {
+            if (simPatch && !g_simWindowActive[s]) {
+#ifdef DEBUG
+                spdlog::info(
+                    "[Input] ComputeAcceptedExclusive: slot={} GP edge REJECTED by sim-window (expired/inactive)",
+                    slot);
+#endif
+                return false;
+            }
 #ifdef DEBUG
             spdlog::info(
                 "[Input] ComputeAcceptedExclusive: slot={} GP edge detected, starting exclusive pending (isMulti={})",
