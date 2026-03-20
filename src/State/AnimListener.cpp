@@ -62,6 +62,15 @@ void AnimListener::HandleAnimEvent(const RE::BSAnimationGraphEvent* ev,
     if (tag == "tailMTIdle"sv || tag == "IdleStop"sv) {
         if (state.IsWaitingSheatheRestore()) {
             state.NotifySheatheComplete();
+#ifdef DEBUG
+            spdlog::info("[AnimListener] >> {} -> NotifySheatheComplete!");
+#endif
         }
+    }
+    if (tag == "MRh_SpellFire_Event"sv) {
+        state.OnSpellFired(Hand::Right);
+    }
+    if (tag == "MLh_SpellFire_Event"sv) {
+        state.OnSpellFired(Hand::Left);
     }
 }

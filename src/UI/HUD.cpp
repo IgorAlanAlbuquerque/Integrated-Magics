@@ -838,7 +838,6 @@ namespace IntegratedMagic::HUD {
         if (!inMagicMenu && g_popupWindow && g_popupWindow->IsOpen.load()) g_popupWindow->IsOpen = false;
 
         if (!g_hudVisible.load(std::memory_order_relaxed)) return;
-
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.f, 0.f});
 

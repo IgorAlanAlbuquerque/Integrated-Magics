@@ -166,6 +166,9 @@ namespace IntegratedMagic {
                 --_session.dualCastSkipCastStops;
                 return;
             }
+            if (!_left.chargeComplete && !_right.chargeComplete) {
+                return;
+            }
             FinishHand(Left);
             FinishHand(Right);
             _session.isDualCasting = false;
@@ -466,6 +469,21 @@ namespace IntegratedMagic {
                 _shout.finished = true;
                 TryFinalizeExit();
             }
+        }
+    }
+
+    void MagicState::OnSpellFired(Slots::Hand hand) {
+        if (!_session.active) return;
+        auto& hm = ModeFor(hand);
+        if (hm.autoActive && !hm.finished && hm.chargeComplete) {
+            if (_session.isDualCasting) {
+                FinishHand(Slots::Hand::Left);
+                FinishHand(Slots::Hand::Right);
+                _session.isDualCasting = false;
+            } else {
+                FinishHand(hand);
+            }
+            TryFinalizeExit();
         }
     }
 }
