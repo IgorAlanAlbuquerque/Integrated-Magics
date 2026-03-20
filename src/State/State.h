@@ -133,6 +133,7 @@ namespace IntegratedMagic {
             return _restore.pendingRestoreAfterSheathe && !_restore.sheatheAnimComplete;
         }
         void NotifySheatheComplete() noexcept { _restore.sheatheAnimComplete = true; }
+        void OnSpellFired(Slots::Hand hand);
         const HandMode& LeftMode() const noexcept { return _left; }
         const HandMode& RightMode() const noexcept { return _right; }
 
