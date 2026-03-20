@@ -159,7 +159,11 @@ namespace IntegratedMagic {
 
         buttonLabelVisibility = GetButtonLabelVisibility(ini, "HUD", "ButtonLabelVisibility", buttonLabelVisibility);
         buttonLabelCorner = GetButtonLabelCorner(ini, "HUD", "ButtonLabelCorner", buttonLabelCorner);
-        buttonLabelScale = GetFloat(ini, "HUD", "ButtonLabelScale", buttonLabelScale);
+        buttonLabelIconSize = GetFloat(ini, "HUD", "ButtonLabelIconSize", buttonLabelIconSize);
+        buttonLabelIconSpacing = GetFloat(ini, "HUD", "ButtonLabelIconSpacing", buttonLabelIconSpacing);
+        buttonLabelMargin = GetFloat(ini, "HUD", "ButtonLabelMargin", buttonLabelMargin);
+        buttonLabelOffsetX = GetFloat(ini, "HUD", "ButtonLabelOffsetX", buttonLabelOffsetX);
+        buttonLabelOffsetY = GetFloat(ini, "HUD", "ButtonLabelOffsetY", buttonLabelOffsetY);
         buttonLabelFadeTime = GetFloat(ini, "HUD", "ButtonLabelFadeTime", buttonLabelFadeTime);
 
         slotBgActive = GetColor(ini, "Colors", "SlotBgActive", slotBgActive);
@@ -254,7 +258,11 @@ namespace IntegratedMagic {
         ini.SetValue("HUD", "ButtonLabelVisibility",
                      kButtonLabelVisibilityNames[static_cast<int>(buttonLabelVisibility)]);
         ini.SetValue("HUD", "ButtonLabelCorner", kButtonLabelCornerNames[static_cast<int>(buttonLabelCorner)]);
-        setFloat("HUD", "ButtonLabelScale", buttonLabelScale);
+        setFloat("HUD", "ButtonLabelIconSize", buttonLabelIconSize);
+        setFloat("HUD", "ButtonLabelIconSpacing", buttonLabelIconSpacing);
+        setFloat("HUD", "ButtonLabelMargin", buttonLabelMargin);
+        setFloat("HUD", "ButtonLabelOffsetX", buttonLabelOffsetX);
+        setFloat("HUD", "ButtonLabelOffsetY", buttonLabelOffsetY);
         setFloat("HUD", "ButtonLabelFadeTime", buttonLabelFadeTime);
 
         setFloat("Popup", "SlotRadius", popupSlotRadius);

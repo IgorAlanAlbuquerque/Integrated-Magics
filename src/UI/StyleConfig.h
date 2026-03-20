@@ -87,7 +87,11 @@ namespace IntegratedMagic {
 
         ButtonLabelVisibility buttonLabelVisibility = ButtonLabelVisibility::OnModifier;
         ButtonLabelCorner buttonLabelCorner = ButtonLabelCorner::AwayFromCenter;
-        float buttonLabelScale = 0.40f;
+        float buttonLabelIconSize = 20.f;
+        float buttonLabelIconSpacing = 2.f;
+        float buttonLabelMargin = 4.f;
+        float buttonLabelOffsetX = 0.f;
+        float buttonLabelOffsetY = 0.f;
         float buttonLabelFadeTime = 0.12f;
 
         std::uint32_t slotBgActive = 0xE60F161Eu;

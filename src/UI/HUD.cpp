@@ -554,6 +554,69 @@ namespace IntegratedMagic::HUD {
             }
         }
 
+        void DrawSlotHotkeyIcons(ImDrawList* dl, ImVec2 center, float slotR, int slotIndex) {
+            const auto& cfg = IntegratedMagic::GetMagicConfig();
+            const auto& st = StyleConfig::Get();
+            const auto iconType = st.buttonIconType;
+
+            constexpr float kIconSize = 28.f;
+            constexpr float kSpacing = 2.f;
+            constexpr float kMarginY = 4.f;
+
+            struct KeyEntry {
+                bool isGamepad;
+                int code;
+            };
+            KeyEntry keys[3]{};
+            int keyCount = 0;
+
+            const auto& ic = cfg.slotInput[static_cast<std::size_t>(slotIndex)];
+
+            if (iconType == ButtonIconType::Keyboard) {
+                int codes[3] = {
+                    ic.KeyboardScanCode1.load(std::memory_order_relaxed),
+                    ic.KeyboardScanCode2.load(std::memory_order_relaxed),
+                    ic.KeyboardScanCode3.load(std::memory_order_relaxed),
+                };
+                for (int c : codes)
+                    if (c >= 0 && keyCount < 3) keys[keyCount++] = {false, c};
+            } else {
+                int codes[3] = {
+                    ic.GamepadButton1.load(std::memory_order_relaxed),
+                    ic.GamepadButton2.load(std::memory_order_relaxed),
+                    ic.GamepadButton3.load(std::memory_order_relaxed),
+                };
+                for (int c : codes)
+                    if (c >= 0 && keyCount < 3) keys[keyCount++] = {true, c};
+            }
+
+            if (keyCount == 0) return;
+
+            const TextureManager::Image* imgs[3]{nullptr, nullptr, nullptr};
+            int validCount = 0;
+            for (int k = 0; k < keyCount; ++k) {
+                const auto& img = keys[k].isGamepad ? TextureManager::GetGamepadButtonIcon(keys[k].code, iconType)
+                                                    : TextureManager::GetKeyboardIcon(keys[k].code);
+                if (img.valid()) {
+                    imgs[validCount++] = &img;
+                }
+            }
+            if (validCount == 0) return;
+
+            const float totalW = validCount * kIconSize + (validCount - 1) * kSpacing;
+
+            const float startX = center.x - totalW * 0.5f;
+            const float startY = center.y - slotR - kMarginY - kIconSize;
+
+            for (int k = 0; k < validCount; ++k) {
+                const float x = startX + k * (kIconSize + kSpacing);
+                const ImVec2 ip0 = {x, startY};
+                const ImVec2 ip1 = {x + kIconSize, startY + kIconSize};
+                DL::AddImage(dl, reinterpret_cast<ImTextureID>(imgs[k]->texture), ip0, ip1, {0.f, 0.f}, {1.f, 1.f},
+                             IM_COL32(255, 255, 255, 255));
+            }
+        }
+
         void DrawSmallHUD(ImGuiIO const* io) {
             const auto& st = Style();
             const int n = static_cast<int>(Slots::GetSlotCount());
@@ -631,7 +694,7 @@ namespace IntegratedMagic::HUD {
                 DrawSlotVisual(dl, center, slotR, true, rSp, lSp, shoutID);
             }
 
-                        const bool modWidgetHeld = Input::IsModifierHeld() || MagicState::Get().IsActive();
+            const bool modWidgetHeld = Input::IsModifierHeld() || MagicState::Get().IsActive();
             DrawModifierWidget(dl, hudOrigin, modWidgetHeld);
 
             ImGui::End();
@@ -675,8 +738,6 @@ namespace IntegratedMagic::HUD {
                 ImDrawList* dl = ImGui::GetWindowDrawList();
                 const int activeSlot = MagicState::Get().ActiveSlot();
 
-                DrawModifierWidget(dl, ringCenter, false);
-
                 const auto hovType = MagicAssign::GetHoveredMagicType();
                 const bool hovIsShoutOrPower =
                     hovType == MagicAssign::HoveredMagicType::Shout || hovType == MagicAssign::HoveredMagicType::Power;
@@ -692,13 +753,7 @@ namespace IntegratedMagic::HUD {
                     DrawSlotVisual(dl, center, st.popupSlotRadius, activeSlot == i, rSp, lSp, shoutID);
 
                     {
-                        const std::string slotLabel =
-                            Strings::Get("Popup_SlotLabel", "Slot") + " " + std::to_string(i + 1);
-                        ImVec2 textSize{};
-                        ImGui::CalcTextSize(&textSize, slotLabel.c_str(), nullptr, false, -1.0f);
-                        ImGui::SetCursorScreenPos(
-                            {center.x - textSize.x * 0.5f, center.y - st.popupSlotRadius - textSize.y - 4.f});
-                        ImGui::TextDisabled("%s", slotLabel.c_str());
+                        DrawSlotHotkeyIcons(dl, center, st.popupSlotRadius, i);
                     }
 
                     {

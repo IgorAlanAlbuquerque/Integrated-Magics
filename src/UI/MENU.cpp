@@ -625,6 +625,119 @@ namespace {
 
         ImGui::Spacing();
 
+        if (ImGui::CollapsingHeader(S::Get("HUD_Section_ButtonLabels", "Button Labels").c_str())) {
+            ImGui::Spacing();
+
+            const std::string lblVisNames = S::Get("HUD_BtnLbl_Never", "Never") + '\0' +
+                                            S::Get("HUD_BtnLbl_Always", "Always") + '\0' +
+                                            S::Get("HUD_BtnLbl_OnModifier", "On modifier") + '\0';
+            int lblVisIdx = static_cast<int>(st.buttonLabelVisibility);
+            ImGui::SetNextItemWidth(180.f);
+            if (ImGui::Combo(S::Get("HUD_BtnLbl_Visibility", "Visibility##btnlblvis").c_str(), &lblVisIdx,
+                             lblVisNames.c_str())) {
+                st.buttonLabelVisibility = static_cast<IntegratedMagic::ButtonLabelVisibility>(lblVisIdx);
+                dirty = true;
+            }
+
+            ImGui::Spacing();
+
+            {
+                using C = IntegratedMagic::ButtonLabelCorner;
+                ImGui::TextDisabled("%s", S::Get("HUD_BtnLbl_Corner", "Corner").c_str());
+                struct CornerCell {
+                    C corner;
+                    const char* label;
+                };
+                static constexpr CornerCell kGrid[2][2] = {
+                    {{C::TopLeft, "##BL_TL"}, {C::TopRight, "##BL_TR"}},
+                    {{C::BottomLeft, "##BL_BL"}, {C::BottomRight, "##BL_BR"}},
+                };
+                for (int row = 0; row < 2; ++row) {
+                    for (int col = 0; col < 2; ++col) {
+                        if (col > 0) ImGui::SameLine(0.f, 2.f);
+                        const auto& cell = kGrid[row][col];
+                        const bool active = (st.buttonLabelCorner == cell.corner);
+                        if (active) ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
+                        if (ImGui::Button(cell.label, {28.f, 20.f})) {
+                            st.buttonLabelCorner = cell.corner;
+                            dirty = true;
+                        }
+                        if (active) ImGui::PopStyleColor();
+                    }
+                }
+                ImGui::SameLine(0.f, 16.f);
+                ImGui::BeginGroup();
+                {
+                    const bool tc = (st.buttonLabelCorner == C::TowardCenter);
+                    if (tc) ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
+                    if (ImGui::Button(S::Get("HUD_BtnLbl_TowardCenter", "Inward##tc").c_str(), {60.f, 20.f})) {
+                        st.buttonLabelCorner = C::TowardCenter;
+                        dirty = true;
+                    }
+                    if (tc) ImGui::PopStyleColor();
+                }
+                {
+                    const bool ac = (st.buttonLabelCorner == C::AwayFromCenter);
+                    if (ac) ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
+                    if (ImGui::Button(S::Get("HUD_BtnLbl_AwayFromCenter", "Outward##ac").c_str(), {60.f, 20.f})) {
+                        st.buttonLabelCorner = C::AwayFromCenter;
+                        dirty = true;
+                    }
+                    if (ac) ImGui::PopStyleColor();
+                }
+                ImGui::EndGroup();
+            }
+
+            ImGui::Spacing();
+
+            ImGui::SetNextItemWidth(150.f);
+            float iconSz = st.buttonLabelIconSize;
+            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_IconSize", "Icon size##btnlblsz").c_str(), &iconSz, 1.f, 5.f,
+                                  "%.0f")) {
+                st.buttonLabelIconSize = std::max(4.f, iconSz);
+                dirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.f);
+            float iconSpc = st.buttonLabelIconSpacing;
+            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_IconSpacing", "Spacing##btnlblspc").c_str(), &iconSpc, 1.f, 5.f,
+                                  "%.0f")) {
+                st.buttonLabelIconSpacing = iconSpc;
+                dirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.f);
+            float margin = st.buttonLabelMargin;
+            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_Margin", "Margin##btnlblmar").c_str(), &margin, 1.f, 5.f,
+                                  "%.0f")) {
+                st.buttonLabelMargin = margin;
+                dirty = true;
+            }
+
+            ImGui::SetNextItemWidth(150.f);
+            float ox = st.buttonLabelOffsetX;
+            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_OffsetX", "X##btnlblox").c_str(), &ox, 1.f, 5.f, "%.0f")) {
+                st.buttonLabelOffsetX = ox;
+                dirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.f);
+            float oy = st.buttonLabelOffsetY;
+            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_OffsetY", "Y##btnlbloy").c_str(), &oy, 1.f, 5.f, "%.0f")) {
+                st.buttonLabelOffsetY = oy;
+                dirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.f);
+            float ft = st.buttonLabelFadeTime;
+            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_FadeTime", "Fade##btnlblft").c_str(), &ft, 0.01f, 0.05f, "%.2f")) {
+                st.buttonLabelFadeTime = std::max(0.f, ft);
+                dirty = true;
+            }
+        }
+
+        ImGui::Spacing();
+
         if (ImGui::CollapsingHeader(S::Get("HUD_Section_Colors", "Colors").c_str())) {
             ImGui::Spacing();
 
