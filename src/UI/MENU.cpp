@@ -271,6 +271,25 @@ namespace {
             cfg.hudVisible = hudVisible;
             dirty = true;
         }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        {
+            auto& st = IntegratedMagic::StyleConfig::Get();
+            const std::string iconTypeNames =
+                IntegratedMagic::Strings::Get("Item_ButtonIcon_Keyboard", "Keyboard") + '\0' +
+                IntegratedMagic::Strings::Get("Item_ButtonIcon_PlayStation", "PlayStation") + '\0' +
+                IntegratedMagic::Strings::Get("Item_ButtonIcon_Xbox", "Xbox") + '\0';
+            int iconTypeIdx = static_cast<int>(st.buttonIconType);
+            ImGui::SetNextItemWidth(180.0f);
+            if (ImGui::Combo(IntegratedMagic::Strings::Get("Item_ButtonIconType", "Button icons##buttonicons").c_str(),
+                             &iconTypeIdx, iconTypeNames.c_str())) {
+                st.buttonIconType = static_cast<IntegratedMagic::ButtonIconType>(iconTypeIdx);
+                dirty = true;
+            }
+        }
     }
 
     void DrawControlsTab(IntegratedMagic::MagicConfig& cfg, bool& dirty) {
@@ -521,6 +540,20 @@ namespace {
         ImGui::Spacing();
 
         {
+            const std::string popupLayoutNames =
+                S::Get("HUD_Layout_Circular", "Circular") + '\0' + S::Get("HUD_Layout_Horizontal", "Horizontal") +
+                '\0' + S::Get("HUD_Layout_Vertical", "Vertical") + '\0' + S::Get("HUD_Layout_Grid", "Grid") + '\0';
+            int popupLayoutIdx = static_cast<int>(st.popupLayout);
+            ImGui::SetNextItemWidth(180.f);
+            if (ImGui::Combo(S::Get("HUD_PopupLayout_Label", "Layout##popuplayout").c_str(), &popupLayoutIdx,
+                             popupLayoutNames.c_str())) {
+                st.popupLayout = static_cast<IntegratedMagic::HudLayoutType>(popupLayoutIdx);
+                dirty = true;
+            }
+            ImGui::Spacing();
+        }
+
+        {
             ImGui::SetNextItemWidth(150.f);
             float psr = st.popupSlotRadius;
             if (ImGui::InputFloat(S::Get("HUD_PopupSlotR_Label", "Slot R##popupslotradius").c_str(), &psr, 1.f, 5.f,
@@ -557,6 +590,169 @@ namespace {
             int oa = static_cast<int>(st.overlayAlpha);
             if (ImGui::InputInt(S::Get("HUD_OverlayAlpha_Label", "Overlay Alpha##overlayalpha").c_str(), &oa, 5, 20)) {
                 st.overlayAlpha = static_cast<std::uint8_t>(std::clamp(oa, 0, 255));
+                dirty = true;
+            }
+        }
+
+        ImGui::Spacing();
+
+        if (ImGui::CollapsingHeader(S::Get("HUD_Section_Modifier", "Modifier Button").c_str())) {
+            ImGui::Spacing();
+
+            const std::string modVisNames = S::Get("Item_ModVis_Never", "Never") + '\0' +
+                                            S::Get("Item_ModVis_Always", "Always") + '\0' +
+                                            S::Get("Item_ModVis_HideOnPress", "Hide on press") + '\0';
+            int modVisIdx = static_cast<int>(st.modifierWidgetVisibility);
+            ImGui::SetNextItemWidth(180.f);
+            if (ImGui::Combo(S::Get("Item_ModifierVisibility", "Visibility##modvis").c_str(), &modVisIdx,
+                             modVisNames.c_str())) {
+                st.modifierWidgetVisibility = static_cast<IntegratedMagic::ModifierWidgetVisibility>(modVisIdx);
+                dirty = true;
+            }
+            ImGui::Spacing();
+
+            ImGui::SetNextItemWidth(150.f);
+            float mr = st.modifierWidgetRadius;
+            if (ImGui::InputFloat(S::Get("HUD_ModWidget_Radius", "Radius##modwidgetradius").c_str(), &mr, 1.f, 5.f,
+                                  "%.1f")) {
+                st.modifierWidgetRadius = std::max(1.f, mr);
+                dirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.f);
+            float mox = st.modifierWidgetOffsetX;
+            if (ImGui::InputFloat(S::Get("HUD_ModWidget_OffsetX", "X##modwidgetox").c_str(), &mox, 1.f, 5.f, "%.0f")) {
+                st.modifierWidgetOffsetX = mox;
+                dirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.f);
+            float moy = st.modifierWidgetOffsetY;
+            if (ImGui::InputFloat(S::Get("HUD_ModWidget_OffsetY", "Y##modwidgetoy").c_str(), &moy, 1.f, 5.f, "%.0f")) {
+                st.modifierWidgetOffsetY = moy;
+                dirty = true;
+            }
+        }
+
+        ImGui::Spacing();
+
+        if (ImGui::CollapsingHeader(S::Get("HUD_Section_ButtonLabels", "Button Labels").c_str())) {
+            ImGui::Spacing();
+
+            const std::string lblVisNames = S::Get("HUD_BtnLbl_Never", "Never") + '\0' +
+                                            S::Get("HUD_BtnLbl_Always", "Always") + '\0' +
+                                            S::Get("HUD_BtnLbl_OnModifier", "On modifier") + '\0';
+            int lblVisIdx = static_cast<int>(st.buttonLabelVisibility);
+            ImGui::SetNextItemWidth(180.f);
+            if (ImGui::Combo(S::Get("HUD_BtnLbl_Visibility", "Visibility##btnlblvis").c_str(), &lblVisIdx,
+                             lblVisNames.c_str())) {
+                st.buttonLabelVisibility = static_cast<IntegratedMagic::ButtonLabelVisibility>(lblVisIdx);
+                dirty = true;
+            }
+
+            ImGui::Spacing();
+
+            {
+                using C = IntegratedMagic::ButtonLabelCorner;
+                ImGui::TextDisabled("%s", S::Get("HUD_BtnLbl_Corner", "Corner").c_str());
+
+                constexpr float kBtnSz = 28.f;
+                constexpr float kGap = 2.f;
+                constexpr float kInvis = kBtnSz + kGap;
+
+                auto cornerBtn = [&](C corner, const char* id) {
+                    const bool active = (st.buttonLabelCorner == corner);
+                    if (active) ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
+                    if (ImGui::Button(id, {kBtnSz, kBtnSz})) {
+                        st.buttonLabelCorner = corner;
+                        dirty = true;
+                    }
+                    if (active) ImGui::PopStyleColor();
+                };
+
+                ImGui::Dummy({kInvis, kBtnSz});
+                ImGui::SameLine(0.f, kGap);
+                cornerBtn(C::Top, "##BL_T");
+                ImGui::SameLine(0.f, kGap);
+                ImGui::Dummy({kInvis, kBtnSz});
+
+                cornerBtn(C::Left, "##BL_L");
+                ImGui::SameLine(0.f, kGap);
+                ImGui::Dummy({kBtnSz, kBtnSz});
+                ImGui::SameLine(0.f, kGap);
+                cornerBtn(C::Right, "##BL_R");
+
+                ImGui::Dummy({kInvis, kBtnSz});
+                ImGui::SameLine(0.f, kGap);
+                cornerBtn(C::Bottom, "##BL_B");
+
+                ImGui::SameLine(0.f, 20.f);
+                ImGui::BeginGroup();
+                {
+                    const bool tc = (st.buttonLabelCorner == C::TowardCenter);
+                    if (tc) ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
+                    if (ImGui::Button(S::Get("HUD_BtnLbl_TowardCenter", "Inward##tc").c_str(), {150.f, kBtnSz})) {
+                        st.buttonLabelCorner = C::TowardCenter;
+                        dirty = true;
+                    }
+                    if (tc) ImGui::PopStyleColor();
+                }
+                {
+                    const bool ac = (st.buttonLabelCorner == C::AwayFromCenter);
+                    if (ac) ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
+                    if (ImGui::Button(S::Get("HUD_BtnLbl_AwayFromCenter", "Outward##ac").c_str(), {150.f, kBtnSz})) {
+                        st.buttonLabelCorner = C::AwayFromCenter;
+                        dirty = true;
+                    }
+                    if (ac) ImGui::PopStyleColor();
+                }
+                ImGui::EndGroup();
+            }
+
+            ImGui::Spacing();
+
+            ImGui::SetNextItemWidth(150.f);
+            float iconSz = st.buttonLabelIconSize;
+            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_IconSize", "Icon size##btnlblsz").c_str(), &iconSz, 1.f, 5.f,
+                                  "%.0f")) {
+                st.buttonLabelIconSize = std::max(4.f, iconSz);
+                dirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.f);
+            float iconSpc = st.buttonLabelIconSpacing;
+            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_IconSpacing", "Spacing##btnlblspc").c_str(), &iconSpc, 1.f, 5.f,
+                                  "%.0f")) {
+                st.buttonLabelIconSpacing = iconSpc;
+                dirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.f);
+            float margin = st.buttonLabelMargin;
+            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_Margin", "Margin##btnlblmar").c_str(), &margin, 1.f, 5.f,
+                                  "%.0f")) {
+                st.buttonLabelMargin = margin;
+                dirty = true;
+            }
+
+            ImGui::SetNextItemWidth(150.f);
+            float ox = st.buttonLabelOffsetX;
+            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_OffsetX", "X##btnlblox").c_str(), &ox, 1.f, 5.f, "%.0f")) {
+                st.buttonLabelOffsetX = ox;
+                dirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.f);
+            float oy = st.buttonLabelOffsetY;
+            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_OffsetY", "Y##btnlbloy").c_str(), &oy, 1.f, 5.f, "%.0f")) {
+                st.buttonLabelOffsetY = oy;
+                dirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.f);
+            float ft = st.buttonLabelFadeTime;
+            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_FadeTime", "Fade##btnlblft").c_str(), &ft, 0.01f, 0.05f, "%.2f")) {
+                st.buttonLabelFadeTime = std::max(0.f, ft);
                 dirty = true;
             }
         }

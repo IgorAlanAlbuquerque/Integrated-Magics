@@ -237,6 +237,72 @@ namespace IntegratedMagic::HUD {
             DL::AddCircle(dl, c, r, st.ringCenterBorder, 16, 1.f);
         }
 
+        const TextureManager::Image& ResolveModifierIcon() {
+            static const TextureManager::Image kEmpty{};
+            const auto& cfg = IntegratedMagic::GetMagicConfig();
+            const auto& st = StyleConfig::Get();
+
+            const int kbPos = cfg.modifierKeyboardPosition;
+            const int gpPos = cfg.modifierGamepadPosition;
+
+            if (st.buttonIconType == ButtonIconType::Keyboard) {
+                if (kbPos <= 0) return kEmpty;
+                const auto& ic = cfg.slotInput[0];
+                int scancode = -1;
+                if (kbPos == 1)
+                    scancode = ic.KeyboardScanCode1.load(std::memory_order_relaxed);
+                else if (kbPos == 2)
+                    scancode = ic.KeyboardScanCode2.load(std::memory_order_relaxed);
+                else
+                    scancode = ic.KeyboardScanCode3.load(std::memory_order_relaxed);
+                if (scancode < 0) return kEmpty;
+                return TextureManager::GetKeyboardIcon(scancode);
+            } else {
+                if (gpPos <= 0) return kEmpty;
+                const auto& ic = cfg.slotInput[0];
+                int buttonIndex = -1;
+                if (gpPos == 1)
+                    buttonIndex = ic.GamepadButton1.load(std::memory_order_relaxed);
+                else if (gpPos == 2)
+                    buttonIndex = ic.GamepadButton2.load(std::memory_order_relaxed);
+                else
+                    buttonIndex = ic.GamepadButton3.load(std::memory_order_relaxed);
+                if (buttonIndex < 0) return kEmpty;
+                return TextureManager::GetGamepadButtonIcon(buttonIndex, st.buttonIconType);
+            }
+        }
+
+        void DrawModifierWidget(ImDrawList* dl, ImVec2 c, bool modHeld) {
+            const auto& st = StyleConfig::Get();
+
+            switch (st.modifierWidgetVisibility) {
+                case ModifierWidgetVisibility::Never:
+                    return;
+                case ModifierWidgetVisibility::HideOnPress:
+                    if (modHeld) return;
+                    break;
+                case ModifierWidgetVisibility::Always:
+                default:
+                    break;
+            }
+
+            const float r = st.modifierWidgetRadius;
+            const ImVec2 pos = {c.x + st.modifierWidgetOffsetX, c.y + st.modifierWidgetOffsetY};
+
+            const auto& icon = ResolveModifierIcon();
+
+            if (icon.valid()) {
+                const float iconSize = r * 2.f;
+                const ImVec2 ip0 = {pos.x - iconSize * 0.5f, pos.y - iconSize * 0.5f};
+                const ImVec2 ip1 = {pos.x + iconSize * 0.5f, pos.y + iconSize * 0.5f};
+
+                const ImU32 col = modHeld ? st.modifierWidgetPressedColor : st.modifierWidgetColor;
+                const std::uint8_t alpha = static_cast<std::uint8_t>((col >> 24) & 0xFF);
+                DL::AddImage(dl, reinterpret_cast<ImTextureID>(icon.texture), ip0, ip1, {0.f, 0.f}, {1.f, 1.f},
+                             IM_COL32(255, 255, 255, alpha));
+            }
+        }
+
         void DrawOverlayAndCursor(ImVec2 displaySize, ImVec2 cursorPos) {
             ImDrawList* bg = ImGui::GetBackgroundDrawList();
             DL::AddRectFilled(bg, {0.f, 0.f}, {displaySize.x, displaySize.y}, IM_COL32(0, 0, 0, Style().overlayAlpha),
@@ -288,6 +354,104 @@ namespace IntegratedMagic::HUD {
             ImGui::BeginTooltip();
             ImGui::TextUnformatted(text);
             ImGui::EndTooltip();
+        }
+
+        float DrawActionBadge(ImDrawList* dl, ImVec2 origin, float iconSize, const TextureManager::Image& icon,
+                              const char* fallbackLabel, const char* actionLabel, ImU32 bgColor) {
+            constexpr float kGap = 6.f;
+
+            if (icon.valid()) {
+                const ImVec2 ip0 = origin;
+                const ImVec2 ip1 = {ip0.x + iconSize, ip0.y + iconSize};
+                DL::AddImage(dl, reinterpret_cast<ImTextureID>(icon.texture), ip0, ip1, {0.f, 0.f}, {1.f, 1.f},
+                             IM_COL32(255, 255, 255, 255));
+
+                ImVec2 ts{};
+                ImGui::CalcTextSize(&ts, actionLabel, nullptr, false, -1.f);
+                ImGui::SetCursorScreenPos({ip1.x + kGap, ip0.y + (iconSize - ts.y) * 0.5f});
+                ImGui::TextDisabled("%s", actionLabel);
+
+                return iconSize + kGap + ts.x + kGap * 2.f;
+            } else {
+                constexpr float kPad = 4.f;
+                const float chipW = iconSize + kPad * 2.f;
+                const float chipH = iconSize + kPad * 2.f;
+                const ImVec2 chipP0 = origin;
+                const ImVec2 chipP1 = {chipP0.x + chipW, chipP0.y + chipH};
+                DL::AddRectFilled(dl, chipP0, chipP1, bgColor, 4.f, 0);
+                DL::AddRect(dl, chipP0, chipP1, IM_COL32(200, 200, 200, 80), 4.f, 0, 1.f);
+
+                ImVec2 lts{};
+                ImGui::CalcTextSize(&lts, fallbackLabel, nullptr, false, -1.f);
+                ImGui::SetCursorScreenPos({chipP0.x + (chipW - lts.x) * 0.5f, chipP0.y + (chipH - lts.y) * 0.5f});
+                ImGui::TextUnformatted(fallbackLabel);
+
+                ImVec2 ts{};
+                ImGui::CalcTextSize(&ts, actionLabel, nullptr, false, -1.f);
+                ImGui::SetCursorScreenPos({chipP1.x + kGap, chipP0.y + (chipH - ts.y) * 0.5f});
+                ImGui::TextDisabled("%s", actionLabel);
+
+                return chipW + kGap + ts.x + kGap * 2.f;
+            }
+        }
+
+        void DrawPopupActionHints(ImDrawList* dl, ImVec2 popupPos, ImVec2 popupSize, bool isShoutOrPower,
+                                  bool hoverRight) {
+            const auto& st = StyleConfig::Get();
+            const auto iconType = st.buttonIconType;
+            constexpr float kIconSize = 32.f;
+            constexpr float kBarPad = 8.f;
+            constexpr float kSpacing = 16.f;
+
+            const TextureManager::Image* assignIcon = nullptr;
+            const TextureManager::Image* clearIcon = nullptr;
+            const char* assignFallback = "LMB";
+            const char* clearFallback = "RMB";
+
+            static const TextureManager::Image kEmpty{};
+
+            if (iconType == ButtonIconType::Xbox) {
+                assignIcon = &TextureManager::GetGamepadButtonIcon(12, ButtonIconType::Xbox);
+                clearIcon = &TextureManager::GetGamepadButtonIcon(11, ButtonIconType::Xbox);
+                assignFallback = "X";
+                clearFallback = "B";
+            } else if (iconType == ButtonIconType::PlayStation) {
+                assignIcon = &TextureManager::GetGamepadButtonIcon(12, ButtonIconType::PlayStation);
+                clearIcon = &TextureManager::GetGamepadButtonIcon(11, ButtonIconType::PlayStation);
+                assignFallback = "\xE2\x96\xA1";
+                clearFallback = "\xE2\x97\x8B";
+            } else {
+                assignIcon = &TextureManager::GetKeyboardIcon(kMouseLeftIndex);
+                clearIcon = &TextureManager::GetKeyboardIcon(kMouseRightIndex);
+                assignFallback = "LMB";
+                clearFallback = "RMB";
+            }
+
+            const std::string assignText = isShoutOrPower
+                                               ? Strings::Get("Popup_Hint_Assign", "Assign")
+                                               : (hoverRight ? Strings::Get("Popup_Hint_AssignRight", "Assign Right")
+                                                             : Strings::Get("Popup_Hint_AssignLeft", "Assign Left"));
+            const std::string clearText = Strings::Get("Popup_Hint_Clear", "Clear");
+
+            const float chipW = kIconSize;
+            ImVec2 assignTS{}, clearTS{};
+            ImGui::CalcTextSize(&assignTS, assignText.c_str(), nullptr, false, -1.f);
+            ImGui::CalcTextSize(&clearTS, clearText.c_str(), nullptr, false, -1.f);
+            const float totalW = chipW + 6.f + assignTS.x + 6.f * 2.f + kSpacing + chipW + 6.f + clearTS.x + 6.f * 2.f;
+            const float barH = kIconSize;
+
+            const ImVec2 barOrigin = {popupPos.x + (popupSize.x - totalW) * 0.5f,
+                                      popupPos.y + popupSize.y - barH - kBarPad};
+
+            const ImU32 assignBg = IM_COL32(40, 100, 200, 160);
+            const ImU32 clearBg = IM_COL32(160, 40, 40, 160);
+
+            float x = barOrigin.x;
+            x += DrawActionBadge(dl, {x, barOrigin.y}, kIconSize, assignIcon ? *assignIcon : kEmpty, assignFallback,
+                                 assignText.c_str(), assignBg);
+            x += kSpacing;
+            DrawActionBadge(dl, {x, barOrigin.y}, kIconSize, clearIcon ? *clearIcon : kEmpty, clearFallback,
+                            clearText.c_str(), clearBg);
         }
 
         void DrawSpellModeWidget(ImDrawList* dl, bool clicked, ImVec2 origin, float availW, std::uint32_t formID,
@@ -394,6 +558,196 @@ namespace IntegratedMagic::HUD {
             }
         }
 
+        void DrawSlotHotkeyIcons(ImDrawList* dl, ImVec2 center, float slotR, int slotIndex) {
+            const auto& cfg = IntegratedMagic::GetMagicConfig();
+            const auto& st = StyleConfig::Get();
+            const auto iconType = st.buttonIconType;
+
+            constexpr float kIconSize = 28.f;
+            constexpr float kSpacing = 2.f;
+            constexpr float kMarginY = 4.f;
+
+            struct KeyEntry {
+                bool isGamepad;
+                int code;
+            };
+            KeyEntry keys[3]{};
+            int keyCount = 0;
+
+            const auto& ic = cfg.slotInput[static_cast<std::size_t>(slotIndex)];
+
+            if (iconType == ButtonIconType::Keyboard) {
+                int codes[3] = {
+                    ic.KeyboardScanCode1.load(std::memory_order_relaxed),
+                    ic.KeyboardScanCode2.load(std::memory_order_relaxed),
+                    ic.KeyboardScanCode3.load(std::memory_order_relaxed),
+                };
+                for (int c : codes)
+                    if (c >= 0 && keyCount < 3) keys[keyCount++] = {false, c};
+            } else {
+                int codes[3] = {
+                    ic.GamepadButton1.load(std::memory_order_relaxed),
+                    ic.GamepadButton2.load(std::memory_order_relaxed),
+                    ic.GamepadButton3.load(std::memory_order_relaxed),
+                };
+                for (int c : codes)
+                    if (c >= 0 && keyCount < 3) keys[keyCount++] = {true, c};
+            }
+
+            if (keyCount == 0) return;
+
+            const TextureManager::Image* imgs[3]{nullptr, nullptr, nullptr};
+            int validCount = 0;
+            for (int k = 0; k < keyCount; ++k) {
+                const auto& img = keys[k].isGamepad ? TextureManager::GetGamepadButtonIcon(keys[k].code, iconType)
+                                                    : TextureManager::GetKeyboardIcon(keys[k].code);
+                if (img.valid()) {
+                    imgs[validCount++] = &img;
+                }
+            }
+            if (validCount == 0) return;
+
+            const float totalW = validCount * kIconSize + (validCount - 1) * kSpacing;
+
+            const float startX = center.x - totalW * 0.5f;
+            const float startY = center.y - slotR - kMarginY - kIconSize;
+
+            for (int k = 0; k < validCount; ++k) {
+                const float x = startX + k * (kIconSize + kSpacing);
+                const ImVec2 ip0 = {x, startY};
+                const ImVec2 ip1 = {x + kIconSize, startY + kIconSize};
+                DL::AddImage(dl, reinterpret_cast<ImTextureID>(imgs[k]->texture), ip0, ip1, {0.f, 0.f}, {1.f, 1.f},
+                             IM_COL32(255, 255, 255, 255));
+            }
+        }
+
+        void DrawSlotButtonLabel(ImDrawList* dl, ImVec2 center, float slotR, int slotIndex, ImVec2 hudOrigin,
+                                 float alpha) {
+            if (alpha <= 0.f) return;
+
+            const auto& cfg = IntegratedMagic::GetMagicConfig();
+            const auto& st = StyleConfig::Get();
+            const auto iconType = st.buttonIconType;
+
+            const int modPos =
+                (iconType == ButtonIconType::Keyboard) ? cfg.modifierKeyboardPosition : cfg.modifierGamepadPosition;
+
+            const bool suppressMod = (st.modifierWidgetVisibility != ModifierWidgetVisibility::Never) && (modPos > 0);
+
+            struct KeyEntry {
+                bool isGamepad;
+                int code;
+            };
+            KeyEntry keys[3]{};
+            int keyCount = 0;
+
+            const auto& ic = cfg.slotInput[static_cast<std::size_t>(slotIndex)];
+
+            if (iconType == ButtonIconType::Keyboard) {
+                int codes[3] = {
+                    ic.KeyboardScanCode1.load(std::memory_order_relaxed),
+                    ic.KeyboardScanCode2.load(std::memory_order_relaxed),
+                    ic.KeyboardScanCode3.load(std::memory_order_relaxed),
+                };
+                for (int k = 0; k < 3; ++k) {
+                    if (codes[k] < 0) continue;
+                    if (suppressMod && (k + 1) == modPos) continue;
+                    if (keyCount < 3) keys[keyCount++] = {false, codes[k]};
+                }
+            } else {
+                int codes[3] = {
+                    ic.GamepadButton1.load(std::memory_order_relaxed),
+                    ic.GamepadButton2.load(std::memory_order_relaxed),
+                    ic.GamepadButton3.load(std::memory_order_relaxed),
+                };
+                for (int k = 0; k < 3; ++k) {
+                    if (codes[k] < 0) continue;
+                    if (suppressMod && (k + 1) == modPos) continue;
+                    if (keyCount < 3) keys[keyCount++] = {true, codes[k]};
+                }
+            }
+
+            if (keyCount == 0) return;
+
+            const TextureManager::Image* imgs[3]{};
+            int validCount = 0;
+            for (int k = 0; k < keyCount; ++k) {
+                const auto& img = keys[k].isGamepad ? TextureManager::GetGamepadButtonIcon(keys[k].code, iconType)
+                                                    : TextureManager::GetKeyboardIcon(keys[k].code);
+                if (img.valid()) imgs[validCount++] = &img;
+            }
+            if (validCount == 0) return;
+
+            const float iconSize = st.buttonLabelIconSize;
+            const float spacing = st.buttonLabelIconSpacing;
+            const float margin = st.buttonLabelMargin;
+            const float totalW = validCount * iconSize + (validCount - 1) * spacing;
+
+            float startX = 0.f, startY = 0.f;
+
+            switch (st.buttonLabelCorner) {
+                case ButtonLabelCorner::Top:
+                    startX = center.x - totalW * 0.5f;
+                    startY = center.y - slotR - margin - iconSize;
+                    break;
+                case ButtonLabelCorner::Bottom:
+                    startX = center.x - totalW * 0.5f;
+                    startY = center.y + slotR + margin;
+                    break;
+                case ButtonLabelCorner::Left:
+                    startX = center.x - slotR - margin - totalW;
+                    startY = center.y - iconSize * 0.5f;
+                    break;
+                case ButtonLabelCorner::Right:
+                    startX = center.x + slotR + margin;
+                    startY = center.y - iconSize * 0.5f;
+                    break;
+                case ButtonLabelCorner::TowardCenter: {
+                    const float dx = hudOrigin.x - center.x;
+                    const float dy = hudOrigin.y - center.y;
+                    const float len = std::sqrt(dx * dx + dy * dy);
+                    if (len > 0.5f) {
+                        const float nx = dx / len, ny = dy / len;
+                        const float ax = center.x + nx * (slotR + margin + iconSize * 0.5f);
+                        const float ay = center.y + ny * (slotR + margin + iconSize * 0.5f);
+                        startX = ax - totalW * 0.5f;
+                        startY = ay - iconSize * 0.5f;
+                    } else {
+                        startX = center.x - totalW * 0.5f;
+                        startY = center.y - slotR - margin - iconSize;
+                    }
+                    break;
+                }
+                case ButtonLabelCorner::AwayFromCenter: {
+                    const float dx = center.x - hudOrigin.x;
+                    const float dy = center.y - hudOrigin.y;
+                    const float len = std::sqrt(dx * dx + dy * dy);
+                    if (len > 0.5f) {
+                        const float nx = dx / len, ny = dy / len;
+                        const float ax = center.x + nx * (slotR + margin + iconSize * 0.5f);
+                        const float ay = center.y + ny * (slotR + margin + iconSize * 0.5f);
+                        startX = ax - totalW * 0.5f;
+                        startY = ay - iconSize * 0.5f;
+                    } else {
+                        startX = center.x - totalW * 0.5f;
+                        startY = center.y + slotR + margin;
+                    }
+                    break;
+                }
+            }
+
+            startX += st.buttonLabelOffsetX;
+            startY += st.buttonLabelOffsetY;
+
+            const ImU32 tint = IM_COL32(255, 255, 255, static_cast<int>(alpha * 255.f));
+
+            for (int k = 0; k < validCount; ++k) {
+                const float x = startX + k * (iconSize + spacing);
+                DL::AddImage(dl, reinterpret_cast<ImTextureID>(imgs[k]->texture), {x, startY},
+                             {x + iconSize, startY + iconSize}, {0.f, 0.f}, {1.f, 1.f}, tint);
+            }
+        }
+
         void DrawSmallHUD(ImGuiIO const* io) {
             const auto& st = Style();
             const int n = static_cast<int>(Slots::GetSlotCount());
@@ -401,6 +755,39 @@ namespace IntegratedMagic::HUD {
 
             const bool modHeld = !MagicState::Get().IsActive() && Input::IsModifierHeld();
             SlotAnimator::Update(n, activeSlot, modHeld, st.hudLayout, st.gridColumns);
+
+            static float s_labelAlpha[SlotLayout::kMaxSlots]{};
+            {
+                using clock = std::chrono::steady_clock;
+                static clock::time_point s_lastLabel = clock::now();
+                const auto now = clock::now();
+                float dt = std::chrono::duration<float>(now - s_lastLabel).count();
+                s_lastLabel = now;
+                if (dt < 0.f || dt > 0.25f) dt = 0.f;
+
+                const bool slotActive = MagicState::Get().IsActive();
+                const float fadeSpeed = st.buttonLabelFadeTime > 0.f ? 1.f / st.buttonLabelFadeTime : 9999.f;
+
+                for (int i = 0; i < n; ++i) {
+                    float target = 0.f;
+                    switch (st.buttonLabelVisibility) {
+                        case ButtonLabelVisibility::Never:
+                            target = 0.f;
+                            break;
+                        case ButtonLabelVisibility::Always:
+                            target = 1.f;
+                            break;
+                        case ButtonLabelVisibility::OnModifier:
+                            target = (modHeld && !slotActive) ? 1.f : 0.f;
+                            break;
+                    }
+                    const float diff = target - s_labelAlpha[i];
+                    s_labelAlpha[i] += diff * std::min(dt * fadeSpeed, 1.f);
+                    s_labelAlpha[i] = std::clamp(s_labelAlpha[i], 0.f, 1.f);
+                }
+
+                for (int i = n; i < SlotLayout::kMaxSlots; ++i) s_labelAlpha[i] = 0.f;
+            }
 
             const LayoutVec2 fixedHalf = [&] {
                 LayoutVec2 h = SlotLayout::BoundingHalf(st.hudLayout, n, st.slotRadius, st.ringRadius, st.slotSpacing,
@@ -422,6 +809,18 @@ namespace IntegratedMagic::HUD {
             LayoutVec2 relPos[SlotLayout::kMaxSlots]{};
             SlotLayout::Compute(st.hudLayout, n, st.slotRadius, st.ringRadius, st.slotSpacing, st.gridColumns, relPos);
 
+            auto ScaledCenter = [&](int idx) -> ImVec2 {
+                const float scale = SlotAnimator::GetScale(idx);
+                const float rx = relPos[idx].x;
+                const float ry = relPos[idx].y;
+                const float len = std::sqrt(rx * rx + ry * ry);
+                const float push = (scale - 1.f) * st.slotRadius;
+                if (len > 0.5f) {
+                    return {hudOrigin.x + rx + (rx / len) * push, hudOrigin.y + ry + (ry / len) * push};
+                }
+                return {hudOrigin.x + rx, hudOrigin.y + ry};
+            };
+
             ImGui::SetNextWindowPos({hudOrigin.x - animHalf.x, hudOrigin.y - animHalf.y}, ImGuiCond_Always, {0.f, 0.f});
             ImGui::SetNextWindowSize({animHalf.x * 2.f, animHalf.y * 2.f}, ImGuiCond_Always);
             ImGui::SetNextWindowBgAlpha(0.f);
@@ -438,7 +837,7 @@ namespace IntegratedMagic::HUD {
 
             for (int i = 0; i < n; ++i) {
                 if (i == activeSlot) continue;
-                const ImVec2 center = {hudOrigin.x + relPos[i].x, hudOrigin.y + relPos[i].y};
+                const ImVec2 center = ScaledCenter(i);
                 const float slotR = st.slotRadius * SlotAnimator::GetScale(i);
                 const auto rID = Slots::GetSlotSpell(i, Slots::Hand::Right);
                 const auto lID = Slots::GetSlotSpell(i, Slots::Hand::Left);
@@ -446,10 +845,11 @@ namespace IntegratedMagic::HUD {
                 auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
                 auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
                 DrawSlotVisual(dl, center, slotR, false, rSp, lSp, shoutID);
+                DrawSlotButtonLabel(dl, center, slotR, i, hudOrigin, s_labelAlpha[i]);
             }
 
             if (activeSlot >= 0 && activeSlot < n) {
-                const ImVec2 center = {hudOrigin.x + relPos[activeSlot].x, hudOrigin.y + relPos[activeSlot].y};
+                const ImVec2 center = ScaledCenter(activeSlot);
                 const float slotR = st.slotRadius * SlotAnimator::GetScale(activeSlot);
                 const auto rID = Slots::GetSlotSpell(activeSlot, Slots::Hand::Right);
                 const auto lID = Slots::GetSlotSpell(activeSlot, Slots::Hand::Left);
@@ -457,7 +857,11 @@ namespace IntegratedMagic::HUD {
                 auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
                 auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
                 DrawSlotVisual(dl, center, slotR, true, rSp, lSp, shoutID);
+                DrawSlotButtonLabel(dl, center, slotR, activeSlot, hudOrigin, s_labelAlpha[activeSlot]);
             }
+
+            const bool modWidgetHeld = Input::IsModifierHeld() || MagicState::Get().IsActive();
+            DrawModifierWidget(dl, hudOrigin, modWidgetHeld);
 
             ImGui::End();
         }
@@ -472,6 +876,10 @@ namespace IntegratedMagic::HUD {
             const bool clicked = g_mouseClicked.exchange(false, std::memory_order_relaxed);
             const bool rightClicked = g_mouseRightClicked.exchange(false, std::memory_order_relaxed);
 
+            bool g_hintsVisible = false;
+            bool g_hintsShout = false;
+            bool g_hintsHoverRight = false;
+
             const int n = static_cast<int>(Slots::GetSlotCount());
             const auto& st = Style();
             const float dynPopupR = DynamicRingRadius(n, st.popupSlotRadius, st.popupRingRadius, st.popupSlotGap);
@@ -481,6 +889,10 @@ namespace IntegratedMagic::HUD {
                                      io->DisplaySize.y * 0.5f - popupSize.y * 0.5f};
             const ImVec2 popupEnd = {popupPos.x + popupSize.x, popupPos.y + popupSize.y};
             const ImVec2 ringCenter = {io->DisplaySize.x * 0.5f, io->DisplaySize.y * 0.5f};
+
+            LayoutVec2 popupRelPos[SlotLayout::kMaxSlots]{};
+            SlotLayout::Compute(st.popupLayout, n, st.popupSlotRadius, dynPopupR, st.popupSlotGap, st.gridColumns,
+                                popupRelPos);
 
             ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.f, 0.f});
@@ -496,14 +908,12 @@ namespace IntegratedMagic::HUD {
                 ImDrawList* dl = ImGui::GetWindowDrawList();
                 const int activeSlot = MagicState::Get().ActiveSlot();
 
-                DrawRingCenter(dl, ringCenter, 6.f);
-
                 const auto hovType = MagicAssign::GetHoveredMagicType();
                 const bool hovIsShoutOrPower =
                     hovType == MagicAssign::HoveredMagicType::Shout || hovType == MagicAssign::HoveredMagicType::Power;
 
                 for (int i = 0; i < n; ++i) {
-                    const ImVec2 center = SlotCenter(ringCenter, dynPopupR, i, n);
+                    const ImVec2 center = {ringCenter.x + popupRelPos[i].x, ringCenter.y + popupRelPos[i].y};
                     const auto rID = Slots::GetSlotSpell(i, Slots::Hand::Right);
                     const auto lID = Slots::GetSlotSpell(i, Slots::Hand::Left);
                     const auto shoutID = Slots::GetSlotShout(i);
@@ -513,13 +923,7 @@ namespace IntegratedMagic::HUD {
                     DrawSlotVisual(dl, center, st.popupSlotRadius, activeSlot == i, rSp, lSp, shoutID);
 
                     {
-                        const std::string slotLabel =
-                            Strings::Get("Popup_SlotLabel", "Slot") + " " + std::to_string(i + 1);
-                        ImVec2 textSize{};
-                        ImGui::CalcTextSize(&textSize, slotLabel.c_str(), nullptr, false, -1.0f);
-                        ImGui::SetCursorScreenPos(
-                            {center.x - textSize.x * 0.5f, center.y - st.popupSlotRadius - textSize.y - 4.f});
-                        ImGui::TextDisabled("%s", slotLabel.c_str());
+                        DrawSlotHotkeyIcons(dl, center, st.popupSlotRadius, i);
                     }
 
                     {
@@ -548,9 +952,6 @@ namespace IntegratedMagic::HUD {
                                 DL::AddCircleFilled(dl, center, st.popupSlotRadius - 1.f, IM_COL32(255, 200, 80, 40),
                                                     48);
 
-                                MouseTooltip(
-                                    Strings::Get("Popup_TipShout", "LMB assign  |  RMB clear  [Shout/Power]").c_str());
-
                                 if (clicked) MagicAssign::TryAssignHoveredShoutToSlot(i);
                                 if (rightClicked) {
                                     if (shoutID)
@@ -560,6 +961,10 @@ namespace IntegratedMagic::HUD {
                                         MagicAssign::TryClearSlotHand(i, Slots::Hand::Left);
                                     }
                                 }
+
+                                g_hintsVisible = true;
+                                g_hintsShout = true;
+                                g_hintsHoverRight = false;
                             } else {
                                 const bool hoverRight = dx >= 0.f;
                                 const ImU32 hlColor = IM_COL32(255, 200, 80, 40);
@@ -567,13 +972,6 @@ namespace IntegratedMagic::HUD {
                                     FillSector(dl, center, st.popupSlotRadius - 1.f, -kPI * 0.5f, kPI * 0.5f, hlColor);
                                 else
                                     FillSector(dl, center, st.popupSlotRadius - 1.f, kPI * 0.5f, kPI * 1.5f, hlColor);
-
-                                const std::string tipRight =
-                                    Strings::Get("Popup_TipRight", "LMB assign  |  RMB clear  [Right]");
-                                const std::string tipLeft =
-                                    Strings::Get("Popup_TipLeft", "LMB assign  |  RMB clear  [Left]");
-                                const char* tip = hoverRight ? tipRight.c_str() : tipLeft.c_str();
-                                MouseTooltip(tip);
 
                                 if (clicked) {
                                     if (hoverRight)
@@ -591,6 +989,10 @@ namespace IntegratedMagic::HUD {
                                             MagicAssign::TryClearSlotHand(i, Slots::Hand::Left);
                                     }
                                 }
+
+                                g_hintsVisible = true;
+                                g_hintsShout = false;
+                                g_hintsHoverRight = hoverRight;
                             }
                         }
                     }
@@ -613,6 +1015,8 @@ namespace IntegratedMagic::HUD {
 
                 const bool mouseOutside = clicked && (g_mousePos.x < popupPos.x || g_mousePos.x > popupEnd.x ||
                                                       g_mousePos.y < popupPos.y || g_mousePos.y > popupEnd.y);
+
+                if (g_hintsVisible) DrawPopupActionHints(dl, popupPos, popupSize, g_hintsShout, g_hintsHoverRight);
 
                 if (ImGui::IsKeyPressed(ImGuiKey_Escape) || mouseOutside) {
                     if (g_popupWindow) g_popupWindow->IsOpen = false;

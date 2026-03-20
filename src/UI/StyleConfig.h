@@ -22,12 +22,40 @@ namespace IntegratedMagic {
         BottomRight = 8,
     };
 
+    enum class ButtonIconType : std::uint8_t {
+        Keyboard = 0,
+        PlayStation = 1,
+        Xbox = 2,
+    };
+
+    enum class ButtonLabelVisibility : std::uint8_t {
+        Never = 0,
+        Always = 1,
+        OnModifier = 2,
+    };
+
+    enum class ButtonLabelCorner : std::uint8_t {
+        Top = 0,
+        Right = 1,
+        Bottom = 2,
+        Left = 3,
+        TowardCenter = 4,
+        AwayFromCenter = 5,
+    };
+
+    enum class ModifierWidgetVisibility : std::uint8_t {
+        Never = 0,
+        Always = 1,
+        HideOnPress = 2,
+    };
+
     struct StyleConfig {
         float slotRadius = 32.f;
         float ringRadius = 54.f;
         float popupSlotRadius = 48.f;
         float popupRingRadius = 90.f;
         float popupSlotGap = 24.f;
+        HudLayoutType popupLayout = HudLayoutType::Circular;
         float modeWidgetW = 58.f;
         float iconSizeFactor = 0.90f;
         float iconOffsetFactor = 0.28f;
@@ -49,12 +77,30 @@ namespace IntegratedMagic {
 
         bool useTextureForSlotBg = false;
 
+        ButtonIconType buttonIconType = ButtonIconType::Xbox;
+
+        ModifierWidgetVisibility modifierWidgetVisibility = ModifierWidgetVisibility::Always;
+        float modifierWidgetRadius = 14.f;
+        float modifierWidgetOffsetX = 0.f;
+        float modifierWidgetOffsetY = 0.f;
+        std::uint32_t modifierWidgetColor = 0xC8646464u;
+        std::uint32_t modifierWidgetPressedColor = 0xC8FFB464u;
+
+        ButtonLabelVisibility buttonLabelVisibility = ButtonLabelVisibility::OnModifier;
+        ButtonLabelCorner buttonLabelCorner = ButtonLabelCorner::AwayFromCenter;
+        float buttonLabelIconSize = 20.f;
+        float buttonLabelIconSpacing = 2.f;
+        float buttonLabelMargin = 4.f;
+        float buttonLabelOffsetX = 0.f;
+        float buttonLabelOffsetY = 0.f;
+        float buttonLabelFadeTime = 0.12f;
+
         std::uint32_t slotBgActive = 0xE60F161Eu;
         std::uint32_t slotBgInactive = 0xC80C0C0Cu;
 
         std::uint32_t slotRingInactive = 0x96464646u;
-        std::uint8_t  slotRingActiveAlpha = 245;
-        float         slotRingWidth = 2.5f;
+        std::uint8_t slotRingActiveAlpha = 245;
+        float slotRingWidth = 2.5f;
 
         std::uint8_t iconAlpha = 220;
 

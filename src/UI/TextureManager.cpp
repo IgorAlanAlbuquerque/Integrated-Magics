@@ -1,8 +1,10 @@
 #include "TextureManager.h"
 
+#include <format>
 #include <utility>
 
 #include "PCH.h"
+#include "UI/StyleConfig.h"
 
 #define NANOSVG_IMPLEMENTATION
 #define NANOSVG_ALL_COLOR_KEYWORDS
@@ -77,6 +79,10 @@ namespace IntegratedMagic {
                 }
             }
         }
+
+        xbox_icons_.clear();
+        ps_icons_.clear();
+        keyboard_icons_.clear();
     }
 
     const TextureManager::Image& TextureManager::GetSpellIcon(const RE::SpellItem* spell) {
@@ -114,6 +120,97 @@ namespace IntegratedMagic {
         const auto idx = std::to_underlying(type);
         if (auto it = ui_icons_.find(idx); it != ui_icons_.end() && it->second.valid()) return it->second;
         static const Image kEmpty{};
+        return kEmpty;
+    }
+
+    const TextureManager::Image& TextureManager::GetGamepadButtonIcon(int buttonIndex, ButtonIconType type) {
+        static const Image kEmpty{};
+        if (buttonIndex < 0 || buttonIndex >= kGamepadButtonCount) return kEmpty;
+        return LoadGamepadIconOnDemand(buttonIndex, type);
+    }
+
+    const TextureManager::Image& TextureManager::GetKeyboardIcon(int scancode) {
+        return LoadKeyboardIconOnDemand(scancode);
+    }
+
+    const TextureManager::Image& TextureManager::LoadGamepadIconOnDemand(int buttonIndex, ButtonIconType type) {
+        static const Image kEmpty{};
+        auto& iconMap = (type == ButtonIconType::PlayStation) ? ps_icons_ : xbox_icons_;
+        auto& nameMap = (type == ButtonIconType::PlayStation) ? ps_filename_map_ : xbox_filename_map_;
+        auto& dir = (type == ButtonIconType::PlayStation) ? ps_icon_dir_ : xbox_icon_dir_;
+
+        const int targetSize = std::clamp(static_cast<int>(StyleConfig::Get().modifierWidgetRadius * 4.f), 16, 1024);
+
+        if (auto it = iconMap.find(buttonIndex); it != iconMap.end()) {
+            if (it->second.loadedSize == targetSize) return it->second.valid() ? it->second : kEmpty;
+
+            if (it->second.texture) it->second.texture->Release();
+            iconMap.erase(it);
+        }
+
+        for (auto const& [filename, idx] : nameMap) {
+            if (idx != buttonIndex) continue;
+            const std::string fullPath = dir + "\\" + filename;
+            Image img;
+            if (LoadSVG(fullPath.c_str(), img, targetSize)) {
+                img.loadedSize = targetSize;
+                spdlog::info("[TextureManager] Lazy loaded button icon: {} ({}px)", filename, targetSize);
+                iconMap[buttonIndex] = img;
+                return iconMap[buttonIndex];
+            }
+            Image sentinel{};
+            sentinel.loadedSize = targetSize;
+            iconMap[buttonIndex] = sentinel;
+            spdlog::warn("[TextureManager] Failed to lazy load button icon: {}", filename);
+            return kEmpty;
+        }
+
+        Image sentinel{};
+        sentinel.loadedSize = targetSize;
+        iconMap[buttonIndex] = sentinel;
+        return kEmpty;
+    }
+
+    const TextureManager::Image& TextureManager::LoadKeyboardIconOnDemand(int scancode) {
+        static const Image kEmpty{};
+
+        const int targetSize = std::clamp(static_cast<int>(StyleConfig::Get().modifierWidgetRadius * 4.f), 16, 1024);
+
+        if (auto it = keyboard_icons_.find(scancode); it != keyboard_icons_.end()) {
+            if (it->second.loadedSize == targetSize) return it->second.valid() ? it->second : kEmpty;
+            if (it->second.texture) it->second.texture->Release();
+            keyboard_icons_.erase(it);
+        }
+
+        auto tryLoad = [&](const std::string& filename) -> bool {
+            const std::string fullPath = kb_icon_dir_ + "\\" + filename;
+            Image img;
+            if (LoadSVG(fullPath.c_str(), img, targetSize)) {
+                img.loadedSize = targetSize;
+                spdlog::info("[TextureManager] Lazy loaded keyboard icon: {} ({}px)", filename, targetSize);
+                keyboard_icons_[scancode] = img;
+                return true;
+            }
+            return false;
+        };
+
+        for (auto const& [filename, idx] : kb_named_map_) {
+            if (idx != scancode) continue;
+            if (!tryLoad(filename)) {
+                Image sentinel{};
+                sentinel.loadedSize = targetSize;
+                keyboard_icons_[scancode] = sentinel;
+                spdlog::warn("[TextureManager] Failed to lazy load keyboard icon: {}", filename);
+            }
+            return keyboard_icons_[scancode].valid() ? keyboard_icons_[scancode] : kEmpty;
+        }
+
+        const std::string hexName = std::format("{:02x}.svg", static_cast<unsigned>(scancode));
+        if (tryLoad(hexName)) return keyboard_icons_[scancode];
+
+        Image sentinel{};
+        sentinel.loadedSize = targetSize;
+        keyboard_icons_[scancode] = sentinel;
         return kEmpty;
     }
 
