@@ -22,6 +22,27 @@ namespace IntegratedMagic {
         BottomRight = 8,
     };
 
+    enum class ButtonIconType : std::uint8_t {
+        Keyboard = 0,
+        PlayStation = 1,
+        Xbox = 2,
+    };
+
+    enum class ButtonLabelVisibility : std::uint8_t {
+        Never = 0,
+        Always = 1,
+        OnModifier = 2,
+    };
+
+    enum class ButtonLabelCorner : std::uint8_t {
+        TopLeft = 0,
+        TopRight = 1,
+        BottomLeft = 2,
+        BottomRight = 3,
+        TowardCenter = 4,
+        AwayFromCenter = 5,
+    };
+
     struct StyleConfig {
         float slotRadius = 32.f;
         float ringRadius = 54.f;
@@ -49,12 +70,24 @@ namespace IntegratedMagic {
 
         bool useTextureForSlotBg = false;
 
+        ButtonIconType buttonIconType = ButtonIconType::Xbox;
+
+        bool showModifierWidget = true;
+        float modifierWidgetRadius = 14.f;
+        std::uint32_t modifierWidgetColor = 0xC8646464u;
+        std::uint32_t modifierWidgetPressedColor = 0xC8FFB464u;
+
+        ButtonLabelVisibility buttonLabelVisibility = ButtonLabelVisibility::OnModifier;
+        ButtonLabelCorner buttonLabelCorner = ButtonLabelCorner::AwayFromCenter;
+        float buttonLabelScale = 0.40f;
+        float buttonLabelFadeTime = 0.12f;
+
         std::uint32_t slotBgActive = 0xE60F161Eu;
         std::uint32_t slotBgInactive = 0xC80C0C0Cu;
 
         std::uint32_t slotRingInactive = 0x96464646u;
-        std::uint8_t  slotRingActiveAlpha = 245;
-        float         slotRingWidth = 2.5f;
+        std::uint8_t slotRingActiveAlpha = 245;
+        float slotRingWidth = 2.5f;
 
         std::uint8_t iconAlpha = 220;
 

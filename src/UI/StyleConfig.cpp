@@ -61,6 +61,42 @@ namespace IntegratedMagic {
             if (s == "Grid" || s == "3") return HudLayoutType::Grid;
             return def;
         }
+
+        ButtonIconType GetButtonIconType(const CSimpleIniA& ini, const char* section, const char* key,
+                                         ButtonIconType def) {
+            const char* v = ini.GetValue(section, key, nullptr);
+            if (!v) return def;
+            const std::string s{v};
+            if (s == "Keyboard" || s == "0") return ButtonIconType::Keyboard;
+            if (s == "PlayStation" || s == "1") return ButtonIconType::PlayStation;
+            if (s == "Xbox" || s == "2") return ButtonIconType::Xbox;
+            return def;
+        }
+
+        ButtonLabelVisibility GetButtonLabelVisibility(const CSimpleIniA& ini, const char* section, const char* key,
+                                                       ButtonLabelVisibility def) {
+            const char* v = ini.GetValue(section, key, nullptr);
+            if (!v) return def;
+            const std::string s{v};
+            if (s == "Never" || s == "0") return ButtonLabelVisibility::Never;
+            if (s == "Always" || s == "1") return ButtonLabelVisibility::Always;
+            if (s == "OnModifier" || s == "2") return ButtonLabelVisibility::OnModifier;
+            return def;
+        }
+
+        ButtonLabelCorner GetButtonLabelCorner(const CSimpleIniA& ini, const char* section, const char* key,
+                                               ButtonLabelCorner def) {
+            const char* v = ini.GetValue(section, key, nullptr);
+            if (!v) return def;
+            const std::string s{v};
+            if (s == "TopLeft" || s == "0") return ButtonLabelCorner::TopLeft;
+            if (s == "TopRight" || s == "1") return ButtonLabelCorner::TopRight;
+            if (s == "BottomLeft" || s == "2") return ButtonLabelCorner::BottomLeft;
+            if (s == "BottomRight" || s == "3") return ButtonLabelCorner::BottomRight;
+            if (s == "TowardCenter" || s == "4") return ButtonLabelCorner::TowardCenter;
+            if (s == "AwayFromCenter" || s == "5") return ButtonLabelCorner::AwayFromCenter;
+            return def;
+        }
     }
 
     void StyleConfig::Load() {
@@ -100,6 +136,22 @@ namespace IntegratedMagic {
             const char* v = ini.GetValue("HUD", "UseTextureForSlotBg", nullptr);
             if (v) useTextureForSlotBg = (_stricmp(v, "true") == 0 || std::strcmp(v, "1") == 0);
         }
+
+        buttonIconType = GetButtonIconType(ini, "General", "ButtonIconType", buttonIconType);
+
+        showModifierWidget = [&] {
+            const char* v = ini.GetValue("HUD", "ShowModifierWidget", nullptr);
+            if (!v) return showModifierWidget;
+            return _stricmp(v, "true") == 0 || std::strcmp(v, "1") == 0;
+        }();
+        modifierWidgetRadius = GetFloat(ini, "HUD", "ModifierWidgetRadius", modifierWidgetRadius);
+        modifierWidgetColor = GetColor(ini, "HUD", "ModifierWidgetColor", modifierWidgetColor);
+        modifierWidgetPressedColor = GetColor(ini, "HUD", "ModifierWidgetPressedColor", modifierWidgetPressedColor);
+
+        buttonLabelVisibility = GetButtonLabelVisibility(ini, "HUD", "ButtonLabelVisibility", buttonLabelVisibility);
+        buttonLabelCorner = GetButtonLabelCorner(ini, "HUD", "ButtonLabelCorner", buttonLabelCorner);
+        buttonLabelScale = GetFloat(ini, "HUD", "ButtonLabelScale", buttonLabelScale);
+        buttonLabelFadeTime = GetFloat(ini, "HUD", "ButtonLabelFadeTime", buttonLabelFadeTime);
 
         slotBgActive = GetColor(ini, "Colors", "SlotBgActive", slotBgActive);
         slotBgInactive = GetColor(ini, "Colors", "SlotBgInactive", slotBgInactive);
@@ -159,6 +211,10 @@ namespace IntegratedMagic {
         static const char* kAnchorNames[] = {"TopLeft",     "TopCenter",  "TopRight",     "MiddleLeft", "Center",
                                              "MiddleRight", "BottomLeft", "BottomCenter", "BottomRight"};
         static const char* kLayoutNames[] = {"Circular", "Horizontal", "Vertical", "Grid"};
+        static const char* kButtonIconTypeNames[] = {"Keyboard", "PlayStation", "Xbox"};
+        static const char* kButtonLabelVisibilityNames[] = {"Never", "Always", "OnModifier"};
+        static const char* kButtonLabelCornerNames[] = {"TopLeft",     "TopRight",     "BottomLeft",
+                                                        "BottomRight", "TowardCenter", "AwayFromCenter"};
 
         setFloat("HUD", "SlotRadius", slotRadius);
         setFloat("HUD", "RingRadius", ringRadius);
@@ -174,6 +230,19 @@ namespace IntegratedMagic {
         setFloat("HUD", "SlotSpacing", slotSpacing);
         setInt("HUD", "GridColumns", gridColumns);
         setBool("HUD", "UseTextureForSlotBg", useTextureForSlotBg);
+
+        ini.SetValue("General", "ButtonIconType", kButtonIconTypeNames[static_cast<int>(buttonIconType)]);
+
+        setBool("HUD", "ShowModifierWidget", showModifierWidget);
+        setFloat("HUD", "ModifierWidgetRadius", modifierWidgetRadius);
+        setColor("HUD", "ModifierWidgetColor", modifierWidgetColor);
+        setColor("HUD", "ModifierWidgetPressedColor", modifierWidgetPressedColor);
+
+        ini.SetValue("HUD", "ButtonLabelVisibility",
+                     kButtonLabelVisibilityNames[static_cast<int>(buttonLabelVisibility)]);
+        ini.SetValue("HUD", "ButtonLabelCorner", kButtonLabelCornerNames[static_cast<int>(buttonLabelCorner)]);
+        setFloat("HUD", "ButtonLabelScale", buttonLabelScale);
+        setFloat("HUD", "ButtonLabelFadeTime", buttonLabelFadeTime);
 
         setFloat("Popup", "SlotRadius", popupSlotRadius);
         setFloat("Popup", "RingRadius", popupRingRadius);

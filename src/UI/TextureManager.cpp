@@ -1,8 +1,10 @@
 #include "TextureManager.h"
 
+#include <format>
 #include <utility>
 
 #include "PCH.h"
+#include "UI/StyleConfig.h"
 
 #define NANOSVG_IMPLEMENTATION
 #define NANOSVG_ALL_COLOR_KEYWORDS
@@ -77,6 +79,15 @@ namespace IntegratedMagic {
                 }
             }
         }
+
+        xbox_icons_.clear();
+        ps_icons_.clear();
+        keyboard_icons_.clear();
+        LoadButtonIconDir(xbox_icon_dir_, xbox_filename_map_, xbox_icons_);
+        LoadButtonIconDir(ps_icon_dir_, ps_filename_map_, ps_icons_);
+        LoadKeyboardIconDir(kb_icon_dir_, keyboard_icons_);
+        spdlog::info("[TextureManager] Loaded {} xbox, {} ps, {} keyboard button icon(s).", xbox_icons_.size(),
+                     ps_icons_.size(), keyboard_icons_.size());
     }
 
     const TextureManager::Image& TextureManager::GetSpellIcon(const RE::SpellItem* spell) {
@@ -115,6 +126,69 @@ namespace IntegratedMagic {
         if (auto it = ui_icons_.find(idx); it != ui_icons_.end() && it->second.valid()) return it->second;
         static const Image kEmpty{};
         return kEmpty;
+    }
+
+    const TextureManager::Image& TextureManager::GetGamepadButtonIcon(int buttonIndex, ButtonIconType type) {
+        static const Image kEmpty{};
+        if (buttonIndex < 0 || buttonIndex >= kGamepadButtonCount) return kEmpty;
+
+        auto& map = (type == ButtonIconType::PlayStation) ? ps_icons_ : xbox_icons_;
+        if (auto it = map.find(buttonIndex); it != map.end() && it->second.valid()) return it->second;
+        return kEmpty;
+    }
+
+    const TextureManager::Image& TextureManager::GetKeyboardIcon(int scancode) {
+        static const Image kEmpty{};
+        if (auto it = keyboard_icons_.find(scancode); it != keyboard_icons_.end() && it->second.valid())
+            return it->second;
+        return kEmpty;
+    }
+
+    void TextureManager::LoadButtonIconDir(const std::string& dir, const std::map<std::string, int>& nameMap,
+                                           std::map<int, Image>& out) {
+        if (!std::filesystem::exists(dir)) return;
+        for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+            const auto& path = entry.path();
+            if (path.extension() != ".svg") continue;
+            const std::string filename = path.filename().string();
+            auto it = nameMap.find(filename);
+            if (it == nameMap.end()) continue;
+            Image img;
+            if (LoadSVG(path.string().c_str(), img, 64))
+                out[it->second] = img;
+            else
+                spdlog::error("[TextureManager] Failed to load button icon: {}", filename);
+        }
+    }
+
+    void TextureManager::LoadKeyboardIconDir(const std::string& dir, std::map<int, Image>& out) {
+        if (!std::filesystem::exists(dir)) return;
+        for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+            const auto& path = entry.path();
+            if (path.extension() != ".svg") continue;
+
+            const std::string filename = path.filename().string();
+            const std::string stem = path.stem().string();
+
+            if (auto it = kb_named_map_.find(filename); it != kb_named_map_.end()) {
+                Image img;
+                if (LoadSVG(path.string().c_str(), img, 64))
+                    out[it->second] = img;
+                else
+                    spdlog::error("[TextureManager] Failed to load named keyboard icon: {}", filename);
+                continue;
+            }
+
+            try {
+                const int scancode = static_cast<int>(std::stoul(stem, nullptr, 16));
+                Image img;
+                if (LoadSVG(path.string().c_str(), img, 64))
+                    out[scancode] = img;
+                else
+                    spdlog::error("[TextureManager] Failed to load keyboard icon: {}", stem);
+            } catch (...) {
+            }
+        }
     }
 
     SpellIconType TextureManager::ClassifySpell(const RE::SpellItem* spell) {

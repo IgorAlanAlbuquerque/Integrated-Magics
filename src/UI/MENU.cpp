@@ -271,6 +271,25 @@ namespace {
             cfg.hudVisible = hudVisible;
             dirty = true;
         }
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        {
+            auto& st = IntegratedMagic::StyleConfig::Get();
+            const std::string iconTypeNames =
+                IntegratedMagic::Strings::Get("Item_ButtonIcon_Keyboard", "Keyboard") + '\0' +
+                IntegratedMagic::Strings::Get("Item_ButtonIcon_PlayStation", "PlayStation") + '\0' +
+                IntegratedMagic::Strings::Get("Item_ButtonIcon_Xbox", "Xbox") + '\0';
+            int iconTypeIdx = static_cast<int>(st.buttonIconType);
+            ImGui::SetNextItemWidth(180.0f);
+            if (ImGui::Combo(IntegratedMagic::Strings::Get("Item_ButtonIconType", "Button icons##buttonicons").c_str(),
+                             &iconTypeIdx, iconTypeNames.c_str())) {
+                st.buttonIconType = static_cast<IntegratedMagic::ButtonIconType>(iconTypeIdx);
+                dirty = true;
+            }
+        }
     }
 
     void DrawControlsTab(IntegratedMagic::MagicConfig& cfg, bool& dirty) {

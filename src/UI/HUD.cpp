@@ -290,6 +290,104 @@ namespace IntegratedMagic::HUD {
             ImGui::EndTooltip();
         }
 
+        float DrawActionBadge(ImDrawList* dl, ImVec2 origin, float iconSize, const TextureManager::Image& icon,
+                              const char* fallbackLabel, const char* actionLabel, ImU32 bgColor) {
+            constexpr float kGap = 6.f;
+
+            if (icon.valid()) {
+                const ImVec2 ip0 = origin;
+                const ImVec2 ip1 = {ip0.x + iconSize, ip0.y + iconSize};
+                DL::AddImage(dl, reinterpret_cast<ImTextureID>(icon.texture), ip0, ip1, {0.f, 0.f}, {1.f, 1.f},
+                             IM_COL32(255, 255, 255, 220));
+
+                ImVec2 ts{};
+                ImGui::CalcTextSize(&ts, actionLabel, nullptr, false, -1.f);
+                ImGui::SetCursorScreenPos({ip1.x + kGap, ip0.y + (iconSize - ts.y) * 0.5f});
+                ImGui::TextDisabled("%s", actionLabel);
+
+                return iconSize + kGap + ts.x + kGap * 2.f;
+            } else {
+                constexpr float kPad = 4.f;
+                const float chipW = iconSize + kPad * 2.f;
+                const float chipH = iconSize + kPad * 2.f;
+                const ImVec2 chipP0 = origin;
+                const ImVec2 chipP1 = {chipP0.x + chipW, chipP0.y + chipH};
+                DL::AddRectFilled(dl, chipP0, chipP1, bgColor, 4.f, 0);
+                DL::AddRect(dl, chipP0, chipP1, IM_COL32(200, 200, 200, 80), 4.f, 0, 1.f);
+
+                ImVec2 lts{};
+                ImGui::CalcTextSize(&lts, fallbackLabel, nullptr, false, -1.f);
+                ImGui::SetCursorScreenPos({chipP0.x + (chipW - lts.x) * 0.5f, chipP0.y + (chipH - lts.y) * 0.5f});
+                ImGui::TextUnformatted(fallbackLabel);
+
+                ImVec2 ts{};
+                ImGui::CalcTextSize(&ts, actionLabel, nullptr, false, -1.f);
+                ImGui::SetCursorScreenPos({chipP1.x + kGap, chipP0.y + (chipH - ts.y) * 0.5f});
+                ImGui::TextDisabled("%s", actionLabel);
+
+                return chipW + kGap + ts.x + kGap * 2.f;
+            }
+        }
+
+        void DrawPopupActionHints(ImDrawList* dl, ImVec2 popupPos, ImVec2 popupSize, bool isShoutOrPower,
+                                  bool hoverRight) {
+            const auto& st = StyleConfig::Get();
+            const auto iconType = st.buttonIconType;
+            constexpr float kIconSize = 32.f;
+            constexpr float kBarPad = 8.f;
+            constexpr float kSpacing = 16.f;
+
+            const TextureManager::Image* assignIcon = nullptr;
+            const TextureManager::Image* clearIcon = nullptr;
+            const char* assignFallback = "LMB";
+            const char* clearFallback = "RMB";
+
+            static const TextureManager::Image kEmpty{};
+
+            if (iconType == ButtonIconType::Xbox) {
+                assignIcon = &TextureManager::GetGamepadButtonIcon(12, ButtonIconType::Xbox);
+                clearIcon = &TextureManager::GetGamepadButtonIcon(11, ButtonIconType::Xbox);
+                assignFallback = "X";
+                clearFallback = "B";
+            } else if (iconType == ButtonIconType::PlayStation) {
+                assignIcon = &TextureManager::GetGamepadButtonIcon(12, ButtonIconType::PlayStation);
+                clearIcon = &TextureManager::GetGamepadButtonIcon(11, ButtonIconType::PlayStation);
+                assignFallback = "\xE2\x96\xA1";
+                clearFallback = "\xE2\x97\x8B";
+            } else {
+                assignIcon = &TextureManager::GetKeyboardIcon(kMouseLeftIndex);
+                clearIcon = &TextureManager::GetKeyboardIcon(kMouseRightIndex);
+                assignFallback = "LMB";
+                clearFallback = "RMB";
+            }
+
+            const std::string assignText = isShoutOrPower
+                                               ? Strings::Get("Popup_Hint_Assign", "Assign")
+                                               : (hoverRight ? Strings::Get("Popup_Hint_AssignRight", "Assign Right")
+                                                             : Strings::Get("Popup_Hint_AssignLeft", "Assign Left"));
+            const std::string clearText = Strings::Get("Popup_Hint_Clear", "Clear");
+
+            const float chipW = kIconSize;
+            ImVec2 assignTS{}, clearTS{};
+            ImGui::CalcTextSize(&assignTS, assignText.c_str(), nullptr, false, -1.f);
+            ImGui::CalcTextSize(&clearTS, clearText.c_str(), nullptr, false, -1.f);
+            const float totalW = chipW + 6.f + assignTS.x + 6.f * 2.f + kSpacing + chipW + 6.f + clearTS.x + 6.f * 2.f;
+            const float barH = kIconSize;
+
+            const ImVec2 barOrigin = {popupPos.x + (popupSize.x - totalW) * 0.5f,
+                                      popupPos.y + popupSize.y - barH - kBarPad};
+
+            const ImU32 assignBg = IM_COL32(40, 100, 200, 160);
+            const ImU32 clearBg = IM_COL32(160, 40, 40, 160);
+
+            float x = barOrigin.x;
+            x += DrawActionBadge(dl, {x, barOrigin.y}, kIconSize, assignIcon ? *assignIcon : kEmpty, assignFallback,
+                                 assignText.c_str(), assignBg);
+            x += kSpacing;
+            DrawActionBadge(dl, {x, barOrigin.y}, kIconSize, clearIcon ? *clearIcon : kEmpty, clearFallback,
+                            clearText.c_str(), clearBg);
+        }
+
         void DrawSpellModeWidget(ImDrawList* dl, bool clicked, ImVec2 origin, float availW, std::uint32_t formID,
                                  const char*) {
             if (!formID) return;
@@ -472,6 +570,10 @@ namespace IntegratedMagic::HUD {
             const bool clicked = g_mouseClicked.exchange(false, std::memory_order_relaxed);
             const bool rightClicked = g_mouseRightClicked.exchange(false, std::memory_order_relaxed);
 
+            bool g_hintsVisible = false;
+            bool g_hintsShout = false;
+            bool g_hintsHoverRight = false;
+
             const int n = static_cast<int>(Slots::GetSlotCount());
             const auto& st = Style();
             const float dynPopupR = DynamicRingRadius(n, st.popupSlotRadius, st.popupRingRadius, st.popupSlotGap);
@@ -548,9 +650,6 @@ namespace IntegratedMagic::HUD {
                                 DL::AddCircleFilled(dl, center, st.popupSlotRadius - 1.f, IM_COL32(255, 200, 80, 40),
                                                     48);
 
-                                MouseTooltip(
-                                    Strings::Get("Popup_TipShout", "LMB assign  |  RMB clear  [Shout/Power]").c_str());
-
                                 if (clicked) MagicAssign::TryAssignHoveredShoutToSlot(i);
                                 if (rightClicked) {
                                     if (shoutID)
@@ -560,6 +659,10 @@ namespace IntegratedMagic::HUD {
                                         MagicAssign::TryClearSlotHand(i, Slots::Hand::Left);
                                     }
                                 }
+
+                                g_hintsVisible = true;
+                                g_hintsShout = true;
+                                g_hintsHoverRight = false;
                             } else {
                                 const bool hoverRight = dx >= 0.f;
                                 const ImU32 hlColor = IM_COL32(255, 200, 80, 40);
@@ -567,13 +670,6 @@ namespace IntegratedMagic::HUD {
                                     FillSector(dl, center, st.popupSlotRadius - 1.f, -kPI * 0.5f, kPI * 0.5f, hlColor);
                                 else
                                     FillSector(dl, center, st.popupSlotRadius - 1.f, kPI * 0.5f, kPI * 1.5f, hlColor);
-
-                                const std::string tipRight =
-                                    Strings::Get("Popup_TipRight", "LMB assign  |  RMB clear  [Right]");
-                                const std::string tipLeft =
-                                    Strings::Get("Popup_TipLeft", "LMB assign  |  RMB clear  [Left]");
-                                const char* tip = hoverRight ? tipRight.c_str() : tipLeft.c_str();
-                                MouseTooltip(tip);
 
                                 if (clicked) {
                                     if (hoverRight)
@@ -591,6 +687,10 @@ namespace IntegratedMagic::HUD {
                                             MagicAssign::TryClearSlotHand(i, Slots::Hand::Left);
                                     }
                                 }
+
+                                g_hintsVisible = true;
+                                g_hintsShout = false;
+                                g_hintsHoverRight = hoverRight;
                             }
                         }
                     }
@@ -613,6 +713,8 @@ namespace IntegratedMagic::HUD {
 
                 const bool mouseOutside = clicked && (g_mousePos.x < popupPos.x || g_mousePos.x > popupEnd.x ||
                                                       g_mousePos.y < popupPos.y || g_mousePos.y > popupEnd.y);
+
+                if (g_hintsVisible) DrawPopupActionHints(dl, popupPos, popupSize, g_hintsShout, g_hintsHoverRight);
 
                 if (ImGui::IsKeyPressed(ImGuiKey_Escape) || mouseOutside) {
                     if (g_popupWindow) g_popupWindow->IsOpen = false;
@@ -648,7 +750,6 @@ namespace IntegratedMagic::HUD {
     }
 
     void DrawHudElement() {
-        if (!g_hudVisible.load(std::memory_order_relaxed)) return;
         if (IsHardBlocked()) return;
         if (Slots::GetSlotCount() == 0) return;
 
@@ -657,8 +758,9 @@ namespace IntegratedMagic::HUD {
         const bool inMagicMenu = ui && ui->IsMenuOpen(magicMenu);
 
         if (inMagicMenu && Input::ConsumeHudToggle()) ToggleDetailPopup();
-
         if (!inMagicMenu && g_popupWindow && g_popupWindow->IsOpen.load()) g_popupWindow->IsOpen = false;
+
+        if (!g_hudVisible.load(std::memory_order_relaxed)) return;
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.f, 0.f});
