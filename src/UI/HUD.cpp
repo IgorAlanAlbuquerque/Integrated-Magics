@@ -295,7 +295,7 @@ namespace IntegratedMagic::HUD {
                 const ImVec2 ip0 = {c.x - iconSize * 0.5f, c.y - iconSize * 0.5f};
                 const ImVec2 ip1 = {c.x + iconSize * 0.5f, c.y + iconSize * 0.5f};
                 DL::AddImage(dl, reinterpret_cast<ImTextureID>(icon.texture), ip0, ip1, {0.f, 0.f}, {1.f, 1.f},
-                             IM_COL32(255, 255, 255, modHeld ? 255 : 200));
+                             IM_COL32(255, 255, 255, 255));
             }
         }
 
@@ -360,7 +360,7 @@ namespace IntegratedMagic::HUD {
                 const ImVec2 ip0 = origin;
                 const ImVec2 ip1 = {ip0.x + iconSize, ip0.y + iconSize};
                 DL::AddImage(dl, reinterpret_cast<ImTextureID>(icon.texture), ip0, ip1, {0.f, 0.f}, {1.f, 1.f},
-                             IM_COL32(255, 255, 255, 220));
+                             IM_COL32(255, 255, 255, 255));
 
                 ImVec2 ts{};
                 ImGui::CalcTextSize(&ts, actionLabel, nullptr, false, -1.f);

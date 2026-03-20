@@ -40,6 +40,7 @@ namespace IntegratedMagic {
             ID3D11ShaderResourceView* texture{nullptr};
             std::int32_t width{0};
             std::int32_t height{0};
+            int loadedSize{0};
             bool valid() const noexcept { return texture != nullptr; }
         };
 
@@ -227,9 +228,7 @@ namespace IntegratedMagic {
 
         static SpellIconType ClassifySpell(const RE::SpellItem* spell);
 
-        static void LoadButtonIconDir(const std::string& dir, const std::map<std::string, int>& map,
-                                      std::map<int, Image>& out);
-
-        static void LoadKeyboardIconDir(const std::string& dir, std::map<int, Image>& out);
+        static const Image& LoadGamepadIconOnDemand(int buttonIndex, ButtonIconType type);
+        static const Image& LoadKeyboardIconOnDemand(int scancode);
     };
 }
