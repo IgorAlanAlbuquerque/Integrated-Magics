@@ -287,15 +287,19 @@ namespace IntegratedMagic::HUD {
             }
 
             const float r = st.modifierWidgetRadius;
+            const ImVec2 pos = {c.x + st.modifierWidgetOffsetX, c.y + st.modifierWidgetOffsetY};
 
             const auto& icon = ResolveModifierIcon();
 
             if (icon.valid()) {
-                const float iconSize = r * 1.6f;
-                const ImVec2 ip0 = {c.x - iconSize * 0.5f, c.y - iconSize * 0.5f};
-                const ImVec2 ip1 = {c.x + iconSize * 0.5f, c.y + iconSize * 0.5f};
+                const float iconSize = r * 2.f;
+                const ImVec2 ip0 = {pos.x - iconSize * 0.5f, pos.y - iconSize * 0.5f};
+                const ImVec2 ip1 = {pos.x + iconSize * 0.5f, pos.y + iconSize * 0.5f};
+
+                const ImU32 col = modHeld ? st.modifierWidgetPressedColor : st.modifierWidgetColor;
+                const std::uint8_t alpha = static_cast<std::uint8_t>((col >> 24) & 0xFF);
                 DL::AddImage(dl, reinterpret_cast<ImTextureID>(icon.texture), ip0, ip1, {0.f, 0.f}, {1.f, 1.f},
-                             IM_COL32(255, 255, 255, 255));
+                             IM_COL32(255, 255, 255, alpha));
             }
         }
 
