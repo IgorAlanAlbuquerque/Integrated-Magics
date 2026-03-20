@@ -62,17 +62,22 @@ namespace IntegratedMagic {
 #ifdef DEBUG
         const char* handStr = IsLeft(hand) ? "Left" : "Right";
 #endif
+        const auto& cfg = IntegratedMagic::GetMagicConfig();
         switch (ss.mode) {
             case Hold:
                 hm.holdActive = true;
                 if (hm.wantAutoAttack) {
                     hm.waitingAutoAfterEquip = true;
                     hm.waitingEnableBumperSecs = 0.f;
-                    hm.waitingBeginCast = false;
+                    hm.waitingBeginCast = true;
                     hm.beginCastWaitSecs = 0.f;
                     hm.beginCastRetries = 0;
                     _session.attackEnabled = false;
-                    _cast.castStopsToSkip = _session.wasHandsDown ? 2 : 1;
+                    if (cfg.skipEquipAnimationPatch) {
+                        _cast.castStopsToSkip = _session.wasHandsDown ? 2 : 1;
+                    } else {
+                        _cast.castStopsToSkip = 0;
+                    }
                 }
 #ifdef DEBUG
                 spdlog::info(
@@ -81,18 +86,21 @@ namespace IntegratedMagic {
                     handStr, hm.wantAutoAttack, hm.waitingAutoAfterEquip, _cast.castStopsToSkip);
 #endif
                 break;
-
             case Automatic:
                 hm.autoActive = true;
                 hm.waitingChargeComplete = true;
                 hm.waitingAutoAfterEquip = true;
                 hm.wantAutoAttack = true;
                 hm.waitingEnableBumperSecs = 0.f;
-                hm.waitingBeginCast = false;
+                hm.waitingBeginCast = true; 
                 hm.beginCastWaitSecs = 0.f;
                 hm.beginCastRetries = 0;
                 _session.attackEnabled = false;
-                _cast.castStopsToSkip = _session.wasHandsDown ? 2 : 1;
+                if (cfg.skipEquipAnimationPatch) {
+                    _cast.castStopsToSkip = _session.wasHandsDown ? 2 : 1;
+                } else {
+                    _cast.castStopsToSkip = 0;
+                }
 #ifdef DEBUG
                 spdlog::info(
                     "[State] EnterHand: hand={} mode=Automatic waitingChargeComplete=true "
@@ -100,7 +108,6 @@ namespace IntegratedMagic {
                     handStr, _cast.castStopsToSkip);
 #endif
                 break;
-
             case Press:
                 hm.pressActive = true;
 #ifdef DEBUG
