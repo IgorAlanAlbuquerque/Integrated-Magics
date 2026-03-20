@@ -35,10 +35,10 @@ namespace IntegratedMagic {
     };
 
     enum class ButtonLabelCorner : std::uint8_t {
-        TopLeft = 0,
-        TopRight = 1,
-        BottomLeft = 2,
-        BottomRight = 3,
+        Top = 0,
+        Right = 1,
+        Bottom = 2,
+        Left = 3,
         TowardCenter = 4,
         AwayFromCenter = 5,
     };

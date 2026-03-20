@@ -655,33 +655,43 @@ namespace {
             {
                 using C = IntegratedMagic::ButtonLabelCorner;
                 ImGui::TextDisabled("%s", S::Get("HUD_BtnLbl_Corner", "Corner").c_str());
-                struct CornerCell {
-                    C corner;
-                    const char* label;
-                };
-                static constexpr CornerCell kGrid[2][2] = {
-                    {{C::TopLeft, "##BL_TL"}, {C::TopRight, "##BL_TR"}},
-                    {{C::BottomLeft, "##BL_BL"}, {C::BottomRight, "##BL_BR"}},
-                };
-                for (int row = 0; row < 2; ++row) {
-                    for (int col = 0; col < 2; ++col) {
-                        if (col > 0) ImGui::SameLine(0.f, 2.f);
-                        const auto& cell = kGrid[row][col];
-                        const bool active = (st.buttonLabelCorner == cell.corner);
-                        if (active) ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
-                        if (ImGui::Button(cell.label, {28.f, 20.f})) {
-                            st.buttonLabelCorner = cell.corner;
-                            dirty = true;
-                        }
-                        if (active) ImGui::PopStyleColor();
+
+                constexpr float kBtnSz = 28.f;
+                constexpr float kGap = 2.f;
+                constexpr float kInvis = kBtnSz + kGap;
+
+                auto cornerBtn = [&](C corner, const char* id) {
+                    const bool active = (st.buttonLabelCorner == corner);
+                    if (active) ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
+                    if (ImGui::Button(id, {kBtnSz, kBtnSz})) {
+                        st.buttonLabelCorner = corner;
+                        dirty = true;
                     }
-                }
-                ImGui::SameLine(0.f, 16.f);
+                    if (active) ImGui::PopStyleColor();
+                };
+
+                ImGui::Dummy({kInvis, kBtnSz});
+                ImGui::SameLine(0.f, kGap);
+                cornerBtn(C::Top, "##BL_T");
+                ImGui::SameLine(0.f, kGap);
+                ImGui::Dummy({kInvis, kBtnSz});
+
+                cornerBtn(C::Left, "##BL_L");
+                ImGui::SameLine(0.f, kGap);
+                ImGui::Dummy({kBtnSz, kBtnSz});
+                ImGui::SameLine(0.f, kGap);
+                cornerBtn(C::Right, "##BL_R");
+
+                ImGui::Dummy({kInvis, kBtnSz});
+                ImGui::SameLine(0.f, kGap);
+                cornerBtn(C::Bottom, "##BL_B");
+
+                ImGui::SameLine(0.f, 20.f);
                 ImGui::BeginGroup();
                 {
                     const bool tc = (st.buttonLabelCorner == C::TowardCenter);
                     if (tc) ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
-                    if (ImGui::Button(S::Get("HUD_BtnLbl_TowardCenter", "Inward##tc").c_str(), {60.f, 20.f})) {
+                    if (ImGui::Button(S::Get("HUD_BtnLbl_TowardCenter", "Inward##tc").c_str(), {150.f, kBtnSz})) {
                         st.buttonLabelCorner = C::TowardCenter;
                         dirty = true;
                     }
@@ -690,7 +700,7 @@ namespace {
                 {
                     const bool ac = (st.buttonLabelCorner == C::AwayFromCenter);
                     if (ac) ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
-                    if (ImGui::Button(S::Get("HUD_BtnLbl_AwayFromCenter", "Outward##ac").c_str(), {60.f, 20.f})) {
+                    if (ImGui::Button(S::Get("HUD_BtnLbl_AwayFromCenter", "Outward##ac").c_str(), {150.f, kBtnSz})) {
                         st.buttonLabelCorner = C::AwayFromCenter;
                         dirty = true;
                     }

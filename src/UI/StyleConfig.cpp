@@ -89,10 +89,10 @@ namespace IntegratedMagic {
             const char* v = ini.GetValue(section, key, nullptr);
             if (!v) return def;
             const std::string s{v};
-            if (s == "TopLeft" || s == "0") return ButtonLabelCorner::TopLeft;
-            if (s == "TopRight" || s == "1") return ButtonLabelCorner::TopRight;
-            if (s == "BottomLeft" || s == "2") return ButtonLabelCorner::BottomLeft;
-            if (s == "BottomRight" || s == "3") return ButtonLabelCorner::BottomRight;
+            if (s == "Top" || s == "0") return ButtonLabelCorner::Top;
+            if (s == "Right" || s == "1") return ButtonLabelCorner::Right;
+            if (s == "Bottom" || s == "2") return ButtonLabelCorner::Bottom;
+            if (s == "Left" || s == "3") return ButtonLabelCorner::Left;
             if (s == "TowardCenter" || s == "4") return ButtonLabelCorner::TowardCenter;
             if (s == "AwayFromCenter" || s == "5") return ButtonLabelCorner::AwayFromCenter;
             return def;
@@ -115,7 +115,6 @@ namespace IntegratedMagic {
         popupSlotRadius = GetFloat(ini, "Popup", "SlotRadius", popupSlotRadius);
         popupRingRadius = GetFloat(ini, "Popup", "RingRadius", popupRingRadius);
         popupSlotGap = GetFloat(ini, "Popup", "SlotGap", popupSlotGap);
-        popupLayout = GetLayout(ini, "Popup", "Layout", popupLayout);
         modeWidgetW = GetFloat(ini, "Popup", "ModeWidgetWidth", modeWidgetW);
         iconSizeFactor = GetFloat(ini, "Icons", "SizeFactor", iconSizeFactor);
         iconOffsetFactor = GetFloat(ini, "Icons", "OffsetFactor", iconOffsetFactor);
@@ -227,8 +226,8 @@ namespace IntegratedMagic {
         static const char* kLayoutNames[] = {"Circular", "Horizontal", "Vertical", "Grid"};
         static const char* kButtonIconTypeNames[] = {"Keyboard", "PlayStation", "Xbox"};
         static const char* kButtonLabelVisibilityNames[] = {"Never", "Always", "OnModifier"};
-        static const char* kButtonLabelCornerNames[] = {"TopLeft",     "TopRight",     "BottomLeft",
-                                                        "BottomRight", "TowardCenter", "AwayFromCenter"};
+        static const char* kButtonLabelCornerNames[] = {"Top",  "Right",        "Bottom",
+                                                        "Left", "TowardCenter", "AwayFromCenter"};
 
         setFloat("HUD", "SlotRadius", slotRadius);
         setFloat("HUD", "RingRadius", ringRadius);
@@ -269,7 +268,6 @@ namespace IntegratedMagic {
         setFloat("Popup", "SlotRadius", popupSlotRadius);
         setFloat("Popup", "RingRadius", popupRingRadius);
         setFloat("Popup", "SlotGap", popupSlotGap);
-        ini.SetValue("Popup", "Layout", kLayoutNames[static_cast<int>(popupLayout)]);
         setFloat("Popup", "ModeWidgetWidth", modeWidgetW);
         setU8("Popup", "OverlayAlpha", overlayAlpha);
 
