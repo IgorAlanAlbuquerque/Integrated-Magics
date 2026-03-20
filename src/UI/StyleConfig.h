@@ -55,6 +55,7 @@ namespace IntegratedMagic {
         float popupSlotRadius = 48.f;
         float popupRingRadius = 90.f;
         float popupSlotGap = 24.f;
+        HudLayoutType popupLayout = HudLayoutType::Circular;
         float modeWidgetW = 58.f;
         float iconSizeFactor = 0.90f;
         float iconOffsetFactor = 0.28f;

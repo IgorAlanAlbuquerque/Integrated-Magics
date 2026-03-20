@@ -724,6 +724,10 @@ namespace IntegratedMagic::HUD {
             const ImVec2 popupEnd = {popupPos.x + popupSize.x, popupPos.y + popupSize.y};
             const ImVec2 ringCenter = {io->DisplaySize.x * 0.5f, io->DisplaySize.y * 0.5f};
 
+            LayoutVec2 popupRelPos[SlotLayout::kMaxSlots]{};
+            SlotLayout::Compute(st.popupLayout, n, st.popupSlotRadius, dynPopupR, st.popupSlotGap, st.gridColumns,
+                                popupRelPos);
+
             ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.f, 0.f});
 
@@ -743,7 +747,7 @@ namespace IntegratedMagic::HUD {
                     hovType == MagicAssign::HoveredMagicType::Shout || hovType == MagicAssign::HoveredMagicType::Power;
 
                 for (int i = 0; i < n; ++i) {
-                    const ImVec2 center = SlotCenter(ringCenter, dynPopupR, i, n);
+                    const ImVec2 center = {ringCenter.x + popupRelPos[i].x, ringCenter.y + popupRelPos[i].y};
                     const auto rID = Slots::GetSlotSpell(i, Slots::Hand::Right);
                     const auto lID = Slots::GetSlotSpell(i, Slots::Hand::Left);
                     const auto shoutID = Slots::GetSlotShout(i);

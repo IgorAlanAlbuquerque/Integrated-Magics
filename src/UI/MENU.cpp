@@ -289,21 +289,6 @@ namespace {
                 st.buttonIconType = static_cast<IntegratedMagic::ButtonIconType>(iconTypeIdx);
                 dirty = true;
             }
-
-            ImGui::Spacing();
-
-            const std::string modVisNames = IntegratedMagic::Strings::Get("Item_ModVis_Never", "Never") + '\0' +
-                                            IntegratedMagic::Strings::Get("Item_ModVis_Always", "Always") + '\0' +
-                                            IntegratedMagic::Strings::Get("Item_ModVis_HideOnPress", "Hide on press") +
-                                            '\0';
-            int modVisIdx = static_cast<int>(st.modifierWidgetVisibility);
-            ImGui::SetNextItemWidth(180.0f);
-            if (ImGui::Combo(
-                    IntegratedMagic::Strings::Get("Item_ModifierVisibility", "Modifier button##modvis").c_str(),
-                    &modVisIdx, modVisNames.c_str())) {
-                st.modifierWidgetVisibility = static_cast<IntegratedMagic::ModifierWidgetVisibility>(modVisIdx);
-                dirty = true;
-            }
         }
     }
 
@@ -555,6 +540,20 @@ namespace {
         ImGui::Spacing();
 
         {
+            const std::string popupLayoutNames =
+                S::Get("HUD_Layout_Circular", "Circular") + '\0' + S::Get("HUD_Layout_Horizontal", "Horizontal") +
+                '\0' + S::Get("HUD_Layout_Vertical", "Vertical") + '\0' + S::Get("HUD_Layout_Grid", "Grid") + '\0';
+            int popupLayoutIdx = static_cast<int>(st.popupLayout);
+            ImGui::SetNextItemWidth(180.f);
+            if (ImGui::Combo(S::Get("HUD_PopupLayout_Label", "Layout##popuplayout").c_str(), &popupLayoutIdx,
+                             popupLayoutNames.c_str())) {
+                st.popupLayout = static_cast<IntegratedMagic::HudLayoutType>(popupLayoutIdx);
+                dirty = true;
+            }
+            ImGui::Spacing();
+        }
+
+        {
             ImGui::SetNextItemWidth(150.f);
             float psr = st.popupSlotRadius;
             if (ImGui::InputFloat(S::Get("HUD_PopupSlotR_Label", "Slot R##popupslotradius").c_str(), &psr, 1.f, 5.f,
@@ -598,6 +597,18 @@ namespace {
         ImGui::Spacing();
 
         if (ImGui::CollapsingHeader(S::Get("HUD_Section_Modifier", "Modifier Button").c_str())) {
+            ImGui::Spacing();
+
+            const std::string modVisNames = S::Get("Item_ModVis_Never", "Never") + '\0' +
+                                            S::Get("Item_ModVis_Always", "Always") + '\0' +
+                                            S::Get("Item_ModVis_HideOnPress", "Hide on press") + '\0';
+            int modVisIdx = static_cast<int>(st.modifierWidgetVisibility);
+            ImGui::SetNextItemWidth(180.f);
+            if (ImGui::Combo(S::Get("Item_ModifierVisibility", "Visibility##modvis").c_str(), &modVisIdx,
+                             modVisNames.c_str())) {
+                st.modifierWidgetVisibility = static_cast<IntegratedMagic::ModifierWidgetVisibility>(modVisIdx);
+                dirty = true;
+            }
             ImGui::Spacing();
 
             ImGui::SetNextItemWidth(150.f);
