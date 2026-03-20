@@ -154,7 +154,7 @@ namespace IntegratedMagic {
             auto it = nameMap.find(filename);
             if (it == nameMap.end()) continue;
             Image img;
-            if (LoadSVG(path.string().c_str(), img, 64))
+            if (LoadSVG(path.string().c_str(), img, 256))
                 out[it->second] = img;
             else
                 spdlog::error("[TextureManager] Failed to load button icon: {}", filename);
@@ -172,7 +172,7 @@ namespace IntegratedMagic {
 
             if (auto it = kb_named_map_.find(filename); it != kb_named_map_.end()) {
                 Image img;
-                if (LoadSVG(path.string().c_str(), img, 64))
+                if (LoadSVG(path.string().c_str(), img, 256))
                     out[it->second] = img;
                 else
                     spdlog::error("[TextureManager] Failed to load named keyboard icon: {}", filename);
@@ -182,7 +182,7 @@ namespace IntegratedMagic {
             try {
                 const int scancode = static_cast<int>(std::stoul(stem, nullptr, 16));
                 Image img;
-                if (LoadSVG(path.string().c_str(), img, 64))
+                if (LoadSVG(path.string().c_str(), img, 256))
                     out[scancode] = img;
                 else
                     spdlog::error("[TextureManager] Failed to load keyboard icon: {}", stem);

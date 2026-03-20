@@ -237,6 +237,68 @@ namespace IntegratedMagic::HUD {
             DL::AddCircle(dl, c, r, st.ringCenterBorder, 16, 1.f);
         }
 
+        const TextureManager::Image& ResolveModifierIcon() {
+            static const TextureManager::Image kEmpty{};
+            const auto& cfg = IntegratedMagic::GetMagicConfig();
+            const auto& st = StyleConfig::Get();
+
+            const int kbPos = cfg.modifierKeyboardPosition;
+            const int gpPos = cfg.modifierGamepadPosition;
+
+            if (st.buttonIconType == ButtonIconType::Keyboard) {
+                if (kbPos <= 0) return kEmpty;
+                const auto& ic = cfg.slotInput[0];
+                int scancode = -1;
+                if (kbPos == 1)
+                    scancode = ic.KeyboardScanCode1.load(std::memory_order_relaxed);
+                else if (kbPos == 2)
+                    scancode = ic.KeyboardScanCode2.load(std::memory_order_relaxed);
+                else
+                    scancode = ic.KeyboardScanCode3.load(std::memory_order_relaxed);
+                if (scancode < 0) return kEmpty;
+                return TextureManager::GetKeyboardIcon(scancode);
+            } else {
+                if (gpPos <= 0) return kEmpty;
+                const auto& ic = cfg.slotInput[0];
+                int buttonIndex = -1;
+                if (gpPos == 1)
+                    buttonIndex = ic.GamepadButton1.load(std::memory_order_relaxed);
+                else if (gpPos == 2)
+                    buttonIndex = ic.GamepadButton2.load(std::memory_order_relaxed);
+                else
+                    buttonIndex = ic.GamepadButton3.load(std::memory_order_relaxed);
+                if (buttonIndex < 0) return kEmpty;
+                return TextureManager::GetGamepadButtonIcon(buttonIndex, st.buttonIconType);
+            }
+        }
+
+        void DrawModifierWidget(ImDrawList* dl, ImVec2 c, bool modHeld) {
+            const auto& st = StyleConfig::Get();
+
+            switch (st.modifierWidgetVisibility) {
+                case ModifierWidgetVisibility::Never:
+                    return;
+                case ModifierWidgetVisibility::HideOnPress:
+                    if (modHeld) return;
+                    break;
+                case ModifierWidgetVisibility::Always:
+                default:
+                    break;
+            }
+
+            const float r = st.modifierWidgetRadius;
+
+            const auto& icon = ResolveModifierIcon();
+
+            if (icon.valid()) {
+                const float iconSize = r * 1.6f;
+                const ImVec2 ip0 = {c.x - iconSize * 0.5f, c.y - iconSize * 0.5f};
+                const ImVec2 ip1 = {c.x + iconSize * 0.5f, c.y + iconSize * 0.5f};
+                DL::AddImage(dl, reinterpret_cast<ImTextureID>(icon.texture), ip0, ip1, {0.f, 0.f}, {1.f, 1.f},
+                             IM_COL32(255, 255, 255, modHeld ? 255 : 200));
+            }
+        }
+
         void DrawOverlayAndCursor(ImVec2 displaySize, ImVec2 cursorPos) {
             ImDrawList* bg = ImGui::GetBackgroundDrawList();
             DL::AddRectFilled(bg, {0.f, 0.f}, {displaySize.x, displaySize.y}, IM_COL32(0, 0, 0, Style().overlayAlpha),
@@ -520,6 +582,18 @@ namespace IntegratedMagic::HUD {
             LayoutVec2 relPos[SlotLayout::kMaxSlots]{};
             SlotLayout::Compute(st.hudLayout, n, st.slotRadius, st.ringRadius, st.slotSpacing, st.gridColumns, relPos);
 
+            auto ScaledCenter = [&](int idx) -> ImVec2 {
+                const float scale = SlotAnimator::GetScale(idx);
+                const float rx = relPos[idx].x;
+                const float ry = relPos[idx].y;
+                const float len = std::sqrt(rx * rx + ry * ry);
+                const float push = (scale - 1.f) * st.slotRadius;
+                if (len > 0.5f) {
+                    return {hudOrigin.x + rx + (rx / len) * push, hudOrigin.y + ry + (ry / len) * push};
+                }
+                return {hudOrigin.x + rx, hudOrigin.y + ry};
+            };
+
             ImGui::SetNextWindowPos({hudOrigin.x - animHalf.x, hudOrigin.y - animHalf.y}, ImGuiCond_Always, {0.f, 0.f});
             ImGui::SetNextWindowSize({animHalf.x * 2.f, animHalf.y * 2.f}, ImGuiCond_Always);
             ImGui::SetNextWindowBgAlpha(0.f);
@@ -536,7 +610,7 @@ namespace IntegratedMagic::HUD {
 
             for (int i = 0; i < n; ++i) {
                 if (i == activeSlot) continue;
-                const ImVec2 center = {hudOrigin.x + relPos[i].x, hudOrigin.y + relPos[i].y};
+                const ImVec2 center = ScaledCenter(i);
                 const float slotR = st.slotRadius * SlotAnimator::GetScale(i);
                 const auto rID = Slots::GetSlotSpell(i, Slots::Hand::Right);
                 const auto lID = Slots::GetSlotSpell(i, Slots::Hand::Left);
@@ -547,7 +621,7 @@ namespace IntegratedMagic::HUD {
             }
 
             if (activeSlot >= 0 && activeSlot < n) {
-                const ImVec2 center = {hudOrigin.x + relPos[activeSlot].x, hudOrigin.y + relPos[activeSlot].y};
+                const ImVec2 center = ScaledCenter(activeSlot);
                 const float slotR = st.slotRadius * SlotAnimator::GetScale(activeSlot);
                 const auto rID = Slots::GetSlotSpell(activeSlot, Slots::Hand::Right);
                 const auto lID = Slots::GetSlotSpell(activeSlot, Slots::Hand::Left);
@@ -556,6 +630,9 @@ namespace IntegratedMagic::HUD {
                 auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
                 DrawSlotVisual(dl, center, slotR, true, rSp, lSp, shoutID);
             }
+
+                        const bool modWidgetHeld = Input::IsModifierHeld() || MagicState::Get().IsActive();
+            DrawModifierWidget(dl, hudOrigin, modWidgetHeld);
 
             ImGui::End();
         }
@@ -598,7 +675,7 @@ namespace IntegratedMagic::HUD {
                 ImDrawList* dl = ImGui::GetWindowDrawList();
                 const int activeSlot = MagicState::Get().ActiveSlot();
 
-                DrawRingCenter(dl, ringCenter, 6.f);
+                DrawModifierWidget(dl, ringCenter, false);
 
                 const auto hovType = MagicAssign::GetHoveredMagicType();
                 const bool hovIsShoutOrPower =

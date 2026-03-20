@@ -139,12 +139,21 @@ namespace IntegratedMagic {
 
         buttonIconType = GetButtonIconType(ini, "General", "ButtonIconType", buttonIconType);
 
-        showModifierWidget = [&] {
-            const char* v = ini.GetValue("HUD", "ShowModifierWidget", nullptr);
-            if (!v) return showModifierWidget;
-            return _stricmp(v, "true") == 0 || std::strcmp(v, "1") == 0;
-        }();
+        {
+            const char* v = ini.GetValue("HUD", "ModifierWidgetVisibility", nullptr);
+            if (v) {
+                const std::string s{v};
+                if (s == "Never" || s == "0")
+                    modifierWidgetVisibility = ModifierWidgetVisibility::Never;
+                else if (s == "Always" || s == "1")
+                    modifierWidgetVisibility = ModifierWidgetVisibility::Always;
+                else if (s == "HideOnPress" || s == "2")
+                    modifierWidgetVisibility = ModifierWidgetVisibility::HideOnPress;
+            }
+        }
         modifierWidgetRadius = GetFloat(ini, "HUD", "ModifierWidgetRadius", modifierWidgetRadius);
+        modifierWidgetOffsetX = GetFloat(ini, "HUD", "ModifierWidgetOffsetX", modifierWidgetOffsetX);
+        modifierWidgetOffsetY = GetFloat(ini, "HUD", "ModifierWidgetOffsetY", modifierWidgetOffsetY);
         modifierWidgetColor = GetColor(ini, "HUD", "ModifierWidgetColor", modifierWidgetColor);
         modifierWidgetPressedColor = GetColor(ini, "HUD", "ModifierWidgetPressedColor", modifierWidgetPressedColor);
 
@@ -233,8 +242,12 @@ namespace IntegratedMagic {
 
         ini.SetValue("General", "ButtonIconType", kButtonIconTypeNames[static_cast<int>(buttonIconType)]);
 
-        setBool("HUD", "ShowModifierWidget", showModifierWidget);
+        static const char* kModifierWidgetVisibilityNames[] = {"Never", "Always", "HideOnPress"};
+        ini.SetValue("HUD", "ModifierWidgetVisibility",
+                     kModifierWidgetVisibilityNames[static_cast<int>(modifierWidgetVisibility)]);
         setFloat("HUD", "ModifierWidgetRadius", modifierWidgetRadius);
+        setFloat("HUD", "ModifierWidgetOffsetX", modifierWidgetOffsetX);
+        setFloat("HUD", "ModifierWidgetOffsetY", modifierWidgetOffsetY);
         setColor("HUD", "ModifierWidgetColor", modifierWidgetColor);
         setColor("HUD", "ModifierWidgetPressedColor", modifierWidgetPressedColor);
 

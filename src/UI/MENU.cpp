@@ -289,6 +289,21 @@ namespace {
                 st.buttonIconType = static_cast<IntegratedMagic::ButtonIconType>(iconTypeIdx);
                 dirty = true;
             }
+
+            ImGui::Spacing();
+
+            const std::string modVisNames = IntegratedMagic::Strings::Get("Item_ModVis_Never", "Never") + '\0' +
+                                            IntegratedMagic::Strings::Get("Item_ModVis_Always", "Always") + '\0' +
+                                            IntegratedMagic::Strings::Get("Item_ModVis_HideOnPress", "Hide on press") +
+                                            '\0';
+            int modVisIdx = static_cast<int>(st.modifierWidgetVisibility);
+            ImGui::SetNextItemWidth(180.0f);
+            if (ImGui::Combo(
+                    IntegratedMagic::Strings::Get("Item_ModifierVisibility", "Modifier button##modvis").c_str(),
+                    &modVisIdx, modVisNames.c_str())) {
+                st.modifierWidgetVisibility = static_cast<IntegratedMagic::ModifierWidgetVisibility>(modVisIdx);
+                dirty = true;
+            }
         }
     }
 
@@ -576,6 +591,34 @@ namespace {
             int oa = static_cast<int>(st.overlayAlpha);
             if (ImGui::InputInt(S::Get("HUD_OverlayAlpha_Label", "Overlay Alpha##overlayalpha").c_str(), &oa, 5, 20)) {
                 st.overlayAlpha = static_cast<std::uint8_t>(std::clamp(oa, 0, 255));
+                dirty = true;
+            }
+        }
+
+        ImGui::Spacing();
+
+        if (ImGui::CollapsingHeader(S::Get("HUD_Section_Modifier", "Modifier Button").c_str())) {
+            ImGui::Spacing();
+
+            ImGui::SetNextItemWidth(150.f);
+            float mr = st.modifierWidgetRadius;
+            if (ImGui::InputFloat(S::Get("HUD_ModWidget_Radius", "Radius##modwidgetradius").c_str(), &mr, 1.f, 5.f,
+                                  "%.1f")) {
+                st.modifierWidgetRadius = std::max(1.f, mr);
+                dirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.f);
+            float mox = st.modifierWidgetOffsetX;
+            if (ImGui::InputFloat(S::Get("HUD_ModWidget_OffsetX", "X##modwidgetox").c_str(), &mox, 1.f, 5.f, "%.0f")) {
+                st.modifierWidgetOffsetX = mox;
+                dirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.f);
+            float moy = st.modifierWidgetOffsetY;
+            if (ImGui::InputFloat(S::Get("HUD_ModWidget_OffsetY", "Y##modwidgetoy").c_str(), &moy, 1.f, 5.f, "%.0f")) {
+                st.modifierWidgetOffsetY = moy;
                 dirty = true;
             }
         }

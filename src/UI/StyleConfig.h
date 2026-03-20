@@ -43,6 +43,12 @@ namespace IntegratedMagic {
         AwayFromCenter = 5,
     };
 
+    enum class ModifierWidgetVisibility : std::uint8_t {
+        Never = 0,
+        Always = 1,
+        HideOnPress = 2,
+    };
+
     struct StyleConfig {
         float slotRadius = 32.f;
         float ringRadius = 54.f;
@@ -72,8 +78,10 @@ namespace IntegratedMagic {
 
         ButtonIconType buttonIconType = ButtonIconType::Xbox;
 
-        bool showModifierWidget = true;
+        ModifierWidgetVisibility modifierWidgetVisibility = ModifierWidgetVisibility::Always;
         float modifierWidgetRadius = 14.f;
+        float modifierWidgetOffsetX = 0.f;
+        float modifierWidgetOffsetY = 0.f;
         std::uint32_t modifierWidgetColor = 0xC8646464u;
         std::uint32_t modifierWidgetPressedColor = 0xC8FFB464u;
 
