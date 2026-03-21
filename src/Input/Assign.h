@@ -12,4 +12,6 @@ namespace IntegratedMagic::MagicAssign {
     bool TryAssignHoveredShoutToSlot(int slot);
     bool TryClearSlotHand(int slot, Slots::Hand hand);
     bool TryClearSlotShout(int slot);
+    void RegisterEquipListener();
+    void ClearLastEquippedMagic();
 }

@@ -6,17 +6,67 @@
 
 namespace IntegratedMagic::MagicAssign {
 
+    static std::atomic<RE::FormID> s_lastEquippedMagicFormID{0};
+
     namespace {
+
+        class MagicEquipSink : public RE::BSTEventSink<RE::TESEquipEvent> {
+        public:
+            RE::BSEventNotifyControl ProcessEvent(const RE::TESEquipEvent* a_event,
+                                                  RE::BSTEventSource<RE::TESEquipEvent>*) override {
+                if (!a_event || !a_event->equipped) return RE::BSEventNotifyControl::kContinue;
+                auto* player = RE::PlayerCharacter::GetSingleton();
+                if (!player || a_event->actor.get() != player) return RE::BSEventNotifyControl::kContinue;
+
+                const auto formID = a_event->baseObject;
+                auto* form = RE::TESForm::LookupByID(formID);
+                if (!form) return RE::BSEventNotifyControl::kContinue;
+
+                if (form->As<RE::TESShout>() || (form->As<RE::SpellItem>())) {
+                    s_lastEquippedMagicFormID.store(formID, std::memory_order_relaxed);
+#ifdef DEBUG
+                    spdlog::info("[Assign] EquipSink: cached formID={:#010x}", formID);
+#endif
+                }
+                return RE::BSEventNotifyControl::kContinue;
+            }
+
+            static MagicEquipSink* GetSingleton() {
+                static MagicEquipSink inst;
+                return &inst;
+            }
+        };
+
+        RE::FormID TryGFxFormID(RE::GFxMovieView* movie, const char* path) {
+            RE::GFxValue v;
+            movie->GetVariable(&v, path);
+            if (v.GetType() == RE::GFxValue::ValueType::kNumber) return static_cast<RE::FormID>(v.GetNumber());
+            if (v.GetType() == RE::GFxValue::ValueType::kString) {
+                const char* s = v.GetString();
+                if (!s || !*s) return 0;
+                char* end = nullptr;
+                const auto id = static_cast<RE::FormID>(std::strtoul(s, &end, 0));
+                return (end && end != s) ? id : 0;
+            }
+            return 0;
+        }
+
         RE::FormID GetHoveredFormID() {
             auto* ui = RE::UI::GetSingleton();
             if (!ui || !ui->IsMenuOpen(RE::MagicMenu::MENU_NAME)) return 0;
             auto menu = ui->GetMenu<RE::MagicMenu>();
             if (!menu || !menu->uiMovie) return 0;
+            auto* movie = menu->uiMovie.get();
 
-            RE::GFxValue result;
-            menu->uiMovie->GetVariable(&result, "_root.Menu_mc.inventoryLists.itemList.selectedEntry.formId");
-            if (result.GetType() != RE::GFxValue::ValueType::kNumber) return 0;
-            return static_cast<RE::FormID>(result.GetNumber());
+            RE::FormID id = TryGFxFormID(movie, "_root.Menu_mc.inventoryLists.itemList.selectedEntry.formId");
+
+            if (!id) id = TryGFxFormID(movie, "_root.Menu_mc.itemList.selectedEntry.formId");
+            if (!id) id = TryGFxFormID(movie, "_root.Menu_mc.List_mc.selectedEntry.formId");
+            if (!id) id = TryGFxFormID(movie, "_root.Menu_mc.selectedEntry.formId");
+
+            if (!id) id = s_lastEquippedMagicFormID.load(std::memory_order_relaxed);
+
+            return id;
         }
     }
 
@@ -165,4 +215,13 @@ namespace IntegratedMagic::MagicAssign {
         Slots::SetSlotShout(slot, 0u, true);
         return true;
     }
+
+    void RegisterEquipListener() {
+        if (auto* src = RE::ScriptEventSourceHolder::GetSingleton()) {
+            src->AddEventSink<RE::TESEquipEvent>(MagicEquipSink::GetSingleton());
+            spdlog::info("[Assign] TESEquipEvent sink registered.");
+        }
+    }
+
+    void ClearLastEquippedMagic() { s_lastEquippedMagicFormID.store(0, std::memory_order_relaxed); }
 }
