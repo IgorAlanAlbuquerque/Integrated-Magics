@@ -275,32 +275,33 @@ namespace IntegratedMagic::HUD {
         void DrawModifierWidget(ImDrawList* dl, ImVec2 c, bool modHeld) {
             const auto& st = StyleConfig::Get();
 
+            std::uint8_t alpha = 0;
             switch (st.modifierWidgetVisibility) {
                 case ModifierWidgetVisibility::Never:
-                    return;
+                    alpha = 0;
+                    break;
                 case ModifierWidgetVisibility::HideOnPress:
-                    if (modHeld) return;
+                    alpha = modHeld ? 0 : 255;
                     break;
                 case ModifierWidgetVisibility::Always:
                 default:
+                    alpha = 255;
                     break;
             }
 
-            const float r = st.modifierWidgetRadius;
-            const ImVec2 pos = {c.x + st.modifierWidgetOffsetX, c.y + st.modifierWidgetOffsetY};
+            if (alpha == 0) return;
 
             const auto& icon = ResolveModifierIcon();
+            if (!icon.valid()) return;
 
-            if (icon.valid()) {
-                const float iconSize = r * 2.f;
-                const ImVec2 ip0 = {pos.x - iconSize * 0.5f, pos.y - iconSize * 0.5f};
-                const ImVec2 ip1 = {pos.x + iconSize * 0.5f, pos.y + iconSize * 0.5f};
+            const float r = st.modifierWidgetRadius;
+            const ImVec2 pos = {c.x + st.modifierWidgetOffsetX, c.y + st.modifierWidgetOffsetY};
+            const float iconSize = r * 2.f;
+            const ImVec2 ip0 = {pos.x - iconSize * 0.5f, pos.y - iconSize * 0.5f};
+            const ImVec2 ip1 = {pos.x + iconSize * 0.5f, pos.y + iconSize * 0.5f};
 
-                const ImU32 col = modHeld ? st.modifierWidgetPressedColor : st.modifierWidgetColor;
-                const std::uint8_t alpha = static_cast<std::uint8_t>((col >> 24) & 0xFF);
-                DL::AddImage(dl, reinterpret_cast<ImTextureID>(icon.texture), ip0, ip1, {0.f, 0.f}, {1.f, 1.f},
-                             IM_COL32(255, 255, 255, alpha));
-            }
+            DL::AddImage(dl, reinterpret_cast<ImTextureID>(icon.texture), ip0, ip1, {0.f, 0.f}, {1.f, 1.f},
+                         IM_COL32(255, 255, 255, alpha));
         }
 
         void DrawOverlayAndCursor(ImVec2 displaySize, ImVec2 cursorPos) {
@@ -845,7 +846,6 @@ namespace IntegratedMagic::HUD {
                 auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
                 auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
                 DrawSlotVisual(dl, center, slotR, false, rSp, lSp, shoutID);
-                DrawSlotButtonLabel(dl, center, slotR, i, hudOrigin, s_labelAlpha[i]);
             }
 
             if (activeSlot >= 0 && activeSlot < n) {
@@ -857,7 +857,16 @@ namespace IntegratedMagic::HUD {
                 auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
                 auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
                 DrawSlotVisual(dl, center, slotR, true, rSp, lSp, shoutID);
-                DrawSlotButtonLabel(dl, center, slotR, activeSlot, hudOrigin, s_labelAlpha[activeSlot]);
+            }
+
+            for (int i = 0; i < n; ++i) {
+                if (i == activeSlot) continue;
+                DrawSlotButtonLabel(dl, ScaledCenter(i), st.slotRadius * SlotAnimator::GetScale(i), i, hudOrigin,
+                                    s_labelAlpha[i]);
+            }
+            if (activeSlot >= 0 && activeSlot < n) {
+                DrawSlotButtonLabel(dl, ScaledCenter(activeSlot), st.slotRadius * SlotAnimator::GetScale(activeSlot),
+                                    activeSlot, hudOrigin, s_labelAlpha[activeSlot]);
             }
 
             const bool modWidgetHeld = Input::IsModifierHeld() || MagicState::Get().IsActive();

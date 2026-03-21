@@ -143,9 +143,6 @@ namespace IntegratedMagic {
 
         if (auto it = iconMap.find(buttonIndex); it != iconMap.end()) {
             if (it->second.loadedSize == targetSize) return it->second.valid() ? it->second : kEmpty;
-
-            if (it->second.texture) it->second.texture->Release();
-            iconMap.erase(it);
         }
 
         for (auto const& [filename, idx] : nameMap) {
@@ -154,20 +151,23 @@ namespace IntegratedMagic {
             Image img;
             if (LoadSVG(fullPath.c_str(), img, targetSize)) {
                 img.loadedSize = targetSize;
+
+                if (auto it = iconMap.find(buttonIndex); it != iconMap.end())
+                    if (it->second.texture) it->second.texture->Release();
                 spdlog::info("[TextureManager] Lazy loaded button icon: {} ({}px)", filename, targetSize);
                 iconMap[buttonIndex] = img;
                 return iconMap[buttonIndex];
             }
-            Image sentinel{};
-            sentinel.loadedSize = targetSize;
-            iconMap[buttonIndex] = sentinel;
-            spdlog::warn("[TextureManager] Failed to lazy load button icon: {}", filename);
+
+            if (auto it = iconMap.find(buttonIndex); it != iconMap.end() && it->second.valid()) return it->second;
             return kEmpty;
         }
 
-        Image sentinel{};
-        sentinel.loadedSize = targetSize;
-        iconMap[buttonIndex] = sentinel;
+        if (iconMap.find(buttonIndex) == iconMap.end()) {
+            Image sentinel{};
+            sentinel.loadedSize = targetSize;
+            iconMap[buttonIndex] = sentinel;
+        }
         return kEmpty;
     }
 
@@ -178,8 +178,6 @@ namespace IntegratedMagic {
 
         if (auto it = keyboard_icons_.find(scancode); it != keyboard_icons_.end()) {
             if (it->second.loadedSize == targetSize) return it->second.valid() ? it->second : kEmpty;
-            if (it->second.texture) it->second.texture->Release();
-            keyboard_icons_.erase(it);
         }
 
         auto tryLoad = [&](const std::string& filename) -> bool {
@@ -187,6 +185,9 @@ namespace IntegratedMagic {
             Image img;
             if (LoadSVG(fullPath.c_str(), img, targetSize)) {
                 img.loadedSize = targetSize;
+
+                if (auto it = keyboard_icons_.find(scancode); it != keyboard_icons_.end())
+                    if (it->second.texture) it->second.texture->Release();
                 spdlog::info("[TextureManager] Lazy loaded keyboard icon: {} ({}px)", filename, targetSize);
                 keyboard_icons_[scancode] = img;
                 return true;
@@ -196,21 +197,21 @@ namespace IntegratedMagic {
 
         for (auto const& [filename, idx] : kb_named_map_) {
             if (idx != scancode) continue;
-            if (!tryLoad(filename)) {
-                Image sentinel{};
-                sentinel.loadedSize = targetSize;
-                keyboard_icons_[scancode] = sentinel;
-                spdlog::warn("[TextureManager] Failed to lazy load keyboard icon: {}", filename);
-            }
-            return keyboard_icons_[scancode].valid() ? keyboard_icons_[scancode] : kEmpty;
+            if (tryLoad(filename)) return keyboard_icons_[scancode];
+
+            if (auto it = keyboard_icons_.find(scancode); it != keyboard_icons_.end() && it->second.valid())
+                return it->second;
+            return kEmpty;
         }
 
         const std::string hexName = std::format("{:02x}.svg", static_cast<unsigned>(scancode));
         if (tryLoad(hexName)) return keyboard_icons_[scancode];
 
-        Image sentinel{};
-        sentinel.loadedSize = targetSize;
-        keyboard_icons_[scancode] = sentinel;
+        if (keyboard_icons_.find(scancode) == keyboard_icons_.end()) {
+            Image sentinel{};
+            sentinel.loadedSize = targetSize;
+            keyboard_icons_[scancode] = sentinel;
+        }
         return kEmpty;
     }
 

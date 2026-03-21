@@ -691,7 +691,7 @@ namespace {
                 {
                     const bool tc = (st.buttonLabelCorner == C::TowardCenter);
                     if (tc) ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
-                    if (ImGui::Button(S::Get("HUD_BtnLbl_TowardCenter", "Inward##tc").c_str(), {150.f, kBtnSz})) {
+                    if (ImGui::Button(S::Get("HUD_BtnLbl_TowardCenter", "Inward##tc").c_str(), {0.f, kBtnSz * 1.5f})) {
                         st.buttonLabelCorner = C::TowardCenter;
                         dirty = true;
                     }
@@ -700,7 +700,8 @@ namespace {
                 {
                     const bool ac = (st.buttonLabelCorner == C::AwayFromCenter);
                     if (ac) ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
-                    if (ImGui::Button(S::Get("HUD_BtnLbl_AwayFromCenter", "Outward##ac").c_str(), {150.f, kBtnSz})) {
+                    if (ImGui::Button(S::Get("HUD_BtnLbl_AwayFromCenter", "Outward##ac").c_str(),
+                                      {0.f, kBtnSz * 1.5f})) {
                         st.buttonLabelCorner = C::AwayFromCenter;
                         dirty = true;
                     }

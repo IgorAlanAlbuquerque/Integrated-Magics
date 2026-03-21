@@ -30,9 +30,10 @@ namespace IntegratedMagic::Strings {
             };
             std::string line;
             while (std::getline(in, line)) {
-                if (auto posComment = line.find('#'); posComment != std::string::npos) {
-                    line.erase(posComment);
-                }
+                std::size_t ii = 0;
+                while (ii < line.size() && std::isspace(static_cast<unsigned char>(line[ii]))) ++ii;
+                if (ii < line.size() && line[ii] == '#') line.clear();
+
                 trim(line);
                 if (line.empty()) continue;
                 auto posEq = line.find('=');
@@ -41,8 +42,34 @@ namespace IntegratedMagic::Strings {
                 std::string value = line.substr(posEq + 1);
                 trim(key);
                 trim(value);
+
+                std::string processed;
+                processed.reserve(value.size());
+                for (std::size_t i = 0; i < value.size(); ++i) {
+                    if (value[i] == '\\' && i + 1 < value.size()) {
+                        switch (value[i + 1]) {
+                            case 'n':
+                                processed += '\n';
+                                ++i;
+                                break;
+                            case 't':
+                                processed += '\t';
+                                ++i;
+                                break;
+                            case '\\':
+                                processed += '\\';
+                                ++i;
+                                break;
+                            default:
+                                processed += value[i];
+                                break;
+                        }
+                    } else {
+                        processed += value[i];
+                    }
+                }
                 if (!key.empty()) {
-                    g_strings[std::move(key)] = std::move(value);
+                    g_strings[std::move(key)] = std::move(processed);
                 }
             }
         }
