@@ -389,9 +389,14 @@ namespace IntegratedMagic {
 
         if (_restore.pendingRestoreAfterSheathe) {
             if (auto* player = GetPlayer()) {
-                const bool giveUp =
-                    player->IsInCombat() || player->AsActorState()->GetWeaponState() == RE::WEAPON_STATE::kWantToDraw;
+                _restore.sheatheWaitSecs += dt > 0.f ? dt : 0.f;
+                const bool timedOut = _restore.sheatheWaitSecs >= RestoreContext::kSheatheWaitTimeoutSec;
+                const bool giveUp = player->IsInCombat() ||
+                                    player->AsActorState()->GetWeaponState() == RE::WEAPON_STATE::kWantToDraw ||
+                                    timedOut;
+                ;
                 if (_restore.sheatheAnimComplete || giveUp) {
+                    _restore.sheatheWaitSecs = 0.f;
 #ifdef DEBUG
                     spdlog::info("[State] PumpAutomatic: pendingRestoreAfterSheathe -> restore (giveUp={})", giveUp);
 #endif
