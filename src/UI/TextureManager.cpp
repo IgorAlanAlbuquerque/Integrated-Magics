@@ -160,14 +160,15 @@ namespace IntegratedMagic {
             }
 
             if (auto it = iconMap.find(buttonIndex); it != iconMap.end() && it->second.valid()) return it->second;
-            return kEmpty;
-        }
-
-        if (iconMap.find(buttonIndex) == iconMap.end()) {
             Image sentinel{};
             sentinel.loadedSize = targetSize;
             iconMap[buttonIndex] = sentinel;
+            return kEmpty;
         }
+
+        Image sentinel{};
+        sentinel.loadedSize = targetSize;
+        iconMap[buttonIndex] = sentinel;
         return kEmpty;
     }
 
@@ -201,17 +202,18 @@ namespace IntegratedMagic {
 
             if (auto it = keyboard_icons_.find(scancode); it != keyboard_icons_.end() && it->second.valid())
                 return it->second;
+            Image sentinel{};
+            sentinel.loadedSize = targetSize;
+            keyboard_icons_[scancode] = sentinel;
             return kEmpty;
         }
 
         const std::string hexName = std::format("{:02x}.svg", static_cast<unsigned>(scancode));
         if (tryLoad(hexName)) return keyboard_icons_[scancode];
 
-        if (keyboard_icons_.find(scancode) == keyboard_icons_.end()) {
-            Image sentinel{};
-            sentinel.loadedSize = targetSize;
-            keyboard_icons_[scancode] = sentinel;
-        }
+        Image sentinel{};
+        sentinel.loadedSize = targetSize;
+        keyboard_icons_[scancode] = sentinel;
         return kEmpty;
     }
 
