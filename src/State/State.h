@@ -64,6 +64,8 @@ namespace IntegratedMagic {
         bool pendingPowerRestore{false};
         float pendingPowerRestoreDelaySecs{0.f};
         static constexpr float kPowerRestoreDelaySec = 0.05f;
+        float sheatheWaitSecs{0.f};
+        static constexpr float kSheatheWaitTimeoutSec = 1.0f;
 
         void ClearDirty() { dirtyLeft = dirtyRight = dirtyShout = false; }
         void ClearPending() { pendingRestore = pendingRestoreAfterSheathe = pendingPowerRestore = false; }
