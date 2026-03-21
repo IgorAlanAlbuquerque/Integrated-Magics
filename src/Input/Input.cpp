@@ -834,7 +834,11 @@ namespace {
 
         const bool hudDown = IsHudComboDown();
         if (hudDown && !prevHudDown) {
-            g_hudTogglePending.store(true, std::memory_order_relaxed);
+            auto* ui = RE::UI::GetSingleton();
+            static const RE::BSFixedString magicMenu{"MagicMenu"};
+            if (ui && ui->IsMenuOpen(magicMenu)) {
+                g_hudTogglePending.store(true, std::memory_order_relaxed);
+            }
         }
 
         prevHudDown = hudDown;
