@@ -38,7 +38,8 @@ namespace IntegratedMagic::Slots {
         arr[static_cast<std::size_t>(slot)].store(spellFormID, std::memory_order_relaxed);
         if (spellFormID != 0u) {
             cfg.slotShoutFormID[static_cast<std::size_t>(slot)].store(0u, std::memory_order_relaxed);
-            (void)IntegratedMagic::SpellSettingsDB::Get().GetOrCreate(spellFormID);
+            auto* form = RE::TESForm::LookupByID(spellFormID);
+            (void)IntegratedMagic::SpellSettingsDB::Get().GetOrCreate(spellFormID, form);
         }
         if (saveNow) {
             cfg.Save();
@@ -68,7 +69,8 @@ namespace IntegratedMagic::Slots {
         }
 
         if (shoutFormID != 0u) {
-            (void)IntegratedMagic::SpellSettingsDB::Get().GetOrCreate(shoutFormID);
+            auto* form = RE::TESForm::LookupByID(shoutFormID);
+            (void)IntegratedMagic::SpellSettingsDB::Get().GetOrCreate(shoutFormID, form);
         }
         if (saveNow) {
             cfg.Save();

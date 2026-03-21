@@ -29,6 +29,7 @@ add_commonlibsse_plugin(${PROJECT_NAME}
     src/UI/StyleConfig.cpp
     src/Config/Config.cpp
     src/Config/Slots.cpp
+    src/Config/SpellType.cpp
     src/Persistence/SpellSettingsDB.cpp
     src/Persistence/SaveSpellDB.cpp
     src/Input/Input.cpp
@@ -71,6 +72,7 @@ target_precompile_headers(${PROJECT_NAME}
     src/Config/Config.h
     src/Config/Slots.h
     src/Config/EquipSlots.h
+    src/Config/SpellType.h
     src/Persistence/SpellSettingsDB.h
     src/Persistence/SaveSpellDB.h
     src/Input/Assign.h

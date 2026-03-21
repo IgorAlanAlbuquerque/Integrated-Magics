@@ -6,6 +6,7 @@
 #include <string>
 
 #include "Config/Config.h"
+#include "Config/SpellType.h"
 #include "Input/Input.h"
 #include "PCH.h"
 #include "Persistence/SpellSettingsDB.h"
@@ -289,6 +290,53 @@ namespace {
                 st.buttonIconType = static_cast<IntegratedMagic::ButtonIconType>(iconTypeIdx);
                 dirty = true;
             }
+        }
+
+        ImGui::SeparatorText(IntegratedMagic::Strings::Get("Section_SpellTypeDefaults", "Default spell behavior").c_str());
+
+        struct TypeEntry {
+            IntegratedMagic::SpellType type;
+            const char* labelKey;
+            const char* labelFallback;
+        };
+        constexpr TypeEntry kTypeEntries[] = {
+            {IntegratedMagic::SpellType::Concentration, "SpellType_Concentration", "Concentration"},
+            {IntegratedMagic::SpellType::Cast, "SpellType_Cast", "Cast"},
+            {IntegratedMagic::SpellType::Bound, "SpellType_Bound", "Bound weapon"},
+            {IntegratedMagic::SpellType::Power, "SpellType_Power", "Power"},
+            {IntegratedMagic::SpellType::Shout, "SpellType_Shout", "Shout"},
+        };
+
+        const std::string modeComboItems = IntegratedMagic::Strings::Get("Mode_Hold", "Hold") + '\0' +
+                                           IntegratedMagic::Strings::Get("Mode_Press", "Press") + '\0' +
+                                           IntegratedMagic::Strings::Get("Mode_Automatic", "Automatic") + '\0';
+
+        for (const auto& e : kTypeEntries) {
+            auto& d = cfg.spellTypeDefaults[static_cast<int>(e.type)];
+            const std::string label = IntegratedMagic::Strings::Get(e.labelKey, e.labelFallback);
+
+            ImGui::PushID(e.labelKey);
+
+            ImGui::Text("%s", label.c_str());
+            ImGui::SameLine(180.f);
+
+            int modeIdx = static_cast<int>(d.mode);
+            ImGui::SetNextItemWidth(120.f);
+            if (ImGui::Combo(IntegratedMagic::Strings::Get("Item_Mode", "Mode##mode").c_str(), &modeIdx, modeComboItems.c_str())) {
+                d.mode = static_cast<IntegratedMagic::ActivationMode>(modeIdx);
+                dirty = true;
+            }
+
+            if (d.mode == IntegratedMagic::ActivationMode::Hold) {
+                ImGui::SameLine();
+                bool aa = d.autoAttack;
+                if (ImGui::Checkbox(IntegratedMagic::Strings::Get("Item_AutoCast", "Auto-cast##autocast").c_str(), &aa)) {
+                    d.autoAttack = aa;
+                    dirty = true;
+                }
+            }
+
+            ImGui::PopID();
         }
     }
 

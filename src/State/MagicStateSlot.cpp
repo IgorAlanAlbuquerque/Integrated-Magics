@@ -92,7 +92,7 @@ namespace IntegratedMagic {
                 hm.waitingAutoAfterEquip = true;
                 hm.wantAutoAttack = true;
                 hm.waitingEnableBumperSecs = 0.f;
-                hm.waitingBeginCast = true; 
+                hm.waitingBeginCast = true;
                 hm.beginCastWaitSecs = 0.f;
                 hm.beginCastRetries = 0;
                 _session.attackEnabled = false;
@@ -128,7 +128,7 @@ namespace IntegratedMagic {
             out.shoutID = Slots::GetSlotShout(slot);
             out.shoutForm = out.shoutID ? RE::TESForm::LookupByID(out.shoutID) : nullptr;
             if (!out.shoutForm) return false;
-            out.shoutSettings = SpellSettingsDB::Get().GetOrCreate(out.shoutID);
+            out.shoutSettings = SpellSettingsDB::Get().GetOrCreate(out.shoutID, out.shoutForm);
 
             EnsureActiveWithSnapshot(player, slot);
             _shout.modeShoutID = out.shoutID;
@@ -157,8 +157,8 @@ namespace IntegratedMagic {
         out.hasLeft = (out.leftSpell != nullptr);
         if (!out.hasRight && !out.hasLeft) return false;
 
-        if (out.hasRight) out.rightSettings = SpellSettingsDB::Get().GetOrCreate(out.rightID);
-        if (out.hasLeft) out.leftSettings = SpellSettingsDB::Get().GetOrCreate(out.leftID);
+        if (out.hasRight) out.rightSettings = SpellSettingsDB::Get().GetOrCreate(out.rightID, out.rightSpell);
+        if (out.hasLeft) out.leftSettings = SpellSettingsDB::Get().GetOrCreate(out.leftID, out.leftSpell);
 
         EnsureActiveWithSnapshot(player, slot);
         _session.modeSpellRight = out.rightSpell;

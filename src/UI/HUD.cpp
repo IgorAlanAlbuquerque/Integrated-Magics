@@ -458,7 +458,8 @@ namespace IntegratedMagic::HUD {
         void DrawSpellModeWidget(ImDrawList* dl, bool clicked, ImVec2 origin, float availW, std::uint32_t formID,
                                  const char*) {
             if (!formID) return;
-            auto s = SpellSettingsDB::Get().GetOrCreate(formID);
+            auto* form = RE::TESForm::LookupByID(formID);
+            auto s = SpellSettingsDB::Get().GetOrCreate(formID, form);
 
             static const char* kLabels[] = {"H", "P", "A"};
             const std::string kTipHold = Strings::Get("Mode_Hold", "Hold");
