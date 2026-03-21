@@ -33,6 +33,27 @@ namespace {
         return (_stricmp(v, "true") == 0 || std::strcmp(v, "1") == 0);
     }
 
+    const char* _modeToStr(IntegratedMagic::ActivationMode m) {
+        using enum IntegratedMagic::ActivationMode;
+        switch (m) {
+            case Press:
+                return "Press";
+            case Automatic:
+                return "Automatic";
+            case Hold:
+            default:
+                return "Hold";
+        }
+    }
+
+    IntegratedMagic::ActivationMode _modeFromStr(const char* v) {
+        using enum IntegratedMagic::ActivationMode;
+        if (!v) return Hold;
+        if (_stricmp(v, "Press") == 0) return Press;
+        if (_stricmp(v, "Automatic") == 0) return Automatic;
+        return Hold;
+    }
+
     void _loadInput(CSimpleIniA const& ini, const char* sec, IntegratedMagic::InputConfig& out) {
         out.KeyboardScanCode1.store(_getInt(ini, sec, "KeyboardScanCode1", -1), std::memory_order_relaxed);
         out.KeyboardScanCode2.store(_getInt(ini, sec, "KeyboardScanCode2", -1), std::memory_order_relaxed);
@@ -57,6 +78,13 @@ namespace IntegratedMagic {
     MagicConfig::MagicConfig() {
         for (auto& a : slotSpellFormIDLeft) a.store(0u, std::memory_order_relaxed);
         for (auto& a : slotSpellFormIDRight) a.store(0u, std::memory_order_relaxed);
+        using ST = SpellType;
+        spellTypeDefaults[static_cast<int>(ST::Concentration)] = {ActivationMode::Hold, true};
+        spellTypeDefaults[static_cast<int>(ST::Cast)] = {ActivationMode::Automatic, true};
+        spellTypeDefaults[static_cast<int>(ST::Bound)] = {ActivationMode::Press, false};
+        spellTypeDefaults[static_cast<int>(ST::Power)] = {ActivationMode::Automatic, false};
+        spellTypeDefaults[static_cast<int>(ST::Shout)] = {ActivationMode::Hold, true};
+        spellTypeDefaults[static_cast<int>(ST::Unknown)] = {ActivationMode::Hold, true};
     }
 
     std::filesystem::path MagicConfig::IniPath() {
@@ -128,6 +156,29 @@ namespace IntegratedMagic {
 
         propagateModifier(modifierKeyboardPosition, true);
         propagateModifier(modifierGamepadPosition, false);
+
+        using ST = SpellType;
+        constexpr const char* sec = "SpellTypeDefaults";
+
+        struct TypeEntry {
+            ST type;
+            const char* modeKey;
+            const char* aaKey;
+        };
+        constexpr TypeEntry entries[] = {
+            {ST::Concentration, "ConcentrationMode", "ConcentrationAutoAttack"},
+            {ST::Cast, "CastMode", "CastAutoAttack"},
+            {ST::Bound, "BoundMode", "BoundAutoAttack"},
+            {ST::Power, "PowerMode", "PowerAutoAttack"},
+            {ST::Shout, "ShoutMode", "ShoutAutoAttack"},
+        };
+
+        for (const auto& e : entries) {
+            auto& d = spellTypeDefaults[static_cast<int>(e.type)];
+            const char* modeStr = ini.GetValue(sec, e.modeKey, _modeToStr(d.mode));
+            d.mode = _modeFromStr(modeStr);
+            d.autoAttack = _getBool(ini, sec, e.aaKey, d.autoAttack);
+        }
     }
 
     void MagicConfig::Save() const {
@@ -149,6 +200,27 @@ namespace IntegratedMagic {
         ini.SetBoolValue("Patches", "PressBothAtSamePatch", pressBothAtSamePatch);
         ini.SetLongValue("Modifier", "KeyboardPosition", modifierKeyboardPosition);
         ini.SetLongValue("Modifier", "GamepadPosition", modifierGamepadPosition);
+
+        using ST = SpellType;
+        constexpr const char* sec = "SpellTypeDefaults";
+        struct TypeEntry {
+            ST type;
+            const char* modeKey;
+            const char* aaKey;
+        };
+        constexpr TypeEntry entries[] = {
+            {ST::Concentration, "ConcentrationMode", "ConcentrationAutoAttack"},
+            {ST::Cast, "CastMode", "CastAutoAttack"},
+            {ST::Bound, "BoundMode", "BoundAutoAttack"},
+            {ST::Power, "PowerMode", "PowerAutoAttack"},
+            {ST::Shout, "ShoutMode", "ShoutAutoAttack"},
+        };
+        for (const auto& e : entries) {
+            const auto& d = spellTypeDefaults[static_cast<int>(e.type)];
+            ini.SetValue(sec, e.modeKey, _modeToStr(d.mode));
+            ini.SetBoolValue(sec, e.aaKey, d.autoAttack);
+        }
+
         std::error_code ec;
         std::filesystem::create_directories(path.parent_path(), ec);
         ini.SaveFile(path.string().c_str());

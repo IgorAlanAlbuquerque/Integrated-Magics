@@ -155,8 +155,6 @@ namespace IntegratedMagic {
         modifierWidgetRadius = GetFloat(ini, "HUD", "ModifierWidgetRadius", modifierWidgetRadius);
         modifierWidgetOffsetX = GetFloat(ini, "HUD", "ModifierWidgetOffsetX", modifierWidgetOffsetX);
         modifierWidgetOffsetY = GetFloat(ini, "HUD", "ModifierWidgetOffsetY", modifierWidgetOffsetY);
-        modifierWidgetColor = GetColor(ini, "HUD", "ModifierWidgetColor", modifierWidgetColor);
-        modifierWidgetPressedColor = GetColor(ini, "HUD", "ModifierWidgetPressedColor", modifierWidgetPressedColor);
 
         buttonLabelVisibility = GetButtonLabelVisibility(ini, "HUD", "ButtonLabelVisibility", buttonLabelVisibility);
         buttonLabelCorner = GetButtonLabelCorner(ini, "HUD", "ButtonLabelCorner", buttonLabelCorner);
@@ -253,8 +251,6 @@ namespace IntegratedMagic {
         setFloat("HUD", "ModifierWidgetRadius", modifierWidgetRadius);
         setFloat("HUD", "ModifierWidgetOffsetX", modifierWidgetOffsetX);
         setFloat("HUD", "ModifierWidgetOffsetY", modifierWidgetOffsetY);
-        setColor("HUD", "ModifierWidgetColor", modifierWidgetColor);
-        setColor("HUD", "ModifierWidgetPressedColor", modifierWidgetPressedColor);
 
         ini.SetValue("HUD", "ButtonLabelVisibility",
                      kButtonLabelVisibilityNames[static_cast<int>(buttonLabelVisibility)]);

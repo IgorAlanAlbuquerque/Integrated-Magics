@@ -83,8 +83,6 @@ namespace IntegratedMagic {
         float modifierWidgetRadius = 14.f;
         float modifierWidgetOffsetX = 0.f;
         float modifierWidgetOffsetY = 0.f;
-        std::uint32_t modifierWidgetColor = 0xC8646464u;
-        std::uint32_t modifierWidgetPressedColor = 0xC8FFB464u;
 
         ButtonLabelVisibility buttonLabelVisibility = ButtonLabelVisibility::OnModifier;
         ButtonLabelCorner buttonLabelCorner = ButtonLabelCorner::AwayFromCenter;

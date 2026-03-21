@@ -30,7 +30,7 @@ namespace IntegratedMagic {
         static SpellSettingsDB& Get();
         void Load();
         void Save() const;
-        SpellSettings GetOrCreate(std::uint32_t spellFormID);
+        SpellSettings GetOrCreate(std::uint32_t spellFormID, const RE::TESForm* form = nullptr);
         void Set(std::uint32_t spellFormID, const SpellSettings& s);
         bool IsDirty() const;
         void ClearDirty();

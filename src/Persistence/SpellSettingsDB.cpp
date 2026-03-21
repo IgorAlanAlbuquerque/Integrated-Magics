@@ -91,14 +91,19 @@ namespace IntegratedMagic {
         }
     }
 
-    SpellSettings SpellSettingsDB::GetOrCreate(std::uint32_t spellFormID) {
+    SpellSettings SpellSettingsDB::GetOrCreate(std::uint32_t spellFormID, const RE::TESForm* form) {
         std::scoped_lock _{_mtx};
         std::array<char, 9> buf{};
         const std::string_view keysv = MakeKeyView(spellFormID, buf);
-        if (auto it = _byKey.find(keysv); it != _byKey.end()) {
-            return it->second;
-        }
+        if (auto it = _byKey.find(keysv); it != _byKey.end()) return it->second;
+
         SpellSettings s{};
+        if (form) {
+            const auto type = DetectSpellType(form);
+            const auto& d = GetMagicConfig().spellTypeDefaults[static_cast<int>(type)];
+            s.mode = d.mode;
+            s.autoAttack = d.autoAttack;
+        }
         _byKey.try_emplace(std::string(keysv), s);
         _dirty = true;
         return s;

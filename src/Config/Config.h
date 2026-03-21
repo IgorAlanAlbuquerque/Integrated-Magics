@@ -5,6 +5,9 @@
 #include <cstdint>
 #include <filesystem>
 
+#include "SpellType.h"
+#include "Persistence/SpellSettingsDB.h"
+
 namespace IntegratedMagic {
 
     struct InputConfig {
@@ -16,6 +19,11 @@ namespace IntegratedMagic {
         std::atomic<int> GamepadButton3{-1};
     };
 
+    struct SpellTypeDefaults {
+        ActivationMode mode{ActivationMode::Hold};
+        bool autoAttack{true};
+    };
+
     struct MagicConfig {
         static constexpr std::uint32_t kMaxSlots = 64;
         std::atomic<std::uint32_t> slotCount{4};
@@ -24,6 +32,7 @@ namespace IntegratedMagic {
         std::array<std::atomic<std::uint32_t>, kMaxSlots> slotShoutFormID;
         std::array<InputConfig, kMaxSlots> slotInput;
         InputConfig hudPopupInput;
+        std::array<SpellTypeDefaults, static_cast<std::size_t>(SpellType::Shout) + 1> spellTypeDefaults{};
         bool hudVisible{true};
         bool skipEquipAnimationPatch = false;
         bool skipEquipAnimationOnReturnPatch = false;

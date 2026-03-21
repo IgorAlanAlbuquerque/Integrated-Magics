@@ -681,6 +681,22 @@ namespace {
             }
 
             if (g_slotIsMultiKey[s] && !HasExclusivePending(s)) {
+                bool sharedWithActiveSlot = false;
+                for (int other = 0; other < n; ++other) {
+                    if (other == slot) continue;
+                    if (!g_slotDown[static_cast<std::size_t>(other)].load(std::memory_order_relaxed)) continue;
+                    const auto& otherHk = g_cache[static_cast<std::size_t>(other)];
+                    if (inKb && ComboContains(otherHk.kb, convertedCode)) {
+                        sharedWithActiveSlot = true;
+                        break;
+                    }
+                    if (inGp && ComboContains(otherHk.gp, convertedCode)) {
+                        sharedWithActiveSlot = true;
+                        break;
+                    }
+                }
+                if (sharedWithActiveSlot) return true;
+
 #ifdef DEBUG
                 spdlog::info(
                     "[Input] ShouldFilterAndSave: slot={} code={} starting exclusive pending (multiKey, no pending "
