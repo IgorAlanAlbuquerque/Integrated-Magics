@@ -788,16 +788,16 @@ namespace {
             }
 
             ImGui::SetNextItemWidth(150.f);
-            float ox = st.buttonLabelOffsetX;
-            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_OffsetX", "X##btnlblox").c_str(), &ox, 1.f, 5.f, "%.0f")) {
-                st.buttonLabelOffsetX = ox;
+            float ox2 = st.buttonLabelOffsetX;
+            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_OffsetX", "X##btnlblox").c_str(), &ox2, 1.f, 5.f, "%.0f")) {
+                st.buttonLabelOffsetX = ox2;
                 dirty = true;
             }
             ImGui::SameLine();
             ImGui::SetNextItemWidth(150.f);
-            float oy = st.buttonLabelOffsetY;
-            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_OffsetY", "Y##btnlbloy").c_str(), &oy, 1.f, 5.f, "%.0f")) {
-                st.buttonLabelOffsetY = oy;
+            float oy2 = st.buttonLabelOffsetY;
+            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_OffsetY", "Y##btnlbloy").c_str(), &oy2, 1.f, 5.f, "%.0f")) {
+                st.buttonLabelOffsetY = oy2;
                 dirty = true;
             }
             ImGui::SameLine();

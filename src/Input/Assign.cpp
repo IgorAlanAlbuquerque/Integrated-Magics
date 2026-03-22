@@ -70,6 +70,28 @@ namespace IntegratedMagic::MagicAssign {
         }
     }
 
+    bool IsTwoHandedSpell(const RE::SpellItem* spell) {
+        if (!spell) return false;
+
+        static const RE::BGSEquipSlot* s_rightHand{nullptr};
+        static const RE::BGSEquipSlot* s_leftHand{nullptr};
+        static bool s_init{false};
+        if (!s_init) {
+            s_init = true;
+            s_rightHand = RE::TESForm::LookupByID<RE::BGSEquipSlot>(0x00013F43);
+            s_leftHand = RE::TESForm::LookupByID<RE::BGSEquipSlot>(0x00013F44);
+        }
+
+        const auto* slot = spell->GetEquipSlot();
+
+        if (slot == s_rightHand || slot == s_leftHand) return false;
+
+        using ST = RE::MagicSystem::SpellType;
+        const auto t = spell->GetSpellType();
+        if (t == ST::kPower || t == ST::kLesserPower || t == ST::kVoicePower) return false;
+        return true;
+    }
+
     HoveredMagicType GetHoveredMagicType() {
         using enum IntegratedMagic::MagicAssign::HoveredMagicType;
         const auto formID = GetHoveredFormID();
@@ -104,6 +126,12 @@ namespace IntegratedMagic::MagicAssign {
 #endif
                 return Power;
             }
+            if (IsTwoHandedSpell(spell)) {
+#ifdef DEBUG
+                spdlog::info("[Assign] GetHoveredMagicType: formID={:#010x} -> TwoHandedSpell", formID);
+#endif
+                return TwoHandedSpell;
+            }
 #ifdef DEBUG
             spdlog::info("[Assign] GetHoveredMagicType: formID={:#010x} spellType={} -> Spell", formID,
                          static_cast<int>(t));
@@ -135,6 +163,19 @@ namespace IntegratedMagic::MagicAssign {
                 slot, (hand == Slots::Hand::Left) ? "Left" : "Right", formID);
 #endif
             return false;
+        }
+
+        if (IsTwoHandedSpell(spell)) {
+#ifdef DEBUG
+            spdlog::info(
+                "[Assign] TryAssignHoveredSpellToSlot: slot={} spellID={:#010x} name='{}' -> TwoHanded: storing Left, "
+                "clearing Right",
+                slot, spell->GetFormID(), spell->GetFullName() ? spell->GetFullName() : "<null>");
+#endif
+            Slots::SetSlotSpell(slot, Slots::Hand::Left, spell->GetFormID(), true);
+            Slots::SetSlotSpell(slot, Slots::Hand::Right, 0, true);
+            Slots::SetSlotShout(slot, 0, true);
+            return true;
         }
 
 #ifdef DEBUG

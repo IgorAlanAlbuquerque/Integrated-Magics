@@ -666,17 +666,9 @@ namespace {
             }
 
             if (inKb && ComboDown(hk.kb, g_kbDown)) {
-#ifdef DEBUG
-                spdlog::info("[Input] ShouldFilterAndSave: slot={} code={} FILTERED (kb combo down)", slot,
-                             convertedCode);
-#endif
                 return true;
             }
             if (inGp && ComboDown(hk.gp, g_gpDown)) {
-#ifdef DEBUG
-                spdlog::info("[Input] ShouldFilterAndSave: slot={} code={} FILTERED (gp combo down)", slot,
-                             convertedCode);
-#endif
                 return true;
             }
 

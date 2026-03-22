@@ -5,7 +5,8 @@
 
 namespace IntegratedMagic::MagicAssign {
 
-    enum class HoveredMagicType { None, Spell, Shout, Power };
+    enum class HoveredMagicType { None, Spell, TwoHandedSpell, Shout, Power };
+    bool IsTwoHandedSpell(const RE::SpellItem* spell);
 
     HoveredMagicType GetHoveredMagicType();
     bool TryAssignHoveredSpellToSlot(int slot, Slots::Hand hand);
