@@ -897,8 +897,12 @@ namespace IntegratedMagic::HUD {
             const int n = static_cast<int>(Slots::GetSlotCount());
             const auto& st = Style();
             const float dynPopupR = DynamicRingRadius(n, st.popupSlotRadius, st.popupRingRadius, st.popupSlotGap);
-            const float popupHalf = dynPopupR + st.popupSlotRadius + kGlowPad + st.modeWidgetW + 12.f;
-            const ImVec2 popupSize = {popupHalf * 2.f, popupHalf * 2.f + 48.f};
+
+            const LayoutVec2 bh = SlotLayout::BoundingHalf(st.popupLayout, n, st.popupSlotRadius, dynPopupR,
+                                                           st.popupSlotGap, st.gridColumns);
+            const float popupHalfX = bh.x + kGlowPad + st.modeWidgetW + 12.f;
+            const float popupHalfY = bh.y + kGlowPad + st.modeWidgetW + 12.f;
+            const ImVec2 popupSize = {popupHalfX * 2.f, popupHalfY * 2.f + 48.f};
             const ImVec2 popupPos = {io->DisplaySize.x * 0.5f - popupSize.x * 0.5f,
                                      io->DisplaySize.y * 0.5f - popupSize.y * 0.5f};
             const ImVec2 popupEnd = {popupPos.x + popupSize.x, popupPos.y + popupSize.y};
