@@ -650,10 +650,6 @@ namespace {
             if (!inKb && !inGp) continue;
 
             if (const bool accepted = g_slotDown[s].load(std::memory_order_relaxed); accepted) {
-#ifdef DEBUG
-                spdlog::info("[Input] ShouldFilterAndSave: slot={} code={} dev={} FILTERED (slot is down)", slot,
-                             convertedCode, static_cast<int>(dev));
-#endif
                 return true;
             }
 

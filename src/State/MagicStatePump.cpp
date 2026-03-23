@@ -141,12 +141,14 @@ namespace IntegratedMagic {
 #endif
 
             if (isLastSkip) {
-                const bool isTwoHanded = [&]() {
-                    if (!_session.active || _session.activeSlot < 0) return false;
-                    if (_session.modeSpellRight != nullptr) return false;
-                    return MagicAssign::IsTwoHandedSpell(_session.modeSpellLeft);
-                }();
-                if (isTwoHanded) return;
+                if (const bool isTwoHanded =
+                        [&]() {
+                            if (!_session.active || _session.activeSlot < 0) return false;
+                            if (_session.modeSpellRight != nullptr) return false;
+                            return MagicAssign::IsTwoHandedSpell(_session.modeSpellLeft);
+                        }();
+                    isTwoHanded)
+                    return;
 
                 auto stopAndDelay = [&](Slots::Hand h) {
                     auto& hm = ModeFor(h);
@@ -163,6 +165,8 @@ namespace IntegratedMagic {
 #endif
                     }
                 };
+                stopAndDelay(Left);
+                stopAndDelay(Right);
             }
             return;
         }
