@@ -930,6 +930,8 @@ namespace IntegratedMagic::HUD {
                 const bool hovIsShoutOrPower =
                     hovType == MagicAssign::HoveredMagicType::Shout || hovType == MagicAssign::HoveredMagicType::Power;
                 const bool hovIsTwoHanded = hovType == MagicAssign::HoveredMagicType::TwoHandedSpell;
+                const bool hovIsRightOnly = hovType == MagicAssign::HoveredMagicType::RightOnlySpell;
+                const bool hovIsLeftOnly = hovType == MagicAssign::HoveredMagicType::LeftOnlySpell;
 
                 const bool hovIsFullSlot = hovIsShoutOrPower || hovIsTwoHanded;
 
@@ -999,7 +1001,7 @@ namespace IntegratedMagic::HUD {
                                 g_hintsShout = true;
                                 g_hintsHoverRight = false;
                             } else {
-                                const bool hoverRight = dx >= 0.f;
+                                const bool hoverRight = hovIsRightOnly ? true : hovIsLeftOnly ? false : (dx >= 0.f);
                                 const ImU32 hlColor = IM_COL32(255, 200, 80, 40);
                                 if (hoverRight)
                                     FillSector(dl, center, st.popupSlotRadius - 1.f, -kPI * 0.5f, kPI * 0.5f, hlColor);

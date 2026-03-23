@@ -70,26 +70,31 @@ namespace IntegratedMagic::MagicAssign {
         }
     }
 
+    static constexpr RE::FormID kRightHandSlotID = 0x00013F42u;
+    static constexpr RE::FormID kLeftHandSlotID = 0x00013F43u;
+    static constexpr RE::FormID kEitherHandSlotID = 0x00013F44u;
+    static constexpr RE::FormID kBothHandsSlotID = 0x00013F45u;
+
+    static RE::FormID GetSpellEquipSlotID(const RE::SpellItem* spell) {
+        if (!spell) return 0;
+        const auto* slot = spell->GetEquipSlot();
+        return slot ? slot->GetFormID() : 0;
+    }
+
     bool IsTwoHandedSpell(const RE::SpellItem* spell) {
         if (!spell) return false;
-
-        static const RE::BGSEquipSlot* s_rightHand{nullptr};
-        static const RE::BGSEquipSlot* s_leftHand{nullptr};
-        static bool s_init{false};
-        if (!s_init) {
-            s_init = true;
-            s_rightHand = RE::TESForm::LookupByID<RE::BGSEquipSlot>(0x00013F43);
-            s_leftHand = RE::TESForm::LookupByID<RE::BGSEquipSlot>(0x00013F44);
-        }
-
-        const auto* slot = spell->GetEquipSlot();
-
-        if (slot == s_rightHand || slot == s_leftHand) return false;
-
         using ST = RE::MagicSystem::SpellType;
         const auto t = spell->GetSpellType();
         if (t == ST::kPower || t == ST::kLesserPower || t == ST::kVoicePower) return false;
-        return true;
+        return GetSpellEquipSlotID(spell) == kBothHandsSlotID;
+    }
+
+    bool IsRightHandOnlySpell(const RE::SpellItem* spell) {
+        return spell && GetSpellEquipSlotID(spell) == kRightHandSlotID;
+    }
+
+    bool IsLeftHandOnlySpell(const RE::SpellItem* spell) {
+        return spell && GetSpellEquipSlotID(spell) == kLeftHandSlotID;
     }
 
     HoveredMagicType GetHoveredMagicType() {
@@ -119,9 +124,9 @@ namespace IntegratedMagic::MagicAssign {
             if (t == RE::MagicSystem::SpellType::kPower || t == RE::MagicSystem::SpellType::kLesserPower) {
                 return Power;
             }
-            if (IsTwoHandedSpell(spell)) {
-                return TwoHandedSpell;
-            }
+            if (IsTwoHandedSpell(spell)) return TwoHandedSpell;
+            if (IsRightHandOnlySpell(spell)) return RightOnlySpell;
+            if (IsLeftHandOnlySpell(spell)) return LeftOnlySpell;
             return Spell;
         }
 #ifdef DEBUG
