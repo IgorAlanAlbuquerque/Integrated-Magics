@@ -111,31 +111,17 @@ namespace IntegratedMagic::MagicAssign {
         }
 
         if (form->As<RE::TESShout>()) {
-#ifdef DEBUG
-            spdlog::info("[Assign] GetHoveredMagicType: formID={:#010x} -> Shout", formID);
-#endif
             return Shout;
         }
 
         if (auto const* spell = form->As<RE::SpellItem>()) {
             const auto t = spell->GetSpellType();
             if (t == RE::MagicSystem::SpellType::kPower || t == RE::MagicSystem::SpellType::kLesserPower) {
-#ifdef DEBUG
-                spdlog::info("[Assign] GetHoveredMagicType: formID={:#010x} spellType={} -> Power", formID,
-                             static_cast<int>(t));
-#endif
                 return Power;
             }
             if (IsTwoHandedSpell(spell)) {
-#ifdef DEBUG
-                spdlog::info("[Assign] GetHoveredMagicType: formID={:#010x} -> TwoHandedSpell", formID);
-#endif
                 return TwoHandedSpell;
             }
-#ifdef DEBUG
-            spdlog::info("[Assign] GetHoveredMagicType: formID={:#010x} spellType={} -> Spell", formID,
-                         static_cast<int>(t));
-#endif
             return Spell;
         }
 #ifdef DEBUG

@@ -48,7 +48,9 @@ namespace IntegratedMagic {
                     Image img;
                     if (LoadSVG(path.string().c_str(), img)) {
                         formid_icons_[formID] = img;
+#ifdef DEBUG
                         spdlog::info("[TextureManager] Loaded spell icon: {} -> FormID {:#010x}", stem, formID);
+#endif
                     } else {
                         spdlog::error("[TextureManager] Failed to load spell icon: {}", stem);
                     }
@@ -56,7 +58,9 @@ namespace IntegratedMagic {
                     spdlog::warn("[TextureManager] Invalid spell icon filename (not hex8): {}", stem);
                 }
             }
+#ifdef DEBUG
             spdlog::info("[TextureManager] Loaded {} per-spell icon(s).", formid_icons_.size());
+#endif
         }
 
         ui_icons_.clear();
@@ -73,9 +77,11 @@ namespace IntegratedMagic {
                 if (LoadSVG(path.string().c_str(), img, 256)) {
                     const auto idx = std::to_underlying(it->second);
                     ui_icons_[idx] = img;
+#ifdef DEBUG
                     spdlog::info("[TextureManager] Loaded UI texture: {}", filename);
                 } else {
                     spdlog::error("[TextureManager] Failed to load UI texture: {}", filename);
+#endif
                 }
             }
         }
@@ -154,7 +160,9 @@ namespace IntegratedMagic {
 
                 if (auto it = iconMap.find(buttonIndex); it != iconMap.end())
                     if (it->second.texture) it->second.texture->Release();
+#ifdef DEBUG
                 spdlog::info("[TextureManager] Lazy loaded button icon: {} ({}px)", filename, targetSize);
+#endif
                 iconMap[buttonIndex] = img;
                 return iconMap[buttonIndex];
             }
@@ -189,7 +197,9 @@ namespace IntegratedMagic {
 
                 if (auto it = keyboard_icons_.find(scancode); it != keyboard_icons_.end())
                     if (it->second.texture) it->second.texture->Release();
+#ifdef DEBUG
                 spdlog::info("[TextureManager] Lazy loaded keyboard icon: {} ({}px)", filename, targetSize);
+#endif
                 keyboard_icons_[scancode] = img;
                 return true;
             }
