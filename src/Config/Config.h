@@ -5,8 +5,8 @@
 #include <cstdint>
 #include <filesystem>
 
-#include "SpellType.h"
 #include "Persistence/SpellSettingsDB.h"
+#include "SpellType.h"
 
 namespace IntegratedMagic {
 
@@ -24,6 +24,14 @@ namespace IntegratedMagic {
         bool autoAttack{true};
     };
 
+    enum class HudVisibilityFlag : std::uint8_t {
+        Never = 0,
+        SlotActive = 1 << 0,
+        InCombat = 1 << 1,
+        WeaponDrawn = 1 << 2,
+        Always = 1 << 3,
+    };
+
     struct MagicConfig {
         static constexpr std::uint32_t kMaxSlots = 64;
         std::atomic<std::uint32_t> slotCount{4};
@@ -33,7 +41,7 @@ namespace IntegratedMagic {
         std::array<InputConfig, kMaxSlots> slotInput;
         InputConfig hudPopupInput;
         std::array<SpellTypeDefaults, static_cast<std::size_t>(SpellType::Shout) + 1> spellTypeDefaults{};
-        bool hudVisible{true};
+        std::uint8_t hudVisibilityFlags{static_cast<std::uint8_t>(HudVisibilityFlag::Always)};
         bool skipEquipAnimationPatch = false;
         bool skipEquipAnimationOnReturnPatch = false;
         bool requireExclusiveHotkeyPatch = false;
@@ -45,6 +53,10 @@ namespace IntegratedMagic {
         void Load();
         void Save() const;
         std::uint32_t SlotCount() const noexcept;
+
+        bool HudFlagSet(HudVisibilityFlag f) const noexcept {
+            return (hudVisibilityFlags & static_cast<std::uint8_t>(f)) != 0;
+        }
 
     private:
         static std::filesystem::path IniPath();
