@@ -264,13 +264,28 @@ namespace {
         }
 
         ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-        bool hudVisible = IntegratedMagic::HUD::IsHudVisible();
-        if (ImGui::Checkbox(IntegratedMagic::Strings::Get("Item_ShowHud", "Show HUD").c_str(), &hudVisible)) {
-            IntegratedMagic::HUD::SetHudVisible(hudVisible);
-            cfg.hudVisible = hudVisible;
-            dirty = true;
+        ImGui::SeparatorText(IntegratedMagic::Strings::Get("HUD_Visibility_Label", "HUD Visibility").c_str());
+
+        using F = IntegratedMagic::HudVisibilityFlag;
+        auto flagCheck = [&](F flag, const char* strKey, const char* fallback) {
+            bool v = cfg.HudFlagSet(flag);
+            if (ImGui::Checkbox(IntegratedMagic::Strings::Get(strKey, fallback).c_str(), &v)) {
+                if (v)
+                    cfg.hudVisibilityFlags |= static_cast<std::uint8_t>(flag);
+                else
+                    cfg.hudVisibilityFlags &= ~static_cast<std::uint8_t>(flag);
+                dirty = true;
+            }
+        };
+
+        flagCheck(F::Always, "HUD_Show_Always", "Always");
+        flagCheck(F::SlotActive, "HUD_Show_SlotActive", "Slot Active");
+        flagCheck(F::InCombat, "HUD_Show_InCombat", "In Combat");
+        flagCheck(F::WeaponDrawn, "HUD_Show_WeaponDrawn", "Weapon Drawn");
+
+        if (cfg.hudVisibilityFlags == 0) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("(%s)", IntegratedMagic::Strings::Get("HUD_Show_Never_Hint", "HUD hidden").c_str());
         }
 
         ImGui::Spacing();

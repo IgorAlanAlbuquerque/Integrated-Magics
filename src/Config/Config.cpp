@@ -110,7 +110,13 @@ namespace IntegratedMagic {
             return;
         }
         const int raw = _getInt(ini, "General", "SlotCount", 4);
-        hudVisible = _getBool(ini, "General", "HudVisible", true);
+        using F = HudVisibilityFlag;
+        std::uint8_t flags = 0;
+        if (_getBool(ini, "General", "HudShowAlways", false)) flags |= static_cast<std::uint8_t>(F::Always);
+        if (_getBool(ini, "General", "HudShowOnSlotActive", false)) flags |= static_cast<std::uint8_t>(F::SlotActive);
+        if (_getBool(ini, "General", "HudShowInCombat", false)) flags |= static_cast<std::uint8_t>(F::InCombat);
+        if (_getBool(ini, "General", "HudShowWeaponDrawn", false)) flags |= static_cast<std::uint8_t>(F::WeaponDrawn);
+        hudVisibilityFlags = flags;
         std::uint32_t v = (raw < 1) ? 1u : static_cast<std::uint32_t>(raw);
         if (v > kMaxSlots) {
             v = kMaxSlots;
@@ -188,7 +194,11 @@ namespace IntegratedMagic {
         ini.LoadFile(path.string().c_str());
         const auto n = SlotCount();
         ini.SetLongValue("General", "SlotCount", static_cast<long>(n));
-        ini.SetBoolValue("General", "HudVisible", hudVisible);
+        using F = HudVisibilityFlag;
+        ini.SetBoolValue("General", "HudShowAlways", HudFlagSet(F::Always));
+        ini.SetBoolValue("General", "HudShowOnSlotActive", HudFlagSet(F::SlotActive));
+        ini.SetBoolValue("General", "HudShowInCombat", HudFlagSet(F::InCombat));
+        ini.SetBoolValue("General", "HudShowWeaponDrawn", HudFlagSet(F::WeaponDrawn));
         for (std::uint32_t i = 0; i < n; ++i) {
             const auto sec = std::format("Magic{}", i + 1);
             _saveInput(ini, sec.c_str(), slotInput[i]);

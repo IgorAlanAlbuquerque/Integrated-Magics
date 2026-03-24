@@ -117,7 +117,6 @@ namespace {
                 IntegratedMagic::StyleConfig::Get().Load();
                 IntegratedMagic::MENU::Register();
                 IntegratedMagic::HUD::Register();
-                IntegratedMagic::HUD::SetHudVisible(IntegratedMagic::GetMagicConfig().hudVisible);
                 IntegratedMagic::TextureManager::Init();
                 Input::OnConfigChanged();
                 IntegratedMagic::Hooks::Install_Hooks();

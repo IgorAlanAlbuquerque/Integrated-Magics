@@ -1065,6 +1065,24 @@ namespace IntegratedMagic::HUD {
 
             DrawOverlayAndCursor({io->DisplaySize.x, io->DisplaySize.y}, g_mousePos);
         }
+
+        bool EvaluateHudVisibility() {
+            using F = IntegratedMagic::HudVisibilityFlag;
+            const auto& cfg = IntegratedMagic::GetMagicConfig();
+            if (cfg.hudVisibilityFlags == 0) return false;
+            if (cfg.HudFlagSet(F::Always)) return true;
+            auto* player = RE::PlayerCharacter::GetSingleton();
+            if (!player) return false;
+            if (cfg.HudFlagSet(F::SlotActive) && IntegratedMagic::MagicState::Get().IsActive()) return true;
+            if (cfg.HudFlagSet(F::InCombat) && player->IsInCombat()) return true;
+            if (cfg.HudFlagSet(F::WeaponDrawn)) {
+                const auto ws = player->AsActorState()->GetWeaponState();
+                using WS = RE::WEAPON_STATE;
+                if (ws == WS::kDrawn || ws == WS::kWantToDraw || ws == WS::kDrawing) return true;
+            }
+
+            return false;
+        }
     }
 
     bool IsDetailPopupOpen() { return g_popupWindow && g_popupWindow->IsOpen.load(std::memory_order_relaxed); }
@@ -1100,7 +1118,7 @@ namespace IntegratedMagic::HUD {
         if (inMagicMenu && Input::ConsumeHudToggle()) ToggleDetailPopup();
         if (!inMagicMenu && g_popupWindow && g_popupWindow->IsOpen.load()) g_popupWindow->IsOpen = false;
 
-        if (!g_hudVisible.load(std::memory_order_relaxed)) return;
+        if (!EvaluateHudVisibility()) return;
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.f, 0.f});
 
