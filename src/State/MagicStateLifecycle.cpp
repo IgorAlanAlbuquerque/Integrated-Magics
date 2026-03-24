@@ -238,8 +238,8 @@ namespace IntegratedMagic {
         auto* pc = GetPlayer();
         if (!pc) return true;
         if (PlayerIsDead(pc)) return true;
-        if (PlayerIsKnockedOrStaggered(pc)) return true;
-        if (PlayerIsBlocking(pc)) return true;
+        if (PlayerIsKnockedOrStaggered(pc) && (!_left.pressActive && !_right.pressActive)) return true;
+        if (PlayerIsBlocking(pc) && (!_left.pressActive && !_right.pressActive)) return true;
         if (!_restore.pendingRestoreAfterSheathe && PlayerIsSheathingOrSheathed(pc)) return true;
 
         if (_session.modeSpellRight) {

@@ -186,8 +186,26 @@ namespace IntegratedMagic {
             return;
         }
 
-        if (_left.autoActive && !_left.finished && _left.chargeComplete) FinishHand(Left);
-        if (_right.autoActive && !_right.finished && _right.chargeComplete) FinishHand(Right);
+        if (_left.autoActive && !_left.finished && _left.chargeComplete) {
+            if (_left.pressAutocast) {
+                _left.autoActive = false;
+                _left.chargeComplete = false;
+                _left.waitingChargeComplete = false;
+                _left.pressAutocast = false;
+            } else {
+                FinishHand(Left);
+            }
+        }
+        if (_right.autoActive && !_right.finished && _right.chargeComplete) {
+            if (_right.pressAutocast) {
+                _right.autoActive = false;
+                _right.chargeComplete = false;
+                _right.waitingChargeComplete = false;
+                _right.pressAutocast = false;
+            } else {
+                FinishHand(Right);
+            }
+        }
         if (_left.holdFiredAndWaitingCastStop && !_left.finished) FinishHand(Left);
         if (_right.holdFiredAndWaitingCastStop && !_right.finished) FinishHand(Right);
         TryFinalizeExit();
@@ -491,6 +509,13 @@ namespace IntegratedMagic {
         if (!_session.active) return;
         auto& hm = ModeFor(hand);
         if (hm.autoActive && !hm.finished && hm.chargeComplete) {
+            if (hm.pressAutocast) {
+                hm.autoActive = false;
+                hm.chargeComplete = false;
+                hm.waitingChargeComplete = false;
+                hm.pressAutocast = false;
+                return;
+            }
             if (_session.isDualCasting) {
                 FinishHand(Slots::Hand::Left);
                 FinishHand(Slots::Hand::Right);

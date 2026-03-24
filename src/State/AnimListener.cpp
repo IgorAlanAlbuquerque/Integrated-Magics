@@ -57,7 +57,9 @@ void AnimListener::HandleAnimEvent(const RE::BSAnimationGraphEvent* ev,
 #ifdef DEBUG
         spdlog::info("[AnimListener] >> {} -> ForceExit!", ev->tag.c_str());
 #endif
-        state.ForceExit();
+        if (!state.IsPressMode()) {
+            state.ForceExit();
+        }
     }
     if (tag == "tailMTIdle"sv || tag == "IdleStop"sv) {
         if (state.IsWaitingSheatheRestore()) {
