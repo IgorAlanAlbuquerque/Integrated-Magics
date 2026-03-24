@@ -267,6 +267,7 @@ namespace IntegratedMagic {
         setFloat("Popup", "SlotGap", popupSlotGap);
         setFloat("Popup", "ModeWidgetWidth", modeWidgetW);
         setU8("Popup", "OverlayAlpha", overlayAlpha);
+        ini.SetValue("Popup", "Layout", kLayoutNames[static_cast<int>(popupLayout)]);
 
         setFloat("Icons", "SizeFactor", iconSizeFactor);
         setFloat("Icons", "OffsetFactor", iconOffsetFactor);

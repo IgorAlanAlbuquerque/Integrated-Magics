@@ -3,6 +3,7 @@
 #include "Config/Config.h"
 #include "Config/Slots.h"
 #include "PCH.h"
+#include "State/State.h"
 
 namespace IntegratedMagic::MagicAssign {
 
@@ -22,12 +23,49 @@ namespace IntegratedMagic::MagicAssign {
                 auto* form = RE::TESForm::LookupByID(formID);
                 if (!form) return RE::BSEventNotifyControl::kContinue;
 
-                if (form->As<RE::TESShout>() || (form->As<RE::SpellItem>())) {
+                if (form->As<RE::TESShout>() || form->As<RE::SpellItem>()) {
                     s_lastEquippedMagicFormID.store(formID, std::memory_order_relaxed);
 #ifdef DEBUG
                     spdlog::info("[Assign] EquipSink: cached formID={:#010x}", formID);
 #endif
                 }
+
+                auto& state = MagicState::Get();
+                if (!state.IsActive()) return RE::BSEventNotifyControl::kContinue;
+
+                if (auto const* spell = form->As<RE::SpellItem>()) {
+                    const auto& leftMode = state.LeftMode();
+                    const auto& rightMode = state.RightMode();
+
+                    (void)leftMode;
+                    (void)rightMode;
+                    const int activeSlot = state.ActiveSlot();
+                    if (activeSlot >= 0) {
+                        const auto lID = Slots::GetSlotSpell(activeSlot, Slots::Hand::Left);
+                        const auto rID = Slots::GetSlotSpell(activeSlot, Slots::Hand::Right);
+                        if (formID == lID || formID == rID) return RE::BSEventNotifyControl::kContinue;
+                    }
+
+                    spdlog::info(
+                        "[Assign] EquipSink: foreign spell {:#010x} equipped during active slot {} -> "
+                        "ForceExitNoRestore",
+                        formID, state.ActiveSlot());
+                    if (auto* task = SKSE::GetTaskInterface()) {
+                        task->AddTask([]() { MagicState::Get().ForceExitNoRestore(); });
+                    }
+                    return RE::BSEventNotifyControl::kContinue;
+                }
+
+                if (form->As<RE::TESObjectWEAP>() || form->As<RE::TESObjectARMO>() || form->As<RE::TESObjectMISC>()) {
+                    spdlog::info(
+                        "[Assign] EquipSink: foreign item {:#010x} (weapon/armor/misc) equipped during active slot {} "
+                        "-> ForceExitNoRestore",
+                        formID, state.ActiveSlot());
+                    if (auto* task = SKSE::GetTaskInterface()) {
+                        task->AddTask([]() { MagicState::Get().ForceExitNoRestore(); });
+                    }
+                }
+
                 return RE::BSEventNotifyControl::kContinue;
             }
 
@@ -167,6 +205,12 @@ namespace IntegratedMagic::MagicAssign {
             Slots::SetSlotSpell(slot, Slots::Hand::Right, 0, true);
             Slots::SetSlotShout(slot, 0, true);
             return true;
+        }
+
+        const auto existingLeftID = Slots::GetSlotSpell(slot, Slots::Hand::Left);
+        auto* existingLeftSpell = existingLeftID ? RE::TESForm::LookupByID<RE::SpellItem>(existingLeftID) : nullptr;
+        if (hand == Slots::Hand::Right && existingLeftSpell && IsTwoHandedSpell(existingLeftSpell)) {
+            Slots::SetSlotSpell(slot, Slots::Hand::Left, 0, true);
         }
 
 #ifdef DEBUG
