@@ -1,5 +1,6 @@
 #include "Action.h"
 #include "Config/Slots.h"
+#include "Input/Assign.h"
 #include "InventoryUtil.h"
 #include "PCH.h"
 #include "Persistence/SpellSettingsDB.h"
@@ -140,6 +141,15 @@ namespace IntegratedMagic {
 #endif
 
             if (isLastSkip) {
+                if (const bool isTwoHanded =
+                        [&]() {
+                            if (!_session.active || _session.activeSlot < 0) return false;
+                            if (_session.modeSpellRight != nullptr) return false;
+                            return MagicAssign::IsTwoHandedSpell(_session.modeSpellLeft);
+                        }();
+                    isTwoHanded)
+                    return;
+
                 auto stopAndDelay = [&](Slots::Hand h) {
                     auto& hm = ModeFor(h);
                     if ((hm.autoActive || (hm.holdActive && hm.wantAutoAttack)) && !hm.finished) {
@@ -460,7 +470,7 @@ namespace IntegratedMagic {
 
         if (_shout.modeShoutID != 0 && _shout.isPower && _shout.held && !_shout.finished &&
             (SpellSettingsDB::Get().GetOrCreate(_shout.modeShoutID).mode == ActivationMode::Automatic)) {
-            constexpr float kPowerAutoDuration = 0.5f;
+            constexpr float kPowerAutoDuration = 0.25f;
             _shout.powerAutoSecs += dt > 0.f ? dt : 0.f;
 #ifdef DEBUG
             spdlog::info("[State] PumpAutomatic: power auto secs={:.3f}/{:.3f}", _shout.powerAutoSecs,

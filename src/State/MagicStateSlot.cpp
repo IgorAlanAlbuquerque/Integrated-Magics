@@ -2,6 +2,7 @@
 
 #include "Action.h"
 #include "Config/Slots.h"
+#include "Input/Assign.h"
 #include "InventoryUtil.h"
 #include "PCH.h"
 #include "Persistence/SpellSettingsDB.h"
@@ -339,6 +340,9 @@ namespace IntegratedMagic {
             if (e.hasLeft) {
                 MagicAction::EquipSpellInHand(player, e.leftSpell, Left);
                 MarkDirty(Left);
+                if (!e.hasRight && MagicAssign::IsTwoHandedSpell(e.leftSpell)) {
+                    MarkDirty(Right);
+                }
             }
         });
 

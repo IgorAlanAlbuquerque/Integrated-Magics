@@ -3,21 +3,136 @@
 #include "Config/Config.h"
 #include "Config/Slots.h"
 #include "PCH.h"
+#include "State/State.h"
 
 namespace IntegratedMagic::MagicAssign {
 
+    static std::atomic<RE::FormID> s_lastEquippedMagicFormID{0};
+
     namespace {
+
+        class MagicEquipSink : public RE::BSTEventSink<RE::TESEquipEvent> {
+        public:
+            RE::BSEventNotifyControl ProcessEvent(const RE::TESEquipEvent* a_event,
+                                                  RE::BSTEventSource<RE::TESEquipEvent>*) override {
+                if (!a_event || !a_event->equipped) return RE::BSEventNotifyControl::kContinue;
+                auto* player = RE::PlayerCharacter::GetSingleton();
+                if (!player || a_event->actor.get() != player) return RE::BSEventNotifyControl::kContinue;
+
+                const auto formID = a_event->baseObject;
+                auto* form = RE::TESForm::LookupByID(formID);
+                if (!form) return RE::BSEventNotifyControl::kContinue;
+
+                if (form->As<RE::TESShout>() || form->As<RE::SpellItem>()) {
+                    s_lastEquippedMagicFormID.store(formID, std::memory_order_relaxed);
+#ifdef DEBUG
+                    spdlog::info("[Assign] EquipSink: cached formID={:#010x}", formID);
+#endif
+                }
+
+                auto& state = MagicState::Get();
+                if (!state.IsActive()) return RE::BSEventNotifyControl::kContinue;
+
+                if (auto const* spell = form->As<RE::SpellItem>()) {
+                    const auto& leftMode = state.LeftMode();
+                    const auto& rightMode = state.RightMode();
+
+                    (void)leftMode;
+                    (void)rightMode;
+                    const int activeSlot = state.ActiveSlot();
+                    if (activeSlot >= 0) {
+                        const auto lID = Slots::GetSlotSpell(activeSlot, Slots::Hand::Left);
+                        const auto rID = Slots::GetSlotSpell(activeSlot, Slots::Hand::Right);
+                        if (formID == lID || formID == rID) return RE::BSEventNotifyControl::kContinue;
+                    }
+
+                    spdlog::info(
+                        "[Assign] EquipSink: foreign spell {:#010x} equipped during active slot {} -> "
+                        "ForceExitNoRestore",
+                        formID, state.ActiveSlot());
+                    if (auto* task = SKSE::GetTaskInterface()) {
+                        task->AddTask([]() { MagicState::Get().ForceExitNoRestore(); });
+                    }
+                    return RE::BSEventNotifyControl::kContinue;
+                }
+
+                if (form->As<RE::TESObjectWEAP>() || form->As<RE::TESObjectARMO>() || form->As<RE::TESObjectMISC>()) {
+                    spdlog::info(
+                        "[Assign] EquipSink: foreign item {:#010x} (weapon/armor/misc) equipped during active slot {} "
+                        "-> ForceExitNoRestore",
+                        formID, state.ActiveSlot());
+                    if (auto* task = SKSE::GetTaskInterface()) {
+                        task->AddTask([]() { MagicState::Get().ForceExitNoRestore(); });
+                    }
+                }
+
+                return RE::BSEventNotifyControl::kContinue;
+            }
+
+            static MagicEquipSink* GetSingleton() {
+                static MagicEquipSink inst;
+                return &inst;
+            }
+        };
+
+        RE::FormID TryGFxFormID(RE::GFxMovieView* movie, const char* path) {
+            RE::GFxValue v;
+            movie->GetVariable(&v, path);
+            if (v.GetType() == RE::GFxValue::ValueType::kNumber) return static_cast<RE::FormID>(v.GetNumber());
+            if (v.GetType() == RE::GFxValue::ValueType::kString) {
+                const char* s = v.GetString();
+                if (!s || !*s) return 0;
+                char* end = nullptr;
+                const auto id = static_cast<RE::FormID>(std::strtoul(s, &end, 0));
+                return (end && end != s) ? id : 0;
+            }
+            return 0;
+        }
+
         RE::FormID GetHoveredFormID() {
             auto* ui = RE::UI::GetSingleton();
             if (!ui || !ui->IsMenuOpen(RE::MagicMenu::MENU_NAME)) return 0;
             auto menu = ui->GetMenu<RE::MagicMenu>();
             if (!menu || !menu->uiMovie) return 0;
+            auto* movie = menu->uiMovie.get();
 
-            RE::GFxValue result;
-            menu->uiMovie->GetVariable(&result, "_root.Menu_mc.inventoryLists.itemList.selectedEntry.formId");
-            if (result.GetType() != RE::GFxValue::ValueType::kNumber) return 0;
-            return static_cast<RE::FormID>(result.GetNumber());
+            RE::FormID id = TryGFxFormID(movie, "_root.Menu_mc.inventoryLists.itemList.selectedEntry.formId");
+
+            if (!id) id = TryGFxFormID(movie, "_root.Menu_mc.itemList.selectedEntry.formId");
+            if (!id) id = TryGFxFormID(movie, "_root.Menu_mc.List_mc.selectedEntry.formId");
+            if (!id) id = TryGFxFormID(movie, "_root.Menu_mc.selectedEntry.formId");
+
+            if (!id) id = s_lastEquippedMagicFormID.load(std::memory_order_relaxed);
+
+            return id;
         }
+    }
+
+    static constexpr RE::FormID kRightHandSlotID = 0x00013F42u;
+    static constexpr RE::FormID kLeftHandSlotID = 0x00013F43u;
+    static constexpr RE::FormID kEitherHandSlotID = 0x00013F44u;
+    static constexpr RE::FormID kBothHandsSlotID = 0x00013F45u;
+
+    static RE::FormID GetSpellEquipSlotID(const RE::SpellItem* spell) {
+        if (!spell) return 0;
+        const auto* slot = spell->GetEquipSlot();
+        return slot ? slot->GetFormID() : 0;
+    }
+
+    bool IsTwoHandedSpell(const RE::SpellItem* spell) {
+        if (!spell) return false;
+        using ST = RE::MagicSystem::SpellType;
+        const auto t = spell->GetSpellType();
+        if (t == ST::kPower || t == ST::kLesserPower || t == ST::kVoicePower) return false;
+        return GetSpellEquipSlotID(spell) == kBothHandsSlotID;
+    }
+
+    bool IsRightHandOnlySpell(const RE::SpellItem* spell) {
+        return spell && GetSpellEquipSlotID(spell) == kRightHandSlotID;
+    }
+
+    bool IsLeftHandOnlySpell(const RE::SpellItem* spell) {
+        return spell && GetSpellEquipSlotID(spell) == kLeftHandSlotID;
     }
 
     HoveredMagicType GetHoveredMagicType() {
@@ -39,25 +154,17 @@ namespace IntegratedMagic::MagicAssign {
         }
 
         if (form->As<RE::TESShout>()) {
-#ifdef DEBUG
-            spdlog::info("[Assign] GetHoveredMagicType: formID={:#010x} -> Shout", formID);
-#endif
             return Shout;
         }
 
         if (auto const* spell = form->As<RE::SpellItem>()) {
             const auto t = spell->GetSpellType();
             if (t == RE::MagicSystem::SpellType::kPower || t == RE::MagicSystem::SpellType::kLesserPower) {
-#ifdef DEBUG
-                spdlog::info("[Assign] GetHoveredMagicType: formID={:#010x} spellType={} -> Power", formID,
-                             static_cast<int>(t));
-#endif
                 return Power;
             }
-#ifdef DEBUG
-            spdlog::info("[Assign] GetHoveredMagicType: formID={:#010x} spellType={} -> Spell", formID,
-                         static_cast<int>(t));
-#endif
+            if (IsTwoHandedSpell(spell)) return TwoHandedSpell;
+            if (IsRightHandOnlySpell(spell)) return RightOnlySpell;
+            if (IsLeftHandOnlySpell(spell)) return LeftOnlySpell;
             return Spell;
         }
 #ifdef DEBUG
@@ -85,6 +192,25 @@ namespace IntegratedMagic::MagicAssign {
                 slot, (hand == Slots::Hand::Left) ? "Left" : "Right", formID);
 #endif
             return false;
+        }
+
+        if (IsTwoHandedSpell(spell)) {
+#ifdef DEBUG
+            spdlog::info(
+                "[Assign] TryAssignHoveredSpellToSlot: slot={} spellID={:#010x} name='{}' -> TwoHanded: storing Left, "
+                "clearing Right",
+                slot, spell->GetFormID(), spell->GetFullName() ? spell->GetFullName() : "<null>");
+#endif
+            Slots::SetSlotSpell(slot, Slots::Hand::Left, spell->GetFormID(), true);
+            Slots::SetSlotSpell(slot, Slots::Hand::Right, 0, true);
+            Slots::SetSlotShout(slot, 0, true);
+            return true;
+        }
+
+        const auto existingLeftID = Slots::GetSlotSpell(slot, Slots::Hand::Left);
+        auto* existingLeftSpell = existingLeftID ? RE::TESForm::LookupByID<RE::SpellItem>(existingLeftID) : nullptr;
+        if (hand == Slots::Hand::Right && existingLeftSpell && IsTwoHandedSpell(existingLeftSpell)) {
+            Slots::SetSlotSpell(slot, Slots::Hand::Left, 0, true);
         }
 
 #ifdef DEBUG
@@ -165,4 +291,13 @@ namespace IntegratedMagic::MagicAssign {
         Slots::SetSlotShout(slot, 0u, true);
         return true;
     }
+
+    void RegisterEquipListener() {
+        if (auto* src = RE::ScriptEventSourceHolder::GetSingleton()) {
+            src->AddEventSink<RE::TESEquipEvent>(MagicEquipSink::GetSingleton());
+            spdlog::info("[Assign] TESEquipEvent sink registered.");
+        }
+    }
+
+    void ClearLastEquippedMagic() { s_lastEquippedMagicFormID.store(0, std::memory_order_relaxed); }
 }

@@ -24,7 +24,7 @@ void AnimListener::HandleAnimEvent(const RE::BSAnimationGraphEvent* ev,
 #endif
         state.NotifyAttackEnabled();
     }
-    if (tag == "CastStop"sv) {
+    if (tag == "CastStop"sv || tag == "RitualSpellOut"sv) {
 #ifdef DEBUG
         spdlog::info("[AnimListener] >> CastStop -> OnCastStop");
 #endif

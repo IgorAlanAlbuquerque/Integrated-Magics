@@ -163,7 +163,7 @@ namespace {
         {
             const bool dirtyBefore = dirty;
             DrawKeyValueCapture(kbField, true, dirty, rowPos, &cfg);
-            if (dirty && !dirtyBefore && cfg.modifierKeyboardPosition == rowPos) {
+            if (dirty && !dirtyBefore && rowPos > 0 && cfg.modifierKeyboardPosition == rowPos) {
                 const int val = kbField.load(std::memory_order_relaxed);
                 const auto n = cfg.SlotCount();
                 for (std::uint32_t i = 0; i < n; ++i) {
@@ -183,7 +183,7 @@ namespace {
         {
             const bool dirtyBefore = dirty;
             DrawKeyValueCapture(gpField, false, dirty, rowPos, &cfg);
-            if (dirty && !dirtyBefore && cfg.modifierGamepadPosition == rowPos) {
+            if (dirty && !dirtyBefore && rowPos > 0 && cfg.modifierGamepadPosition == rowPos) {
                 const int val = gpField.load(std::memory_order_relaxed);
                 const auto n = cfg.SlotCount();
                 for (std::uint32_t i = 0; i < n; ++i) {
@@ -292,7 +292,8 @@ namespace {
             }
         }
 
-        ImGui::SeparatorText(IntegratedMagic::Strings::Get("Section_SpellTypeDefaults", "Default spell behavior").c_str());
+        ImGui::SeparatorText(
+            IntegratedMagic::Strings::Get("Section_SpellTypeDefaults", "Default spell behavior").c_str());
 
         struct TypeEntry {
             IntegratedMagic::SpellType type;
@@ -322,7 +323,8 @@ namespace {
 
             int modeIdx = static_cast<int>(d.mode);
             ImGui::SetNextItemWidth(120.f);
-            if (ImGui::Combo(IntegratedMagic::Strings::Get("Item_Mode", "Mode##mode").c_str(), &modeIdx, modeComboItems.c_str())) {
+            if (ImGui::Combo(IntegratedMagic::Strings::Get("Item_Mode", "Mode##mode").c_str(), &modeIdx,
+                             modeComboItems.c_str())) {
                 d.mode = static_cast<IntegratedMagic::ActivationMode>(modeIdx);
                 dirty = true;
             }
@@ -330,7 +332,8 @@ namespace {
             if (d.mode == IntegratedMagic::ActivationMode::Hold) {
                 ImGui::SameLine();
                 bool aa = d.autoAttack;
-                if (ImGui::Checkbox(IntegratedMagic::Strings::Get("Item_AutoCast", "Auto-cast##autocast").c_str(), &aa)) {
+                if (ImGui::Checkbox(IntegratedMagic::Strings::Get("Item_AutoCast", "Auto-cast##autocast").c_str(),
+                                    &aa)) {
                     d.autoAttack = aa;
                     dirty = true;
                 }
@@ -785,16 +788,16 @@ namespace {
             }
 
             ImGui::SetNextItemWidth(150.f);
-            float ox = st.buttonLabelOffsetX;
-            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_OffsetX", "X##btnlblox").c_str(), &ox, 1.f, 5.f, "%.0f")) {
-                st.buttonLabelOffsetX = ox;
+            float ox2 = st.buttonLabelOffsetX;
+            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_OffsetX", "X##btnlblox").c_str(), &ox2, 1.f, 5.f, "%.0f")) {
+                st.buttonLabelOffsetX = ox2;
                 dirty = true;
             }
             ImGui::SameLine();
             ImGui::SetNextItemWidth(150.f);
-            float oy = st.buttonLabelOffsetY;
-            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_OffsetY", "Y##btnlbloy").c_str(), &oy, 1.f, 5.f, "%.0f")) {
-                st.buttonLabelOffsetY = oy;
+            float oy2 = st.buttonLabelOffsetY;
+            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_OffsetY", "Y##btnlbloy").c_str(), &oy2, 1.f, 5.f, "%.0f")) {
+                st.buttonLabelOffsetY = oy2;
                 dirty = true;
             }
             ImGui::SameLine();

@@ -846,7 +846,9 @@ namespace IntegratedMagic::HUD {
                 const auto shoutID = Slots::GetSlotShout(i);
                 auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
                 auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
-                DrawSlotVisual(dl, center, slotR, false, rSp, lSp, shoutID);
+                const bool isTwoHanded = !shoutID && !rID && lSp && MagicAssign::IsTwoHandedSpell(lSp);
+                DrawSlotVisual(dl, center, slotR, false, isTwoHanded ? nullptr : rSp, isTwoHanded ? nullptr : lSp,
+                               isTwoHanded ? lID : shoutID);
             }
 
             if (activeSlot >= 0 && activeSlot < n) {
@@ -857,7 +859,9 @@ namespace IntegratedMagic::HUD {
                 const auto shoutID = Slots::GetSlotShout(activeSlot);
                 auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
                 auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
-                DrawSlotVisual(dl, center, slotR, true, rSp, lSp, shoutID);
+                const bool isTwoHanded = !shoutID && !rID && lSp && MagicAssign::IsTwoHandedSpell(lSp);
+                DrawSlotVisual(dl, center, slotR, true, isTwoHanded ? nullptr : rSp, isTwoHanded ? nullptr : lSp,
+                               isTwoHanded ? lID : shoutID);
             }
 
             for (int i = 0; i < n; ++i) {
@@ -893,8 +897,12 @@ namespace IntegratedMagic::HUD {
             const int n = static_cast<int>(Slots::GetSlotCount());
             const auto& st = Style();
             const float dynPopupR = DynamicRingRadius(n, st.popupSlotRadius, st.popupRingRadius, st.popupSlotGap);
-            const float popupHalf = dynPopupR + st.popupSlotRadius + kGlowPad + st.modeWidgetW + 12.f;
-            const ImVec2 popupSize = {popupHalf * 2.f, popupHalf * 2.f + 48.f};
+
+            const LayoutVec2 bh = SlotLayout::BoundingHalf(st.popupLayout, n, st.popupSlotRadius, dynPopupR,
+                                                           st.popupSlotGap, st.gridColumns);
+            const float popupHalfX = bh.x + kGlowPad + st.modeWidgetW + 12.f;
+            const float popupHalfY = bh.y + kGlowPad + st.modeWidgetW + 12.f;
+            const ImVec2 popupSize = {popupHalfX * 2.f, popupHalfY * 2.f + 48.f};
             const ImVec2 popupPos = {io->DisplaySize.x * 0.5f - popupSize.x * 0.5f,
                                      io->DisplaySize.y * 0.5f - popupSize.y * 0.5f};
             const ImVec2 popupEnd = {popupPos.x + popupSize.x, popupPos.y + popupSize.y};
@@ -921,6 +929,11 @@ namespace IntegratedMagic::HUD {
                 const auto hovType = MagicAssign::GetHoveredMagicType();
                 const bool hovIsShoutOrPower =
                     hovType == MagicAssign::HoveredMagicType::Shout || hovType == MagicAssign::HoveredMagicType::Power;
+                const bool hovIsTwoHanded = hovType == MagicAssign::HoveredMagicType::TwoHandedSpell;
+                const bool hovIsRightOnly = hovType == MagicAssign::HoveredMagicType::RightOnlySpell;
+                const bool hovIsLeftOnly = hovType == MagicAssign::HoveredMagicType::LeftOnlySpell;
+
+                const bool hovIsFullSlot = hovIsShoutOrPower || hovIsTwoHanded;
 
                 for (int i = 0; i < n; ++i) {
                     const ImVec2 center = {ringCenter.x + popupRelPos[i].x, ringCenter.y + popupRelPos[i].y};
@@ -930,19 +943,25 @@ namespace IntegratedMagic::HUD {
                     auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
                     auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
 
-                    DrawSlotVisual(dl, center, st.popupSlotRadius, activeSlot == i, rSp, lSp, shoutID);
+                    const bool slotIsTwoHanded = !shoutID && !rID && lSp && MagicAssign::IsTwoHandedSpell(lSp);
+                    const RE::FormID displayShoutID = shoutID ? shoutID : (slotIsTwoHanded ? lID : 0);
+                    const RE::SpellItem* displayL = slotIsTwoHanded ? nullptr : lSp;
+                    const RE::SpellItem* displayR = slotIsTwoHanded ? nullptr : rSp;
+
+                    DrawSlotVisual(dl, center, st.popupSlotRadius, activeSlot == i, displayR, displayL, displayShoutID);
 
                     {
                         DrawSlotHotkeyIcons(dl, center, st.popupSlotRadius, i);
                     }
 
                     {
-                        if (shoutID) {
-                            auto* shoutForm = RE::TESForm::LookupByID(shoutID);
-                            const char* shoutName = shoutForm ? shoutForm->GetName() : "???";
+                        if (shoutID || slotIsTwoHanded) {
+                            auto* displayForm = RE::TESForm::LookupByID(displayShoutID);
+                            const char* displayName = displayForm ? displayForm->GetName() : "???";
+                            const char* prefix = shoutID ? Strings::Get("Popup_ShoutPrefix", "[S]").c_str() : "[2H]";
                             ImGui::SetCursorScreenPos(
                                 {center.x - st.popupSlotRadius, center.y - st.popupSlotRadius - 16.f});
-                            ImGui::TextDisabled("%s %s", Strings::Get("Popup_ShoutPrefix", "[S]").c_str(), shoutName);
+                            ImGui::TextDisabled("%s %s", prefix, displayName);
                         } else if (rSp || lSp) {
                             const std::string label =
                                 std::string(lSp ? lSp->GetName() : "---") + " | " + (rSp ? rSp->GetName() : "---");
@@ -958,11 +977,17 @@ namespace IntegratedMagic::HUD {
                         const bool inCircle = (dx * dx + dy * dy) < (st.popupSlotRadius * st.popupSlotRadius);
 
                         if (inCircle) {
-                            if (hovIsShoutOrPower) {
+                            if (hovIsFullSlot) {
                                 DL::AddCircleFilled(dl, center, st.popupSlotRadius - 1.f, IM_COL32(255, 200, 80, 40),
                                                     48);
 
-                                if (clicked) MagicAssign::TryAssignHoveredShoutToSlot(i);
+                                if (clicked) {
+                                    if (hovIsTwoHanded)
+
+                                        MagicAssign::TryAssignHoveredSpellToSlot(i, Slots::Hand::Left);
+                                    else
+                                        MagicAssign::TryAssignHoveredShoutToSlot(i);
+                                }
                                 if (rightClicked) {
                                     if (shoutID)
                                         MagicAssign::TryClearSlotShout(i);
@@ -976,7 +1001,7 @@ namespace IntegratedMagic::HUD {
                                 g_hintsShout = true;
                                 g_hintsHoverRight = false;
                             } else {
-                                const bool hoverRight = dx >= 0.f;
+                                const bool hoverRight = hovIsRightOnly ? true : hovIsLeftOnly ? false : (dx >= 0.f);
                                 const ImU32 hlColor = IM_COL32(255, 200, 80, 40);
                                 if (hoverRight)
                                     FillSector(dl, center, st.popupSlotRadius - 1.f, -kPI * 0.5f, kPI * 0.5f, hlColor);
@@ -992,6 +1017,9 @@ namespace IntegratedMagic::HUD {
                                 if (rightClicked) {
                                     if (shoutID) {
                                         MagicAssign::TryClearSlotShout(i);
+                                    } else if (slotIsTwoHanded) {
+                                        MagicAssign::TryClearSlotHand(i, Slots::Hand::Right);
+                                        MagicAssign::TryClearSlotHand(i, Slots::Hand::Left);
                                     } else {
                                         if (hoverRight)
                                             MagicAssign::TryClearSlotHand(i, Slots::Hand::Right);

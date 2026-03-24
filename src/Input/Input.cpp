@@ -650,10 +650,6 @@ namespace {
             if (!inKb && !inGp) continue;
 
             if (const bool accepted = g_slotDown[s].load(std::memory_order_relaxed); accepted) {
-#ifdef DEBUG
-                spdlog::info("[Input] ShouldFilterAndSave: slot={} code={} dev={} FILTERED (slot is down)", slot,
-                             convertedCode, static_cast<int>(dev));
-#endif
                 return true;
             }
 
@@ -666,17 +662,9 @@ namespace {
             }
 
             if (inKb && ComboDown(hk.kb, g_kbDown)) {
-#ifdef DEBUG
-                spdlog::info("[Input] ShouldFilterAndSave: slot={} code={} FILTERED (kb combo down)", slot,
-                             convertedCode);
-#endif
                 return true;
             }
             if (inGp && ComboDown(hk.gp, g_gpDown)) {
-#ifdef DEBUG
-                spdlog::info("[Input] ShouldFilterAndSave: slot={} code={} FILTERED (gp combo down)", slot,
-                             convertedCode);
-#endif
                 return true;
             }
 
@@ -834,7 +822,11 @@ namespace {
 
         const bool hudDown = IsHudComboDown();
         if (hudDown && !prevHudDown) {
-            g_hudTogglePending.store(true, std::memory_order_relaxed);
+            auto* ui = RE::UI::GetSingleton();
+            static const RE::BSFixedString magicMenu{"MagicMenu"};
+            if (ui && ui->IsMenuOpen(magicMenu)) {
+                g_hudTogglePending.store(true, std::memory_order_relaxed);
+            }
         }
 
         prevHudDown = hudDown;
