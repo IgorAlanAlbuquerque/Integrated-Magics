@@ -11,6 +11,36 @@ namespace IntegratedMagic::MagicAssign {
 
     namespace {
 
+        static bool IsAssociatedBoundWeaponOfSlot(RE::FormID weaponFormID, int activeSlot) {
+            if (activeSlot < 0 || !weaponFormID) return false;
+
+            const RE::FormID slotIDs[2] = {
+                Slots::GetSlotSpell(activeSlot, Slots::Hand::Left),
+                Slots::GetSlotSpell(activeSlot, Slots::Hand::Right),
+            };
+
+            for (const auto spellID : slotIDs) {
+                if (!spellID) continue;
+                const auto* spell = RE::TESForm::LookupByID<RE::SpellItem>(spellID);
+                if (!spell) continue;
+
+                for (const auto* effect : spell->effects) {
+                    if (!effect || !effect->baseEffect) continue;
+                    const auto* associated = effect->baseEffect->data.associatedForm;
+                    if (associated && associated->GetFormID() == weaponFormID) {
+#ifdef DEBUG
+                        spdlog::info(
+                            "[Assign] IsAssociatedBoundWeaponOfSlot: weaponID={:#010x} matched associatedForm "
+                            "of spell={:#010x} in slot={}",
+                            weaponFormID, spellID, activeSlot);
+#endif
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
         class MagicEquipSink : public RE::BSTEventSink<RE::TESEquipEvent> {
         public:
             RE::BSEventNotifyControl ProcessEvent(const RE::TESEquipEvent* a_event,
@@ -34,22 +64,19 @@ namespace IntegratedMagic::MagicAssign {
                 if (!state.IsActive()) return RE::BSEventNotifyControl::kContinue;
 
                 if (auto const* spell = form->As<RE::SpellItem>()) {
-                    const auto& leftMode = state.LeftMode();
-                    const auto& rightMode = state.RightMode();
-
-                    (void)leftMode;
-                    (void)rightMode;
                     const int activeSlot = state.ActiveSlot();
                     if (activeSlot >= 0) {
                         const auto lID = Slots::GetSlotSpell(activeSlot, Slots::Hand::Left);
                         const auto rID = Slots::GetSlotSpell(activeSlot, Slots::Hand::Right);
-                        if (formID == lID || formID == rID) return RE::BSEventNotifyControl::kContinue;
+                        const auto sID = Slots::GetSlotShout(activeSlot);
+                        if (formID == lID || formID == rID || formID == sID) return RE::BSEventNotifyControl::kContinue;
                     }
-
+#ifdef DEBUG
                     spdlog::info(
                         "[Assign] EquipSink: foreign spell {:#010x} equipped during active slot {} -> "
                         "ForceExitNoRestore",
                         formID, state.ActiveSlot());
+#endif
                     if (auto* task = SKSE::GetTaskInterface()) {
                         task->AddTask([]() { MagicState::Get().ForceExitNoRestore(); });
                     }
@@ -57,10 +84,23 @@ namespace IntegratedMagic::MagicAssign {
                 }
 
                 if (form->As<RE::TESObjectWEAP>() || form->As<RE::TESObjectARMO>() || form->As<RE::TESObjectMISC>()) {
+                    if (form->As<RE::TESObjectWEAP>()) {
+                        const int activeSlot = state.ActiveSlot();
+                        if (IsAssociatedBoundWeaponOfSlot(formID, activeSlot)) {
+#ifdef DEBUG
+                            spdlog::info(
+                                "[Assign] EquipSink: weaponID={:#010x} is bound weapon of active slot {} -> ignoring",
+                                formID, activeSlot);
+#endif
+                            return RE::BSEventNotifyControl::kContinue;
+                        }
+                    }
+#ifdef DEBUG
                     spdlog::info(
                         "[Assign] EquipSink: foreign item {:#010x} (weapon/armor/misc) equipped during active slot {} "
                         "-> ForceExitNoRestore",
                         formID, state.ActiveSlot());
+#endif
                     if (auto* task = SKSE::GetTaskInterface()) {
                         task->AddTask([]() { MagicState::Get().ForceExitNoRestore(); });
                     }

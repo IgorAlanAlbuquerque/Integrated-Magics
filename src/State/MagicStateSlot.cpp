@@ -111,8 +111,26 @@ namespace IntegratedMagic {
                 break;
             case Press:
                 hm.pressActive = true;
+                if (hm.wantAutoAttack) {
+                    hm.autoActive = true;
+                    hm.pressAutocast = true;
+                    hm.waitingChargeComplete = true;
+                    hm.waitingAutoAfterEquip = true;
+                    hm.waitingEnableBumperSecs = 0.f;
+                    hm.waitingBeginCast = true;
+                    hm.beginCastWaitSecs = 0.f;
+                    hm.beginCastRetries = 0;
+                    _session.attackEnabled = false;
+                    if (cfg.skipEquipAnimationPatch) {
+                        _cast.castStopsToSkip = _session.wasHandsDown ? 2 : 1;
+                    } else {
+                        _cast.castStopsToSkip = 0;
+                    }
+                }
 #ifdef DEBUG
-                spdlog::info("[State] EnterHand: hand={} mode=Press", handStr);
+                spdlog::info(
+                    "[State] EnterHand: hand={} mode=Press wantAutoAttack={} pressAutocast={} castStopsToSkip={}",
+                    handStr, hm.wantAutoAttack, hm.pressAutocast, _cast.castStopsToSkip);
 #endif
                 break;
         }

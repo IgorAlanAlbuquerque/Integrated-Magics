@@ -498,7 +498,7 @@ namespace IntegratedMagic::HUD {
                 }
             }
 
-            if (s.mode == ActivationMode::Hold) {
+            if (s.mode == ActivationMode::Hold || s.mode == ActivationMode::Press) {
                 const ImVec2 cc = {origin.x + availW * 0.5f, origin.y + btnR * 2.f + 6.f + btnR};
                 const bool hov = ManualHover({cc.x - btnR, cc.y - btnR}, {btnR * 2.f, btnR * 2.f});
 

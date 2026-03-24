@@ -329,7 +329,7 @@ namespace {
                 dirty = true;
             }
 
-            if (d.mode == IntegratedMagic::ActivationMode::Hold) {
+            if (d.mode == IntegratedMagic::ActivationMode::Hold || d.mode == IntegratedMagic::ActivationMode::Press) {
                 ImGui::SameLine();
                 bool aa = d.autoAttack;
                 if (ImGui::Checkbox(IntegratedMagic::Strings::Get("Item_AutoCast", "Auto-cast##autocast").c_str(),

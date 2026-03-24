@@ -30,6 +30,7 @@ namespace IntegratedMagic {
         bool waitingAutoAfterEquip{false};
         bool holdFiredAndWaitingCastStop{false};
         bool finished{false};
+        bool pressAutocast{false};
         float waitingEnableBumperSecs{0.0f};
         bool waitingBeginCast{false};
         float beginCastWaitSecs{0.f};
@@ -134,6 +135,7 @@ namespace IntegratedMagic {
         bool IsWaitingSheatheRestore() const noexcept {
             return _restore.pendingRestoreAfterSheathe && !_restore.sheatheAnimComplete;
         }
+        bool IsPressMode() const noexcept { return _left.pressActive || _right.pressActive; }
         void NotifySheatheComplete() noexcept { _restore.sheatheAnimComplete = true; }
         void OnSpellFired(Slots::Hand hand);
         const HandMode& LeftMode() const noexcept { return _left; }
