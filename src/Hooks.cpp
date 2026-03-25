@@ -1,5 +1,11 @@
 #include "Hooks.h"
 
+#include <d3d11.h>
+#include <dxgi.h>
+#include <imgui.h>
+#include <imgui_impl_dx11.h>
+#include <imgui_impl_win32.h>
+
 #include <utility>
 
 #include "HookUtil.hpp"
@@ -7,6 +13,9 @@
 #include "PCH.h"
 #include "State/AnimListener.h"
 #include "State/State.h"
+#include "UI/HUD.h"
+
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 namespace IntegratedMagic::Hooks {
     namespace {
@@ -54,11 +63,136 @@ namespace IntegratedMagic::Hooks {
                 _orig = reinterpret_cast<Fn>(orig);
             }
         };
+
+        static ImGuiContext* g_imguiContext{nullptr};
+        static std::atomic<bool> g_renderInitialized{false};
+
+        static ID3D11Device* g_device{nullptr};
+        static ID3D11DeviceContext* g_deviceContext{nullptr};
+
+        struct WndProcHook {
+            static inline WNDPROC func{nullptr};
+
+            static LRESULT thunk(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+                if (g_renderInitialized.load()) {
+                    ImGui::SetCurrentContext(g_imguiContext);
+                    if (uMsg == WM_KILLFOCUS) {
+                        auto& io = ImGui::GetIO();
+                        io.ClearInputCharacters();
+                        io.ClearInputKeys();
+                    }
+                    ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam);
+                }
+                return func(hWnd, uMsg, wParam, lParam);
+            }
+        };
+
+        struct D3DInitHook {
+            static inline REL::Relocation<decltype(thunk)*> func;
+            static constexpr auto id = REL::RelocationID(75595, 77226);
+            static constexpr auto offset = REL::VariantOffset(0x9, 0x275, 0x00);
+
+            static void thunk() {
+                func();
+
+                auto* renderManager = RE::BSRenderManager::GetSingleton();
+                if (!renderManager) {
+                    spdlog::error("[Hooks] D3DInitHook: BSRenderManager not found");
+                    return;
+                }
+
+                auto renderData = renderManager->GetRuntimeData();
+                auto* swapchain = renderData.swapChain;
+                if (!swapchain) {
+                    spdlog::error("[Hooks] D3DInitHook: swapchain not found");
+                    return;
+                }
+
+                DXGI_SWAP_CHAIN_DESC sd{};
+                if (FAILED(swapchain->GetDesc(&sd))) {
+                    spdlog::error("[Hooks] D3DInitHook: GetDesc failed");
+                    return;
+                }
+
+                g_device = reinterpret_cast<ID3D11Device*>(renderData.forwarder);
+                g_deviceContext = reinterpret_cast<ID3D11DeviceContext*>(renderData.context);
+
+                g_imguiContext = ImGui::CreateContext();
+                ImGui::SetCurrentContext(g_imguiContext);
+
+                auto& io = ImGui::GetIO();
+                io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+
+                ImGui_ImplWin32_Init(sd.OutputWindow);
+                ImGui_ImplDX11_Init(g_device, g_deviceContext);
+
+                constexpr float kFontSize = 32.0f;
+                const std::string fontPath = R"(.\Data\SKSE\Plugins\IntegratedMagics\resources\fonts\default.ttf)";
+                if (std::filesystem::exists(fontPath)) {
+                    io.Fonts->AddFontFromFileTTF(fontPath.c_str(), kFontSize, nullptr,
+                                                 io.Fonts->GetGlyphRangesDefault());
+                    spdlog::info("[Hooks] D3DInitHook: loaded font '{}'", fontPath);
+                } else {
+                    io.Fonts->AddFontDefault();
+                    spdlog::warn("[Hooks] D3DInitHook: font not found at '{}', using default", fontPath);
+                }
+
+                WndProcHook::func = reinterpret_cast<WNDPROC>(
+                    SetWindowLongPtrA(sd.OutputWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WndProcHook::thunk)));
+                if (!WndProcHook::func) {
+                    spdlog::error("[Hooks] D3DInitHook: SetWindowLongPtrA failed");
+                }
+
+                g_renderInitialized.store(true);
+                spdlog::info("[Hooks] D3DInitHook: ImGui HUD context initialized");
+            }
+
+            static void Install() {
+                REL::Relocation<std::uintptr_t> hook{id, offset};
+                auto& trampoline = SKSE::GetTrampoline();
+                func = trampoline.write_call<5>(hook.address(), thunk);
+                spdlog::info("[Hooks] D3DInitHook installed");
+            }
+        };
+
+        struct DXGIPresentHook {
+            static inline REL::Relocation<decltype(thunk)*> func;
+            static constexpr auto id = REL::RelocationID(75461, 77246);
+            static constexpr auto offset = REL::Offset(0x9);
+
+            static void thunk(std::uint32_t a_p1) {
+                func(a_p1);
+
+                if (!g_renderInitialized.load()) return;
+
+                ImGui::SetCurrentContext(g_imguiContext);
+
+                ImGui_ImplDX11_NewFrame();
+                ImGui_ImplWin32_NewFrame();
+                ImGui::NewFrame();
+
+                IntegratedMagic::HUD::DrawHudFrame();
+
+                ImGui::EndFrame();
+                ImGui::Render();
+                ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+            }
+
+            static void Install() {
+                REL::Relocation<std::uintptr_t> hook{id, offset};
+                auto& trampoline = SKSE::GetTrampoline();
+                func = trampoline.write_call<5>(hook.address(), thunk);
+                spdlog::info("[Hooks] DXGIPresentHook installed");
+            }
+        };
     }
 
     void Install_Hooks() {
-        SKSE::AllocTrampoline(64);
+        SKSE::AllocTrampoline(64 + 14 * 4);
+
         PollInputDevicesHook::Install();
         PlayerAnimGraphProcessEventHook::Install();
+        D3DInitHook::Install();
+        DXGIPresentHook::Install();
     }
 }

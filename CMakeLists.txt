@@ -55,7 +55,10 @@ target_include_directories(${PROJECT_NAME}
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23) 
+target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
+
+find_package(imgui CONFIG REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE imgui::imgui)
 
 target_precompile_headers(${PROJECT_NAME}
   PRIVATE
