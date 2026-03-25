@@ -4,6 +4,8 @@
 
 #include "RE/I/InputEvent.h"
 
+constexpr int kMouseButtonBase = 256;
+
 namespace Input {
     void ProcessAndFilter(RE::InputEvent** a_evns);
     void OnConfigChanged();
@@ -16,4 +18,5 @@ namespace Input {
     std::optional<int> ConsumeReleasedSlot();
     bool ConsumeHudToggle();
     bool IsModifierHeld();
+    void SetCaptureModeActive(bool active);
 }

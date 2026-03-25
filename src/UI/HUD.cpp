@@ -601,8 +601,10 @@ namespace IntegratedMagic::HUD {
             const TextureManager::Image* imgs[3]{nullptr, nullptr, nullptr};
             int validCount = 0;
             for (int k = 0; k < keyCount; ++k) {
-                const auto& img = keys[k].isGamepad ? TextureManager::GetGamepadButtonIcon(keys[k].code, iconType)
-                                                    : TextureManager::GetKeyboardIcon(keys[k].code);
+                const auto& img = [&]() -> const TextureManager::Image& {
+                    if (keys[k].isGamepad) return TextureManager::GetGamepadButtonIcon(keys[k].code, iconType);
+                    return TextureManager::GetKeyboardIcon(keys[k].code);
+                }();
                 if (img.valid()) {
                     imgs[validCount++] = &img;
                 }
@@ -674,8 +676,10 @@ namespace IntegratedMagic::HUD {
             const TextureManager::Image* imgs[3]{};
             int validCount = 0;
             for (int k = 0; k < keyCount; ++k) {
-                const auto& img = keys[k].isGamepad ? TextureManager::GetGamepadButtonIcon(keys[k].code, iconType)
-                                                    : TextureManager::GetKeyboardIcon(keys[k].code);
+                const auto& img = [&]() -> const TextureManager::Image& {
+                    if (keys[k].isGamepad) return TextureManager::GetGamepadButtonIcon(keys[k].code, iconType);
+                    return TextureManager::GetKeyboardIcon(keys[k].code);
+                }();
                 if (img.valid()) imgs[validCount++] = &img;
             }
             if (validCount == 0) return;
