@@ -64,6 +64,7 @@ namespace {
     void CancelFieldCapture() {
         if (g_fieldCapture.active) {
             Input::CancelHotkeyCapture();
+            Input::SetCaptureModeActive(false);
             g_fieldCapture = {};
         }
     }
@@ -84,12 +85,14 @@ namespace {
             if (const int encoded = Input::PollCapturedHotkey(); encoded != -1) {
                 const bool gotKb = (encoded >= 0);
                 if (gotKb == wantKeyboard) {
-                    const int val = wantKeyboard ? encoded : -(encoded + 1);
+                    const int val = wantKeyboard ? encoded : -(encoded + 2);
                     field.store(val, std::memory_order_relaxed);
                     dirty = true;
                     g_fieldCapture = {};
+                    Input::SetCaptureModeActive(false);
                 } else {
                     Input::RequestHotkeyCapture();
+                    Input::SetCaptureModeActive(true);
                 }
             }
 
@@ -103,6 +106,7 @@ namespace {
             if (ImGui::SmallButton(IntegratedMagic::Strings::Get("Btn_Cap", "Cap").c_str())) {
                 g_fieldCapture = {&field, wantKeyboard, true};
                 Input::RequestHotkeyCapture();
+                Input::SetCaptureModeActive(true);
             }
             if (g_fieldCapture.active) ImGui::EndDisabled();
         }
@@ -230,10 +234,10 @@ namespace {
 
         if (g_fieldCapture.active) {
             ImGui::Spacing();
-            const auto msg =
-                std::format("{}...", g_fieldCapture.wantKeyboard
-                                         ? IntegratedMagic::Strings::Get("Capture_WaitKb", "Press a keyboard key")
-                                         : IntegratedMagic::Strings::Get("Capture_WaitGp", "Press a gamepad button"));
+            const auto msg = std::format(
+                "{}...", g_fieldCapture.wantKeyboard
+                             ? IntegratedMagic::Strings::Get("Capture_WaitKb", "Press a keyboard key or mouse button")
+                             : IntegratedMagic::Strings::Get("Capture_WaitGp", "Press a gamepad button"));
             ImGui::TextDisabled("%s", msg.c_str());
         }
     }
