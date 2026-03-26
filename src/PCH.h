@@ -6,6 +6,7 @@
 #include "RE/Skyrim.h"
 #include "REL/Relocation.h"
 #include "SKSE/SKSE.h"
+#include "SKSEMenuFramework.h"
 
 using namespace std::literals;
 

@@ -3,8 +3,10 @@
 #include <vector>
 
 #include "Config/Slots.h"
+#include "Config/SpellType.h"
 #include "InventoryUtil.h"
 #include "PCH.h"
+#include "Persistence/SpellSettingsDB.h"
 #include "SyntheticInput.h"
 
 namespace IntegratedMagic {

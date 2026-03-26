@@ -14,7 +14,7 @@
 #include "PCH.h"
 #include "SKSEMenuFramework.h"
 #include "State/State.h"
-#include "UI/HUD.h"
+#include "UI/HudManager.h"
 
 namespace {
     constexpr int kMaxSlots = static_cast<int>(IntegratedMagic::MagicConfig::kMaxSlots);

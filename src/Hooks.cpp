@@ -13,7 +13,8 @@
 #include "PCH.h"
 #include "State/AnimListener.h"
 #include "State/State.h"
-#include "UI/HUD.h"
+#include "UI/HudManager.h"
+#include "UI/TextureManager.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -66,7 +67,6 @@ namespace IntegratedMagic::Hooks {
 
         static ImGuiContext* g_imguiContext{nullptr};
         static std::atomic<bool> g_renderInitialized{false};
-
         static ID3D11Device* g_device{nullptr};
         static ID3D11DeviceContext* g_deviceContext{nullptr};
 
@@ -88,34 +88,32 @@ namespace IntegratedMagic::Hooks {
         };
 
         struct D3DInitHook {
-            static inline REL::Relocation<decltype(thunk)*> func;
+            using FuncType = void (*)();
+            static inline REL::Relocation<FuncType> func;
             static constexpr auto id = REL::RelocationID(75595, 77226);
             static constexpr auto offset = REL::VariantOffset(0x9, 0x275, 0x00);
 
             static void thunk() {
                 func();
 
-                auto* renderManager = RE::BSRenderManager::GetSingleton();
-                if (!renderManager) {
-                    spdlog::error("[Hooks] D3DInitHook: BSRenderManager not found");
+                auto* rawDevice = RE::BSGraphics::Renderer::GetDevice();
+                if (!rawDevice) {
+                    spdlog::error("[Hooks] D3DInitHook: BSGraphics::Renderer::GetDevice() returned null");
+                    return;
+                }
+                g_device = reinterpret_cast<ID3D11Device*>(rawDevice);
+
+                g_device->GetImmediateContext(&g_deviceContext);
+                if (!g_deviceContext) {
+                    spdlog::error("[Hooks] D3DInitHook: GetImmediateContext failed");
                     return;
                 }
 
-                auto renderData = renderManager->GetRuntimeData();
-                auto* swapchain = renderData.swapChain;
-                if (!swapchain) {
-                    spdlog::error("[Hooks] D3DInitHook: swapchain not found");
+                HWND hwnd = FindWindowA("Skyrim Special Edition", nullptr);
+                if (!hwnd) {
+                    spdlog::error("[Hooks] D3DInitHook: FindWindowA failed");
                     return;
                 }
-
-                DXGI_SWAP_CHAIN_DESC sd{};
-                if (FAILED(swapchain->GetDesc(&sd))) {
-                    spdlog::error("[Hooks] D3DInitHook: GetDesc failed");
-                    return;
-                }
-
-                g_device = reinterpret_cast<ID3D11Device*>(renderData.forwarder);
-                g_deviceContext = reinterpret_cast<ID3D11DeviceContext*>(renderData.context);
 
                 g_imguiContext = ImGui::CreateContext();
                 ImGui::SetCurrentContext(g_imguiContext);
@@ -123,11 +121,13 @@ namespace IntegratedMagic::Hooks {
                 auto& io = ImGui::GetIO();
                 io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
 
-                ImGui_ImplWin32_Init(sd.OutputWindow);
+                ImGui_ImplWin32_Init(hwnd);
                 ImGui_ImplDX11_Init(g_device, g_deviceContext);
 
+                IntegratedMagic::TextureManager::Init();
+
                 constexpr float kFontSize = 32.0f;
-                const std::string fontPath = R"(.\Data\SKSE\Plugins\IntegratedMagics\resources\fonts\default.ttf)";
+                const std::string fontPath = R"(.\Data\SKSE\Plugins\IntegratedMagics\resources\fonts\font.ttf)";
                 if (std::filesystem::exists(fontPath)) {
                     io.Fonts->AddFontFromFileTTF(fontPath.c_str(), kFontSize, nullptr,
                                                  io.Fonts->GetGlyphRangesDefault());
@@ -138,7 +138,7 @@ namespace IntegratedMagic::Hooks {
                 }
 
                 WndProcHook::func = reinterpret_cast<WNDPROC>(
-                    SetWindowLongPtrA(sd.OutputWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WndProcHook::thunk)));
+                    SetWindowLongPtrA(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WndProcHook::thunk)));
                 if (!WndProcHook::func) {
                     spdlog::error("[Hooks] D3DInitHook: SetWindowLongPtrA failed");
                 }
@@ -148,17 +148,16 @@ namespace IntegratedMagic::Hooks {
             }
 
             static void Install() {
-                REL::Relocation<std::uintptr_t> hook{id, offset};
-                auto& trampoline = SKSE::GetTrampoline();
-                func = trampoline.write_call<5>(hook.address(), thunk);
+                Hook::stl::write_call<D3DInitHook>(id, offset);
                 spdlog::info("[Hooks] D3DInitHook installed");
             }
         };
 
         struct DXGIPresentHook {
-            static inline REL::Relocation<decltype(thunk)*> func;
+            using FuncType = void (*)(std::uint32_t);
+            static inline REL::Relocation<FuncType> func;
             static constexpr auto id = REL::RelocationID(75461, 77246);
-            static constexpr auto offset = REL::Offset(0x9);
+            static constexpr auto offset = REL::VariantOffset(0x9, 0x9, 0x9);
 
             static void thunk(std::uint32_t a_p1) {
                 func(a_p1);
@@ -179,17 +178,13 @@ namespace IntegratedMagic::Hooks {
             }
 
             static void Install() {
-                REL::Relocation<std::uintptr_t> hook{id, offset};
-                auto& trampoline = SKSE::GetTrampoline();
-                func = trampoline.write_call<5>(hook.address(), thunk);
+                Hook::stl::write_call<DXGIPresentHook>(id, offset);
                 spdlog::info("[Hooks] DXGIPresentHook installed");
             }
         };
     }
 
     void Install_Hooks() {
-        SKSE::AllocTrampoline(64 + 14 * 4);
-
         PollInputDevicesHook::Install();
         PlayerAnimGraphProcessEventHook::Install();
         D3DInitHook::Install();

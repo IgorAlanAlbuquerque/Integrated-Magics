@@ -15,44 +15,16 @@ add_subdirectory(
 )
 
 get_target_property(COMMONLIB_SRC_DIR CommonLibSSE SOURCE_DIR)
-
 include(${COMMONLIB_SRC_DIR}/cmake/CommonLibSSE.cmake)
 
-add_commonlibsse_plugin(${PROJECT_NAME}
-  SOURCES
-    src/plugin.cpp
-    src/Hooks.cpp
-    src/UI/Strings.cpp
-    src/UI/MENU.cpp
-    src/UI/HUD.cpp
-    src/UI/TextureManager.cpp
-    src/UI/StyleConfig.cpp
-    src/Config/Config.cpp
-    src/Config/Slots.cpp
-    src/Config/SpellType.cpp
-    src/Persistence/SpellSettingsDB.cpp
-    src/Persistence/SaveSpellDB.cpp
-    src/Input/Input.cpp
-    src/Input/Assign.cpp
-    src/State/Action.cpp
-    src/State/AnimListener.cpp
-    src/State/InventoryUtil.cpp
-    src/State/SyntheticInput.cpp
-    src/State/MagicStateLifecycle.cpp
-    src/State/MagicStatePump.cpp
-    src/State/MagicStateSlot.cpp
-    src/Detours/detours.cpp
-    src/Detours/disasm.cpp
-    src/Detours/disolx64.cpp
-    src/Detours/image.cpp
-    src/Detours/modules.cpp
-) 
+include(cmake/headerlist.cmake)
+include(cmake/sourcelist.cmake)
+
+add_commonlibsse_plugin(${PROJECT_NAME} SOURCES ${headers} ${sources})
 
 target_include_directories(${PROJECT_NAME}
-  PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-  PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
@@ -60,63 +32,27 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 find_package(imgui CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE imgui::imgui)
 
-target_precompile_headers(${PROJECT_NAME}
-  PRIVATE
-    src/PCH.h
-    src/Hooks.h
-    src/UI/Strings.h
-    src/UI/MENU.h
-    src/UI/HUD.h
-    src/UI/TextureManager.h
-    src/UI/StyleConfig.h
-    src/UI/SlotAnimator.h
-    src/UI/SlotLayout.h
-    src/Config/ConfigPath.h
-    src/Config/Config.h
-    src/Config/Slots.h
-    src/Config/EquipSlots.h
-    src/Config/SpellType.h
-    src/Persistence/SpellSettingsDB.h
-    src/Persistence/SaveSpellDB.h
-    src/Input/Assign.h
-    src/Input/Input.h
-    src/State/State.h
-    src/State/Action.h
-    src/State/AnimListener.h
-    src/State/CastGuardEvents.h
-    src/State/InventoryUtil.h
-    src/State/SyntheticInput.h
-) 
+target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
 
-set_source_files_properties(
-  src/Detours/detours.cpp
-  src/Detours/disasm.cpp
-  src/Detours/disolx64.cpp
-  src/Detours/image.cpp
-  src/Detours/modules.cpp
-  PROPERTIES
-    SKIP_PRECOMPILE_HEADERS ON       
-    COMPILE_DEFINITIONS "DETOURS_INTERNAL"  
-)
+include(cmake/detours.cmake)
 
 if(DEFINED OUTPUT_FOLDER)
     set(DLL_FOLDER "${OUTPUT_FOLDER}/SKSE/Plugins")
-
     message(STATUS "SKSE plugin output folder: ${DLL_FOLDER}")
-
     add_custom_command(
-        TARGET "${PROJECT_NAME}"
-        POST_BUILD
+        TARGET "${PROJECT_NAME}" POST_BUILD
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${DLL_FOLDER}"
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_FILE:${PROJECT_NAME}>" "${DLL_FOLDER}/$<TARGET_FILE_NAME:${PROJECT_NAME}>"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "$<TARGET_FILE:${PROJECT_NAME}>"
+            "${DLL_FOLDER}/$<TARGET_FILE_NAME:${PROJECT_NAME}>"
         VERBATIM
     )
-
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         add_custom_command(
-            TARGET "${PROJECT_NAME}"
-            POST_BUILD
-            COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_PDB_FILE:${PROJECT_NAME}>" "${DLL_FOLDER}/$<TARGET_PDB_FILE_NAME:${PROJECT_NAME}>"
+            TARGET "${PROJECT_NAME}" POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "$<TARGET_PDB_FILE:${PROJECT_NAME}>"
+                "${DLL_FOLDER}/$<TARGET_PDB_FILE_NAME:${PROJECT_NAME}>"
             VERBATIM
         )
     endif()

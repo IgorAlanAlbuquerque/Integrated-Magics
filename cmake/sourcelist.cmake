@@ -1,0 +1,30 @@
+set(sources
+    src/plugin.cpp
+    src/Hooks.cpp
+    src/UI/Strings.cpp
+    src/UI/MENU.cpp
+    src/UI/HudManager.cpp
+    src/UI/TextureManager.cpp
+    src/UI/StyleConfig.cpp
+    src/UI/SlotDrawer.cpp
+    src/UI/PopupDrawer.cpp
+    src/Config/Config.cpp
+    src/Config/Slots.cpp
+    src/Config/SpellType.cpp
+    src/Persistence/SpellSettingsDB.cpp
+    src/Persistence/SaveSpellDB.cpp
+    src/Input/Input.cpp
+    src/Input/Assign.cpp
+    src/State/Action.cpp
+    src/State/AnimListener.cpp
+    src/State/InventoryUtil.cpp
+    src/State/SyntheticInput.cpp
+    src/State/MagicStateLifecycle.cpp
+    src/State/MagicStatePump.cpp
+    src/State/MagicStateSlot.cpp
+    src/Detours/detours.cpp
+    src/Detours/disasm.cpp
+    src/Detours/disolx64.cpp
+    src/Detours/image.cpp
+    src/Detours/modules.cpp
+)

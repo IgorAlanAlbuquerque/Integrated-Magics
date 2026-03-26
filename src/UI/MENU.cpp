@@ -12,10 +12,8 @@
 #include "Persistence/SpellSettingsDB.h"
 #include "SKSEMenuFramework.h"
 #include "Strings.h"
-#include "UI/HUD.h"
+#include "UI/HudManager.h"
 #include "UI/StyleConfig.h"
-
-namespace ImGui = ImGuiMCP;
 
 namespace {
     struct FieldCaptureState {
@@ -34,8 +32,8 @@ namespace {
     inline void DrawAtomicIntInput(const std::string& label, std::atomic<int>& atom, bool& dirty,
                                    float width = 150.0f) {
         int v = atom.load(std::memory_order_relaxed);
-        ImGui::SetNextItemWidth(width);
-        if (ImGui::InputInt(label.c_str(), &v)) {
+        ImGuiMCP::SetNextItemWidth(width);
+        if (ImGuiMCP::InputInt(label.c_str(), &v)) {
             v = ClampMinusOne(v);
             atom.store(v, std::memory_order_relaxed);
             dirty = true;
@@ -71,15 +69,15 @@ namespace {
 
     void DrawKeyValueCapture(std::atomic<int>& field, bool wantKeyboard, bool& dirty, int rowPos = 0,
                              IntegratedMagic::MagicConfig* cfg = nullptr) {
-        ImGui::PushID(static_cast<void*>(&field));
+        ImGuiMCP::PushID(static_cast<void*>(&field));
 
-        ImGui::SetNextItemWidth(70.0f);
-        if (int v = field.load(std::memory_order_relaxed); ImGui::InputInt("##v", &v, 0, 0)) {
+        ImGuiMCP::SetNextItemWidth(70.0f);
+        if (int v = field.load(std::memory_order_relaxed); ImGuiMCP::InputInt("##v", &v, 0, 0)) {
             v = ClampMinusOne(v);
             field.store(v, std::memory_order_relaxed);
             dirty = true;
         }
-        ImGui::SameLine();
+        ImGuiMCP::SameLine();
 
         if (const bool isThis = g_fieldCapture.active && g_fieldCapture.field == &field; isThis) {
             if (const int encoded = Input::PollCapturedHotkey(); encoded != -1) {
@@ -96,28 +94,28 @@ namespace {
                 }
             }
 
-            ImGui::TextDisabled("...");
-            ImGui::SameLine();
-            if (ImGui::SmallButton("X")) {
+            ImGuiMCP::TextDisabled("...");
+            ImGuiMCP::SameLine();
+            if (ImGuiMCP::SmallButton("X")) {
                 CancelFieldCapture();
             }
         } else {
-            if (g_fieldCapture.active) ImGui::BeginDisabled(true);
-            if (ImGui::SmallButton(IntegratedMagic::Strings::Get("Btn_Cap", "Cap").c_str())) {
+            if (g_fieldCapture.active) ImGuiMCP::BeginDisabled(true);
+            if (ImGuiMCP::SmallButton(IntegratedMagic::Strings::Get("Btn_Cap", "Cap").c_str())) {
                 g_fieldCapture = {&field, wantKeyboard, true};
                 Input::RequestHotkeyCapture();
                 Input::SetCaptureModeActive(true);
             }
-            if (g_fieldCapture.active) ImGui::EndDisabled();
+            if (g_fieldCapture.active) ImGuiMCP::EndDisabled();
         }
 
         if (cfg && rowPos > 0) {
-            ImGui::SameLine();
+            ImGuiMCP::SameLine();
             int& modPos = wantKeyboard ? cfg->modifierKeyboardPosition : cfg->modifierGamepadPosition;
             const bool isMod = (modPos == rowPos);
-            if (isMod) ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
-            ImGui::PushID(wantKeyboard ? "kbm" : "gpm");
-            if (ImGui::SmallButton("M")) {
+            if (isMod) ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
+            ImGuiMCP::PushID(wantKeyboard ? "kbm" : "gpm");
+            if (ImGuiMCP::SmallButton("M")) {
                 if (isMod) {
                     modPos = 0;
                 } else {
@@ -148,22 +146,22 @@ namespace {
                 }
                 dirty = true;
             }
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip(isMod ? "Unmark as modifier" : "Mark as modifier");
-            ImGui::PopID();
-            if (isMod) ImGui::PopStyleColor();
+            if (ImGuiMCP::IsItemHovered()) ImGuiMCP::SetTooltip(isMod ? "Unmark as modifier" : "Mark as modifier");
+            ImGuiMCP::PopID();
+            if (isMod) ImGuiMCP::PopStyleColor();
         }
 
-        ImGui::PopID();
+        ImGuiMCP::PopID();
     }
 
     void DrawInputDetailRow(const char* kbLabel, std::atomic<int>& kbField, const char* gpLabel,
                             std::atomic<int>& gpField, bool& dirty, int rowPos, IntegratedMagic::MagicConfig& cfg) {
-        ImGui::TableNextRow();
+        ImGuiMCP::TableNextRow();
 
-        ImGui::TableSetColumnIndex(0);
-        ImGui::TextUnformatted(kbLabel);
+        ImGuiMCP::TableSetColumnIndex(0);
+        ImGuiMCP::TextUnformatted(kbLabel);
 
-        ImGui::TableSetColumnIndex(1);
+        ImGuiMCP::TableSetColumnIndex(1);
         {
             const bool dirtyBefore = dirty;
             DrawKeyValueCapture(kbField, true, dirty, rowPos, &cfg);
@@ -180,10 +178,10 @@ namespace {
             }
         }
 
-        ImGui::TableSetColumnIndex(2);
-        ImGui::TextUnformatted(gpLabel);
+        ImGuiMCP::TableSetColumnIndex(2);
+        ImGuiMCP::TextUnformatted(gpLabel);
 
-        ImGui::TableSetColumnIndex(3);
+        ImGuiMCP::TableSetColumnIndex(3);
         {
             const bool dirtyBefore = dirty;
             DrawKeyValueCapture(gpField, false, dirty, rowPos, &cfg);
@@ -203,21 +201,21 @@ namespace {
 
     void DrawDetailPanel(IntegratedMagic::InputConfig& icfg, const char* title, bool& dirty,
                          IntegratedMagic::MagicConfig& cfg, bool showModifier = true) {
-        ImGui::TextUnformatted(title);
-        ImGui::Separator();
-        ImGui::Spacing();
+        ImGuiMCP::TextUnformatted(title);
+        ImGuiMCP::Separator();
+        ImGuiMCP::Spacing();
 
         if (const ImGuiMCP::ImGuiTableFlags kTableFlags =
                 ImGuiMCP::ImGuiTableFlags_BordersOuter | ImGuiMCP::ImGuiTableFlags_BordersInnerV |
                 ImGuiMCP::ImGuiTableFlags_RowBg | ImGuiMCP::ImGuiTableFlags_SizingFixedFit;
-            ImGui::BeginTable("##InputDetail", 4, kTableFlags)) {
-            ImGui::TableSetupColumn(IntegratedMagic::Strings::Get("Col_Keyboard", "Keyboard").c_str(),
-                                    ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, 90.0f);
-            ImGui::TableSetupColumn("##kbv", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, 220.0f);
-            ImGui::TableSetupColumn(IntegratedMagic::Strings::Get("Col_Gamepad", "Gamepad").c_str(),
-                                    ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, 90.0f);
-            ImGui::TableSetupColumn("##gpv", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, 220.0f);
-            ImGui::TableHeadersRow();
+            ImGuiMCP::BeginTable("##InputDetail", 4, kTableFlags)) {
+            ImGuiMCP::TableSetupColumn(IntegratedMagic::Strings::Get("Col_Keyboard", "Keyboard").c_str(),
+                                       ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, 90.0f);
+            ImGuiMCP::TableSetupColumn("##kbv", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, 220.0f);
+            ImGuiMCP::TableSetupColumn(IntegratedMagic::Strings::Get("Col_Gamepad", "Gamepad").c_str(),
+                                       ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, 90.0f);
+            ImGuiMCP::TableSetupColumn("##gpv", ImGuiMCP::ImGuiTableColumnFlags_WidthFixed, 220.0f);
+            ImGuiMCP::TableHeadersRow();
 
             DrawInputDetailRow(IntegratedMagic::Strings::Get("Item_Key1", "Key 1").c_str(), icfg.KeyboardScanCode1,
                                IntegratedMagic::Strings::Get("Item_Btn1", "Btn 1").c_str(), icfg.GamepadButton1, dirty,
@@ -229,26 +227,26 @@ namespace {
                                IntegratedMagic::Strings::Get("Item_Btn3", "Btn 3").c_str(), icfg.GamepadButton3, dirty,
                                showModifier ? 3 : 0, cfg);
 
-            ImGui::EndTable();
+            ImGuiMCP::EndTable();
         }
 
         if (g_fieldCapture.active) {
-            ImGui::Spacing();
+            ImGuiMCP::Spacing();
             const auto msg = std::format(
                 "{}...", g_fieldCapture.wantKeyboard
                              ? IntegratedMagic::Strings::Get("Capture_WaitKb", "Press a keyboard key or mouse button")
                              : IntegratedMagic::Strings::Get("Capture_WaitGp", "Press a gamepad button"));
-            ImGui::TextDisabled("%s", msg.c_str());
+            ImGuiMCP::TextDisabled("%s", msg.c_str());
         }
     }
 
     void DrawGeneralTab(IntegratedMagic::MagicConfig& cfg, bool& dirty) {
-        ImGui::Spacing();
+        ImGuiMCP::Spacing();
 
         const auto oldCount = static_cast<int>(cfg.SlotCount());
         int n = oldCount;
-        ImGui::SetNextItemWidth(180.0f);
-        if (ImGui::InputInt(IntegratedMagic::Strings::Get("Item_SlotCount", "Slot count").c_str(), &n)) {
+        ImGuiMCP::SetNextItemWidth(180.0f);
+        if (ImGuiMCP::InputInt(IntegratedMagic::Strings::Get("Item_SlotCount", "Slot count").c_str(), &n)) {
             if (n < 1) n = 1;
             if (n > static_cast<int>(IntegratedMagic::MagicConfig::kMaxSlots)) {
                 n = static_cast<int>(IntegratedMagic::MagicConfig::kMaxSlots);
@@ -267,13 +265,13 @@ namespace {
             }
         }
 
-        ImGui::Spacing();
-        ImGui::SeparatorText(IntegratedMagic::Strings::Get("HUD_Visibility_Label", "HUD Visibility").c_str());
+        ImGuiMCP::Spacing();
+        ImGuiMCP::SeparatorText(IntegratedMagic::Strings::Get("HUD_Visibility_Label", "HUD Visibility").c_str());
 
         using F = IntegratedMagic::HudVisibilityFlag;
         auto flagCheck = [&](F flag, const char* strKey, const char* fallback) {
             bool v = cfg.HudFlagSet(flag);
-            if (ImGui::Checkbox(IntegratedMagic::Strings::Get(strKey, fallback).c_str(), &v)) {
+            if (ImGuiMCP::Checkbox(IntegratedMagic::Strings::Get(strKey, fallback).c_str(), &v)) {
                 if (v)
                     cfg.hudVisibilityFlags |= static_cast<std::uint8_t>(flag);
                 else
@@ -288,13 +286,13 @@ namespace {
         flagCheck(F::WeaponDrawn, "HUD_Show_WeaponDrawn", "Weapon Drawn");
 
         if (cfg.hudVisibilityFlags == 0) {
-            ImGui::SameLine();
-            ImGui::TextDisabled("(%s)", IntegratedMagic::Strings::Get("HUD_Show_Never_Hint", "HUD hidden").c_str());
+            ImGuiMCP::SameLine();
+            ImGuiMCP::TextDisabled("(%s)", IntegratedMagic::Strings::Get("HUD_Show_Never_Hint", "HUD hidden").c_str());
         }
 
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
+        ImGuiMCP::Spacing();
+        ImGuiMCP::Separator();
+        ImGuiMCP::Spacing();
 
         {
             auto& st = IntegratedMagic::StyleConfig::Get();
@@ -303,15 +301,16 @@ namespace {
                 IntegratedMagic::Strings::Get("Item_ButtonIcon_PlayStation", "PlayStation") + '\0' +
                 IntegratedMagic::Strings::Get("Item_ButtonIcon_Xbox", "Xbox") + '\0';
             int iconTypeIdx = static_cast<int>(st.buttonIconType);
-            ImGui::SetNextItemWidth(180.0f);
-            if (ImGui::Combo(IntegratedMagic::Strings::Get("Item_ButtonIconType", "Button icons##buttonicons").c_str(),
-                             &iconTypeIdx, iconTypeNames.c_str())) {
+            ImGuiMCP::SetNextItemWidth(180.0f);
+            if (ImGuiMCP::Combo(
+                    IntegratedMagic::Strings::Get("Item_ButtonIconType", "Button icons##buttonicons").c_str(),
+                    &iconTypeIdx, iconTypeNames.c_str())) {
                 st.buttonIconType = static_cast<IntegratedMagic::ButtonIconType>(iconTypeIdx);
                 dirty = true;
             }
         }
 
-        ImGui::SeparatorText(
+        ImGuiMCP::SeparatorText(
             IntegratedMagic::Strings::Get("Section_SpellTypeDefaults", "Default spell behavior").c_str());
 
         struct TypeEntry {
@@ -335,30 +334,30 @@ namespace {
             auto& d = cfg.spellTypeDefaults[static_cast<int>(e.type)];
             const std::string label = IntegratedMagic::Strings::Get(e.labelKey, e.labelFallback);
 
-            ImGui::PushID(e.labelKey);
+            ImGuiMCP::PushID(e.labelKey);
 
-            ImGui::Text("%s", label.c_str());
-            ImGui::SameLine(180.f);
+            ImGuiMCP::Text("%s", label.c_str());
+            ImGuiMCP::SameLine(180.f);
 
             int modeIdx = static_cast<int>(d.mode);
-            ImGui::SetNextItemWidth(120.f);
-            if (ImGui::Combo(IntegratedMagic::Strings::Get("Item_Mode", "Mode##mode").c_str(), &modeIdx,
-                             modeComboItems.c_str())) {
+            ImGuiMCP::SetNextItemWidth(120.f);
+            if (ImGuiMCP::Combo(IntegratedMagic::Strings::Get("Item_Mode", "Mode##mode").c_str(), &modeIdx,
+                                modeComboItems.c_str())) {
                 d.mode = static_cast<IntegratedMagic::ActivationMode>(modeIdx);
                 dirty = true;
             }
 
             if (d.mode == IntegratedMagic::ActivationMode::Hold || d.mode == IntegratedMagic::ActivationMode::Press) {
-                ImGui::SameLine();
+                ImGuiMCP::SameLine();
                 bool aa = d.autoAttack;
-                if (ImGui::Checkbox(IntegratedMagic::Strings::Get("Item_AutoCast", "Auto-cast##autocast").c_str(),
-                                    &aa)) {
+                if (ImGuiMCP::Checkbox(IntegratedMagic::Strings::Get("Item_AutoCast", "Auto-cast##autocast").c_str(),
+                                       &aa)) {
                     d.autoAttack = aa;
                     dirty = true;
                 }
             }
 
-            ImGui::PopID();
+            ImGuiMCP::PopID();
         }
     }
 
@@ -370,7 +369,7 @@ namespace {
             g_selectedSlot = n > 0 ? 0 : kHudPopupSlot;
         }
 
-        ImGui::BeginChild("##CtrlList", ImGui::ImVec2{145.0f, 0.0f}, true);
+        ImGuiMCP::BeginChild("##CtrlList", ImGuiMCP::ImVec2{145.0f, 0.0f}, true);
 
         for (int slot = 0; slot < n; ++slot) {
             const auto& icfg = cfg.slotInput[static_cast<std::size_t>(slot)];
@@ -381,29 +380,29 @@ namespace {
                 IntegratedMagic::Strings::Get(std::format("List_Magic{}", slot + 1), std::format("Magic {}", slot + 1)),
                 hasKey ? "*" : "-");
 
-            if (ImGui::Selectable(label.c_str(), g_selectedSlot == slot) && (g_selectedSlot != slot)) {
+            if (ImGuiMCP::Selectable(label.c_str(), g_selectedSlot == slot) && (g_selectedSlot != slot)) {
                 CancelFieldCapture();
                 g_selectedSlot = slot;
             }
         }
 
-        ImGui::Separator();
+        ImGuiMCP::Separator();
 
         {
             const bool hasKey = SlotHasHotkey(cfg.hudPopupInput);
             const auto label =
                 std::format("{}  {}", IntegratedMagic::Strings::Get("List_HudPopup", "HUD Popup"), hasKey ? "*" : "-");
-            if (ImGui::Selectable(label.c_str(), g_selectedSlot == kHudPopupSlot) &&
+            if (ImGuiMCP::Selectable(label.c_str(), g_selectedSlot == kHudPopupSlot) &&
                 (g_selectedSlot != kHudPopupSlot)) {
                 CancelFieldCapture();
                 g_selectedSlot = kHudPopupSlot;
             }
         }
 
-        ImGui::EndChild();
-        ImGui::SameLine();
+        ImGuiMCP::EndChild();
+        ImGuiMCP::SameLine();
 
-        ImGui::BeginChild("##CtrlDetail", ImGui::ImVec2{0.0f, 0.0f}, true);
+        ImGuiMCP::BeginChild("##CtrlDetail", ImGuiMCP::ImVec2{0.0f, 0.0f}, true);
 
         if (g_selectedSlot == kHudPopupSlot) {
             DrawDetailPanel(cfg.hudPopupInput, IntegratedMagic::Strings::Get("Detail_HudPopup", "HUD Popup").c_str(),
@@ -414,7 +413,7 @@ namespace {
             DrawDetailPanel(cfg.slotInput[static_cast<std::size_t>(g_selectedSlot)], title.c_str(), dirty, cfg);
         }
 
-        ImGui::EndChild();
+        ImGuiMCP::EndChild();
     }
 
     void DrawAnchorWidget(bool& dirty) {
@@ -431,15 +430,15 @@ namespace {
         auto& st = IntegratedMagic::StyleConfig::Get();
         for (int row = 0; row < 3; ++row) {
             for (int col = 0; col < 3; ++col) {
-                if (col > 0) ImGui::SameLine(0.f, 2.f);
+                if (col > 0) ImGuiMCP::SameLine(0.f, 2.f);
                 const auto& cell = kGrid[row][col];
                 const bool active = (st.hudAnchor == cell.anchor);
-                if (active) ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
-                if (ImGui::Button(cell.label, {28.f, 20.f})) {
+                if (active) ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
+                if (ImGuiMCP::Button(cell.label, {28.f, 20.f})) {
                     st.hudAnchor = cell.anchor;
                     dirty = true;
                 }
-                if (active) ImGui::PopStyleColor();
+                if (active) ImGuiMCP::PopStyleColor();
             }
         }
     }
@@ -448,8 +447,8 @@ namespace {
         namespace S = IntegratedMagic::Strings;
         auto& st = IntegratedMagic::StyleConfig::Get();
 
-        ImGui::SeparatorText(S::Get("HUD_Section_Layout", "Layout").c_str());
-        ImGui::Spacing();
+        ImGuiMCP::SeparatorText(S::Get("HUD_Section_Layout", "Layout").c_str());
+        ImGuiMCP::Spacing();
 
         {
             using LT = IntegratedMagic::HudLayoutType;
@@ -457,274 +456,278 @@ namespace {
                 S::Get("HUD_Layout_Circular", "Circular") + '\0' + S::Get("HUD_Layout_Horizontal", "Horizontal") +
                 '\0' + S::Get("HUD_Layout_Vertical", "Vertical") + '\0' + S::Get("HUD_Layout_Grid", "Grid") + '\0';
             int layoutIdx = static_cast<int>(st.hudLayout);
-            ImGui::SetNextItemWidth(150.f);
-            if (ImGui::Combo(S::Get("HUD_Layout_Label", "Layout##hudlayout").c_str(), &layoutIdx,
-                             layoutNames.c_str())) {
+            ImGuiMCP::SetNextItemWidth(150.f);
+            if (ImGuiMCP::Combo(S::Get("HUD_Layout_Label", "Layout##hudlayout").c_str(), &layoutIdx,
+                                layoutNames.c_str())) {
                 st.hudLayout = static_cast<LT>(layoutIdx);
                 dirty = true;
             }
 
             {
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(150.f);
+                ImGuiMCP::SameLine();
+                ImGuiMCP::SetNextItemWidth(150.f);
                 float spacing = st.slotSpacing;
-                if (ImGui::InputFloat(S::Get("HUD_Spacing_Label", "Spacing##slotspacing").c_str(), &spacing, 1.f, 5.f,
-                                      "%.1f")) {
+                if (ImGuiMCP::InputFloat(S::Get("HUD_Spacing_Label", "Spacing##slotspacing").c_str(), &spacing, 1.f,
+                                         5.f, "%.1f")) {
                     st.slotSpacing = spacing;
                     dirty = true;
                 }
             }
             if (st.hudLayout == LT::Grid) {
-                ImGui::SetNextItemWidth(150.f);
+                ImGuiMCP::SetNextItemWidth(150.f);
                 int cols = st.gridColumns;
-                if (ImGui::InputInt(S::Get("HUD_Columns_Label", "Columns##gridcols").c_str(), &cols, 1, 1)) {
+                if (ImGuiMCP::InputInt(S::Get("HUD_Columns_Label", "Columns##gridcols").c_str(), &cols, 1, 1)) {
                     st.gridColumns = std::max(1, cols);
                     dirty = true;
                 }
             }
             if (st.hudLayout == LT::Circular) {
-                ImGui::SetNextItemWidth(150.f);
+                ImGuiMCP::SetNextItemWidth(150.f);
                 float rr = st.ringRadius;
-                if (ImGui::InputFloat(S::Get("HUD_RingRadius_Label", "Ring R##ringradius").c_str(), &rr, 1.f, 5.f,
-                                      "%.1f")) {
+                if (ImGuiMCP::InputFloat(S::Get("HUD_RingRadius_Label", "Ring R##ringradius").c_str(), &rr, 1.f, 5.f,
+                                         "%.1f")) {
                     st.ringRadius = rr;
                     dirty = true;
                 }
             }
         }
 
-        ImGui::Spacing();
+        ImGuiMCP::Spacing();
 
-        ImGui::SeparatorText(S::Get("HUD_Section_Position", "Position").c_str());
-        ImGui::Spacing();
+        ImGuiMCP::SeparatorText(S::Get("HUD_Section_Position", "Position").c_str());
+        ImGuiMCP::Spacing();
 
         DrawAnchorWidget(dirty);
 
-        ImGui::SameLine(0.f, 16.f);
-        ImGui::BeginGroup();
-        ImGui::SetNextItemWidth(150.f);
+        ImGuiMCP::SameLine(0.f, 16.f);
+        ImGuiMCP::BeginGroup();
+        ImGuiMCP::SetNextItemWidth(150.f);
         float ox = st.hudOffsetX;
-        if (ImGui::InputFloat(S::Get("HUD_OffsetX_Label", "X##hudox").c_str(), &ox, 1.f, 5.f, "%.0f")) {
+        if (ImGuiMCP::InputFloat(S::Get("HUD_OffsetX_Label", "X##hudox").c_str(), &ox, 1.f, 5.f, "%.0f")) {
             st.hudOffsetX = ox;
             dirty = true;
         }
-        ImGui::SetNextItemWidth(150.f);
+        ImGuiMCP::SetNextItemWidth(150.f);
         float oy = st.hudOffsetY;
-        if (ImGui::InputFloat(S::Get("HUD_OffsetY_Label", "Y##hudoy").c_str(), &oy, 1.f, 5.f, "%.0f")) {
+        if (ImGuiMCP::InputFloat(S::Get("HUD_OffsetY_Label", "Y##hudoy").c_str(), &oy, 1.f, 5.f, "%.0f")) {
             st.hudOffsetY = oy;
             dirty = true;
         }
-        ImGui::EndGroup();
+        ImGuiMCP::EndGroup();
 
-        ImGui::Spacing();
+        ImGuiMCP::Spacing();
 
-        ImGui::SeparatorText(S::Get("HUD_Section_Slots", "Slots").c_str());
-        ImGui::Spacing();
+        ImGuiMCP::SeparatorText(S::Get("HUD_Section_Slots", "Slots").c_str());
+        ImGuiMCP::Spacing();
 
         {
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SetNextItemWidth(150.f);
             float sr = st.slotRadius;
-            if (ImGui::InputFloat(S::Get("HUD_SlotRadius_Label", "Radius##slotradius").c_str(), &sr, 1.f, 5.f,
-                                  "%.1f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_SlotRadius_Label", "Radius##slotradius").c_str(), &sr, 1.f, 5.f,
+                                     "%.1f")) {
                 st.slotRadius = sr;
                 dirty = true;
             }
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SameLine();
+            ImGuiMCP::SetNextItemWidth(150.f);
             float rw = st.slotRingWidth;
-            if (ImGui::InputFloat(S::Get("HUD_RingWidth_Label", "Ring Width##ringwidth").c_str(), &rw, 0.5f, 1.f,
-                                  "%.1f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_RingWidth_Label", "Ring Width##ringwidth").c_str(), &rw, 0.5f, 1.f,
+                                     "%.1f")) {
                 st.slotRingWidth = std::max(0.f, rw);
                 dirty = true;
             }
-            ImGui::Spacing();
+            ImGuiMCP::Spacing();
 
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SetNextItemWidth(150.f);
             float as = st.slotActiveScale;
-            if (ImGui::InputFloat(S::Get("HUD_ActiveScale_Label", "Active##activescale").c_str(), &as, 0.05f, 0.1f,
-                                  "%.2f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_ActiveScale_Label", "Active##activescale").c_str(), &as, 0.05f, 0.1f,
+                                     "%.2f")) {
                 st.slotActiveScale = as;
                 dirty = true;
             }
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SameLine();
+            ImGuiMCP::SetNextItemWidth(150.f);
             float ms = st.slotModifierScale;
-            if (ImGui::InputFloat(S::Get("HUD_ModifierScale_Label", "Modifier##modscale").c_str(), &ms, 0.05f, 0.1f,
-                                  "%.2f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_ModifierScale_Label", "Modifier##modscale").c_str(), &ms, 0.05f, 0.1f,
+                                     "%.2f")) {
                 st.slotModifierScale = ms;
                 dirty = true;
             }
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SameLine();
+            ImGuiMCP::SetNextItemWidth(150.f);
             float ns = st.slotNeighborScale;
-            if (ImGui::InputFloat(S::Get("HUD_NeighborScale_Label", "Neighbor##neighborscale").c_str(), &ns, 0.05f,
-                                  0.1f, "%.2f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_NeighborScale_Label", "Neighbor##neighborscale").c_str(), &ns, 0.05f,
+                                     0.1f, "%.2f")) {
                 st.slotNeighborScale = ns;
                 dirty = true;
             }
-            ImGui::Spacing();
+            ImGuiMCP::Spacing();
 
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SetNextItemWidth(150.f);
             float et = st.slotExpandTime;
-            if (ImGui::InputFloat(S::Get("HUD_ExpandTime_Label", "Expand##expandtime").c_str(), &et, 0.01f, 0.05f,
-                                  "%.2f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_ExpandTime_Label", "Expand##expandtime").c_str(), &et, 0.01f, 0.05f,
+                                     "%.2f")) {
                 st.slotExpandTime = std::max(0.f, et);
                 dirty = true;
             }
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SameLine();
+            ImGuiMCP::SetNextItemWidth(150.f);
             float rt = st.slotRetractTime;
-            if (ImGui::InputFloat(S::Get("HUD_RetractTime_Label", "Retract##retracttime").c_str(), &rt, 0.01f, 0.05f,
-                                  "%.2f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_RetractTime_Label", "Retract##retracttime").c_str(), &rt, 0.01f, 0.05f,
+                                     "%.2f")) {
                 st.slotRetractTime = std::max(0.f, rt);
                 dirty = true;
             }
         }
 
-        ImGui::Spacing();
+        ImGuiMCP::Spacing();
 
-        ImGui::SeparatorText(S::Get("HUD_Section_Icons", "Icons").c_str());
-        ImGui::Spacing();
+        ImGuiMCP::SeparatorText(S::Get("HUD_Section_Icons", "Icons").c_str());
+        ImGuiMCP::Spacing();
 
         {
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SetNextItemWidth(150.f);
             float isf = st.iconSizeFactor;
-            if (ImGui::InputFloat(S::Get("HUD_IconSize_Label", "Size##iconsizefactor").c_str(), &isf, 0.05f, 0.1f,
-                                  "%.2f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_IconSize_Label", "Size##iconsizefactor").c_str(), &isf, 0.05f, 0.1f,
+                                     "%.2f")) {
                 st.iconSizeFactor = std::clamp(isf, 0.1f, 2.f);
                 dirty = true;
             }
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SameLine();
+            ImGuiMCP::SetNextItemWidth(150.f);
             float iof = st.iconOffsetFactor;
-            if (ImGui::InputFloat(S::Get("HUD_IconOffset_Label", "Offset##iconoffsetfactor").c_str(), &iof, 0.05f, 0.1f,
-                                  "%.2f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_IconOffset_Label", "Offset##iconoffsetfactor").c_str(), &iof, 0.05f,
+                                     0.1f, "%.2f")) {
                 st.iconOffsetFactor = std::clamp(iof, 0.f, 1.f);
                 dirty = true;
             }
         }
 
-        ImGui::Spacing();
+        ImGuiMCP::Spacing();
 
-        ImGui::SeparatorText(S::Get("HUD_Section_Popup", "Popup").c_str());
-        ImGui::Spacing();
+        ImGuiMCP::SeparatorText(S::Get("HUD_Section_Popup", "Popup").c_str());
+        ImGuiMCP::Spacing();
 
         {
             const std::string popupLayoutNames =
                 S::Get("HUD_Layout_Circular", "Circular") + '\0' + S::Get("HUD_Layout_Horizontal", "Horizontal") +
                 '\0' + S::Get("HUD_Layout_Vertical", "Vertical") + '\0' + S::Get("HUD_Layout_Grid", "Grid") + '\0';
             int popupLayoutIdx = static_cast<int>(st.popupLayout);
-            ImGui::SetNextItemWidth(180.f);
-            if (ImGui::Combo(S::Get("HUD_PopupLayout_Label", "Layout##popuplayout").c_str(), &popupLayoutIdx,
-                             popupLayoutNames.c_str())) {
+            ImGuiMCP::SetNextItemWidth(180.f);
+            if (ImGuiMCP::Combo(S::Get("HUD_PopupLayout_Label", "Layout##popuplayout").c_str(), &popupLayoutIdx,
+                                popupLayoutNames.c_str())) {
                 st.popupLayout = static_cast<IntegratedMagic::HudLayoutType>(popupLayoutIdx);
                 dirty = true;
             }
-            ImGui::Spacing();
+            ImGuiMCP::Spacing();
         }
 
         {
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SetNextItemWidth(150.f);
             float psr = st.popupSlotRadius;
-            if (ImGui::InputFloat(S::Get("HUD_PopupSlotR_Label", "Slot R##popupslotradius").c_str(), &psr, 1.f, 5.f,
-                                  "%.0f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_PopupSlotR_Label", "Slot R##popupslotradius").c_str(), &psr, 1.f, 5.f,
+                                     "%.0f")) {
                 st.popupSlotRadius = std::max(1.f, psr);
                 dirty = true;
             }
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SameLine();
+            ImGuiMCP::SetNextItemWidth(150.f);
             float prr = st.popupRingRadius;
-            if (ImGui::InputFloat(S::Get("HUD_PopupRingR_Label", "Ring R##popupringradius").c_str(), &prr, 1.f, 5.f,
-                                  "%.0f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_PopupRingR_Label", "Ring R##popupringradius").c_str(), &prr, 1.f, 5.f,
+                                     "%.0f")) {
                 st.popupRingRadius = std::max(1.f, prr);
                 dirty = true;
             }
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SameLine();
+            ImGuiMCP::SetNextItemWidth(150.f);
             float psg = st.popupSlotGap;
-            if (ImGui::InputFloat(S::Get("HUD_PopupGap_Label", "Gap##popupslotgap").c_str(), &psg, 1.f, 5.f, "%.0f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_PopupGap_Label", "Gap##popupslotgap").c_str(), &psg, 1.f, 5.f,
+                                     "%.0f")) {
                 st.popupSlotGap = psg;
                 dirty = true;
             }
-            ImGui::Spacing();
+            ImGuiMCP::Spacing();
 
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SetNextItemWidth(150.f);
             float mww = st.modeWidgetW;
-            if (ImGui::InputFloat(S::Get("HUD_ModeWidgetW_Label", "Widget W##modewidgetw").c_str(), &mww, 1.f, 5.f,
-                                  "%.0f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_ModeWidgetW_Label", "Widget W##modewidgetw").c_str(), &mww, 1.f, 5.f,
+                                     "%.0f")) {
                 st.modeWidgetW = std::max(1.f, mww);
                 dirty = true;
             }
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SameLine();
+            ImGuiMCP::SetNextItemWidth(150.f);
             int oa = static_cast<int>(st.overlayAlpha);
-            if (ImGui::InputInt(S::Get("HUD_OverlayAlpha_Label", "Overlay Alpha##overlayalpha").c_str(), &oa, 5, 20)) {
+            if (ImGuiMCP::InputInt(S::Get("HUD_OverlayAlpha_Label", "Overlay Alpha##overlayalpha").c_str(), &oa, 5,
+                                   20)) {
                 st.overlayAlpha = static_cast<std::uint8_t>(std::clamp(oa, 0, 255));
                 dirty = true;
             }
         }
 
-        ImGui::Spacing();
+        ImGuiMCP::Spacing();
 
-        if (ImGui::CollapsingHeader(S::Get("HUD_Section_Modifier", "Modifier Button").c_str())) {
-            ImGui::Spacing();
+        if (ImGuiMCP::CollapsingHeader(S::Get("HUD_Section_Modifier", "Modifier Button").c_str())) {
+            ImGuiMCP::Spacing();
 
             const std::string modVisNames = S::Get("Item_ModVis_Never", "Never") + '\0' +
                                             S::Get("Item_ModVis_Always", "Always") + '\0' +
                                             S::Get("Item_ModVis_HideOnPress", "Hide on press") + '\0';
             int modVisIdx = static_cast<int>(st.modifierWidgetVisibility);
-            ImGui::SetNextItemWidth(180.f);
-            if (ImGui::Combo(S::Get("Item_ModifierVisibility", "Visibility##modvis").c_str(), &modVisIdx,
-                             modVisNames.c_str())) {
+            ImGuiMCP::SetNextItemWidth(180.f);
+            if (ImGuiMCP::Combo(S::Get("Item_ModifierVisibility", "Visibility##modvis").c_str(), &modVisIdx,
+                                modVisNames.c_str())) {
                 st.modifierWidgetVisibility = static_cast<IntegratedMagic::ModifierWidgetVisibility>(modVisIdx);
                 dirty = true;
             }
-            ImGui::Spacing();
+            ImGuiMCP::Spacing();
 
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SetNextItemWidth(150.f);
             float mr = st.modifierWidgetRadius;
-            if (ImGui::InputFloat(S::Get("HUD_ModWidget_Radius", "Radius##modwidgetradius").c_str(), &mr, 1.f, 5.f,
-                                  "%.1f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_ModWidget_Radius", "Radius##modwidgetradius").c_str(), &mr, 1.f, 5.f,
+                                     "%.1f")) {
                 st.modifierWidgetRadius = std::max(1.f, mr);
                 dirty = true;
             }
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SameLine();
+            ImGuiMCP::SetNextItemWidth(150.f);
             float mox = st.modifierWidgetOffsetX;
-            if (ImGui::InputFloat(S::Get("HUD_ModWidget_OffsetX", "X##modwidgetox").c_str(), &mox, 1.f, 5.f, "%.0f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_ModWidget_OffsetX", "X##modwidgetox").c_str(), &mox, 1.f, 5.f,
+                                     "%.0f")) {
                 st.modifierWidgetOffsetX = mox;
                 dirty = true;
             }
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SameLine();
+            ImGuiMCP::SetNextItemWidth(150.f);
             float moy = st.modifierWidgetOffsetY;
-            if (ImGui::InputFloat(S::Get("HUD_ModWidget_OffsetY", "Y##modwidgetoy").c_str(), &moy, 1.f, 5.f, "%.0f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_ModWidget_OffsetY", "Y##modwidgetoy").c_str(), &moy, 1.f, 5.f,
+                                     "%.0f")) {
                 st.modifierWidgetOffsetY = moy;
                 dirty = true;
             }
         }
 
-        ImGui::Spacing();
+        ImGuiMCP::Spacing();
 
-        if (ImGui::CollapsingHeader(S::Get("HUD_Section_ButtonLabels", "Button Labels").c_str())) {
-            ImGui::Spacing();
+        if (ImGuiMCP::CollapsingHeader(S::Get("HUD_Section_ButtonLabels", "Button Labels").c_str())) {
+            ImGuiMCP::Spacing();
 
             const std::string lblVisNames = S::Get("HUD_BtnLbl_Never", "Never") + '\0' +
                                             S::Get("HUD_BtnLbl_Always", "Always") + '\0' +
                                             S::Get("HUD_BtnLbl_OnModifier", "On modifier") + '\0';
             int lblVisIdx = static_cast<int>(st.buttonLabelVisibility);
-            ImGui::SetNextItemWidth(180.f);
-            if (ImGui::Combo(S::Get("HUD_BtnLbl_Visibility", "Visibility##btnlblvis").c_str(), &lblVisIdx,
-                             lblVisNames.c_str())) {
+            ImGuiMCP::SetNextItemWidth(180.f);
+            if (ImGuiMCP::Combo(S::Get("HUD_BtnLbl_Visibility", "Visibility##btnlblvis").c_str(), &lblVisIdx,
+                                lblVisNames.c_str())) {
                 st.buttonLabelVisibility = static_cast<IntegratedMagic::ButtonLabelVisibility>(lblVisIdx);
                 dirty = true;
             }
 
-            ImGui::Spacing();
+            ImGuiMCP::Spacing();
 
             {
                 using C = IntegratedMagic::ButtonLabelCorner;
-                ImGui::TextDisabled("%s", S::Get("HUD_BtnLbl_Corner", "Corner").c_str());
+                ImGuiMCP::TextDisabled("%s", S::Get("HUD_BtnLbl_Corner", "Corner").c_str());
 
                 constexpr float kBtnSz = 28.f;
                 constexpr float kGap = 2.f;
@@ -732,106 +735,108 @@ namespace {
 
                 auto cornerBtn = [&](C corner, const char* id) {
                     const bool active = (st.buttonLabelCorner == corner);
-                    if (active) ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
-                    if (ImGui::Button(id, {kBtnSz, kBtnSz})) {
+                    if (active) ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
+                    if (ImGuiMCP::Button(id, {kBtnSz, kBtnSz})) {
                         st.buttonLabelCorner = corner;
                         dirty = true;
                     }
-                    if (active) ImGui::PopStyleColor();
+                    if (active) ImGuiMCP::PopStyleColor();
                 };
 
-                ImGui::Dummy({kInvis, kBtnSz});
-                ImGui::SameLine(0.f, kGap);
+                ImGuiMCP::Dummy({kInvis, kBtnSz});
+                ImGuiMCP::SameLine(0.f, kGap);
                 cornerBtn(C::Top, "##BL_T");
-                ImGui::SameLine(0.f, kGap);
-                ImGui::Dummy({kInvis, kBtnSz});
+                ImGuiMCP::SameLine(0.f, kGap);
+                ImGuiMCP::Dummy({kInvis, kBtnSz});
 
                 cornerBtn(C::Left, "##BL_L");
-                ImGui::SameLine(0.f, kGap);
-                ImGui::Dummy({kBtnSz, kBtnSz});
-                ImGui::SameLine(0.f, kGap);
+                ImGuiMCP::SameLine(0.f, kGap);
+                ImGuiMCP::Dummy({kBtnSz, kBtnSz});
+                ImGuiMCP::SameLine(0.f, kGap);
                 cornerBtn(C::Right, "##BL_R");
 
-                ImGui::Dummy({kInvis, kBtnSz});
-                ImGui::SameLine(0.f, kGap);
+                ImGuiMCP::Dummy({kInvis, kBtnSz});
+                ImGuiMCP::SameLine(0.f, kGap);
                 cornerBtn(C::Bottom, "##BL_B");
 
-                ImGui::SameLine(0.f, 20.f);
-                ImGui::BeginGroup();
+                ImGuiMCP::SameLine(0.f, 20.f);
+                ImGuiMCP::BeginGroup();
                 {
                     const bool tc = (st.buttonLabelCorner == C::TowardCenter);
-                    if (tc) ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
-                    if (ImGui::Button(S::Get("HUD_BtnLbl_TowardCenter", "Inward##tc").c_str(), {0.f, kBtnSz * 1.5f})) {
+                    if (tc) ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
+                    if (ImGuiMCP::Button(S::Get("HUD_BtnLbl_TowardCenter", "Inward##tc").c_str(),
+                                         {0.f, kBtnSz * 1.5f})) {
                         st.buttonLabelCorner = C::TowardCenter;
                         dirty = true;
                     }
-                    if (tc) ImGui::PopStyleColor();
+                    if (tc) ImGuiMCP::PopStyleColor();
                 }
                 {
                     const bool ac = (st.buttonLabelCorner == C::AwayFromCenter);
-                    if (ac) ImGui::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
-                    if (ImGui::Button(S::Get("HUD_BtnLbl_AwayFromCenter", "Outward##ac").c_str(),
-                                      {0.f, kBtnSz * 1.5f})) {
+                    if (ac) ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
+                    if (ImGuiMCP::Button(S::Get("HUD_BtnLbl_AwayFromCenter", "Outward##ac").c_str(),
+                                         {0.f, kBtnSz * 1.5f})) {
                         st.buttonLabelCorner = C::AwayFromCenter;
                         dirty = true;
                     }
-                    if (ac) ImGui::PopStyleColor();
+                    if (ac) ImGuiMCP::PopStyleColor();
                 }
-                ImGui::EndGroup();
+                ImGuiMCP::EndGroup();
             }
 
-            ImGui::Spacing();
+            ImGuiMCP::Spacing();
 
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SetNextItemWidth(150.f);
             float iconSz = st.buttonLabelIconSize;
-            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_IconSize", "Icon size##btnlblsz").c_str(), &iconSz, 1.f, 5.f,
-                                  "%.0f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_BtnLbl_IconSize", "Icon size##btnlblsz").c_str(), &iconSz, 1.f, 5.f,
+                                     "%.0f")) {
                 st.buttonLabelIconSize = std::max(4.f, iconSz);
                 dirty = true;
             }
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SameLine();
+            ImGuiMCP::SetNextItemWidth(150.f);
             float iconSpc = st.buttonLabelIconSpacing;
-            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_IconSpacing", "Spacing##btnlblspc").c_str(), &iconSpc, 1.f, 5.f,
-                                  "%.0f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_BtnLbl_IconSpacing", "Spacing##btnlblspc").c_str(), &iconSpc, 1.f, 5.f,
+                                     "%.0f")) {
                 st.buttonLabelIconSpacing = iconSpc;
                 dirty = true;
             }
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SameLine();
+            ImGuiMCP::SetNextItemWidth(150.f);
             float margin = st.buttonLabelMargin;
-            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_Margin", "Margin##btnlblmar").c_str(), &margin, 1.f, 5.f,
-                                  "%.0f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_BtnLbl_Margin", "Margin##btnlblmar").c_str(), &margin, 1.f, 5.f,
+                                     "%.0f")) {
                 st.buttonLabelMargin = margin;
                 dirty = true;
             }
 
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SetNextItemWidth(150.f);
             float ox2 = st.buttonLabelOffsetX;
-            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_OffsetX", "X##btnlblox").c_str(), &ox2, 1.f, 5.f, "%.0f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_BtnLbl_OffsetX", "X##btnlblox").c_str(), &ox2, 1.f, 5.f, "%.0f")) {
                 st.buttonLabelOffsetX = ox2;
                 dirty = true;
             }
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SameLine();
+            ImGuiMCP::SetNextItemWidth(150.f);
             float oy2 = st.buttonLabelOffsetY;
-            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_OffsetY", "Y##btnlbloy").c_str(), &oy2, 1.f, 5.f, "%.0f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_BtnLbl_OffsetY", "Y##btnlbloy").c_str(), &oy2, 1.f, 5.f, "%.0f")) {
                 st.buttonLabelOffsetY = oy2;
                 dirty = true;
             }
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(150.f);
+            ImGuiMCP::SameLine();
+            ImGuiMCP::SetNextItemWidth(150.f);
             float ft = st.buttonLabelFadeTime;
-            if (ImGui::InputFloat(S::Get("HUD_BtnLbl_FadeTime", "Fade##btnlblft").c_str(), &ft, 0.01f, 0.05f, "%.2f")) {
+            if (ImGuiMCP::InputFloat(S::Get("HUD_BtnLbl_FadeTime", "Fade##btnlblft").c_str(), &ft, 0.01f, 0.05f,
+                                     "%.2f")) {
                 st.buttonLabelFadeTime = std::max(0.f, ft);
                 dirty = true;
             }
         }
 
-        ImGui::Spacing();
+        ImGuiMCP::Spacing();
 
-        if (ImGui::CollapsingHeader(S::Get("HUD_Section_Colors", "Colors").c_str())) {
-            ImGui::Spacing();
+        if (ImGuiMCP::CollapsingHeader(S::Get("HUD_Section_Colors", "Colors").c_str())) {
+            ImGuiMCP::Spacing();
 
             auto colorEdit = [&](const char* label, std::uint32_t& col) {
                 float c[4];
@@ -839,7 +844,7 @@ namespace {
                 c[1] = ((col >> 8) & 0xFF) / 255.f;
                 c[2] = ((col >> 16) & 0xFF) / 255.f;
                 c[3] = ((col >> 24) & 0xFF) / 255.f;
-                if (ImGui::ColorEdit4(
+                if (ImGuiMCP::ColorEdit4(
                         label, c,
                         ImGuiMCP::ImGuiColorEditFlags_AlphaBar | ImGuiMCP::ImGuiColorEditFlags_AlphaPreview)) {
                     col = (static_cast<std::uint32_t>(c[3] * 255.f + .5f) << 24) |
@@ -851,14 +856,14 @@ namespace {
             };
             auto u8Edit = [&](const char* label, std::uint8_t& val) {
                 int v = static_cast<int>(val);
-                ImGui::SetNextItemWidth(150.f);
-                if (ImGui::InputInt(label, &v, 5, 20)) {
+                ImGuiMCP::SetNextItemWidth(150.f);
+                if (ImGuiMCP::InputInt(label, &v, 5, 20)) {
                     val = static_cast<std::uint8_t>(std::clamp(v, 0, 255));
                     dirty = true;
                 }
             };
 
-            ImGui::SeparatorText(S::Get("HUD_Colors_Slots", "Slots").c_str());
+            ImGuiMCP::SeparatorText(S::Get("HUD_Colors_Slots", "Slots").c_str());
             colorEdit(S::Get("HUD_Color_BgActive", "Bg Active##slotbgactive").c_str(), st.slotBgActive);
             colorEdit(S::Get("HUD_Color_BgInactive", "Bg Inactive##slotbginactive").c_str(), st.slotBgInactive);
             colorEdit(S::Get("HUD_Color_RingInactive", "Ring Inactive##slotringinactive").c_str(), st.slotRingInactive);
@@ -867,28 +872,28 @@ namespace {
             u8Edit(S::Get("HUD_Color_IconAlpha", "Icon Alpha##iconalpha").c_str(), st.iconAlpha);
             colorEdit(S::Get("HUD_Color_EmptySlot", "Empty Slot##emptyslotcolor").c_str(), st.emptySlotColor);
 
-            ImGui::Spacing();
-            ImGui::SeparatorText(S::Get("HUD_Colors_RingCenter", "Ring Center").c_str());
+            ImGuiMCP::Spacing();
+            ImGuiMCP::SeparatorText(S::Get("HUD_Colors_RingCenter", "Ring Center").c_str());
             colorEdit(S::Get("HUD_Color_RingCenterFill", "Fill##ringcenterfill").c_str(), st.ringCenterFill);
             colorEdit(S::Get("HUD_Color_RingCenterBorder", "Border##ringcenterborder").c_str(), st.ringCenterBorder);
 
-            ImGui::Spacing();
-            ImGui::SeparatorText(S::Get("HUD_Colors_Schools", "School Colors").c_str());
+            ImGuiMCP::Spacing();
+            ImGuiMCP::SeparatorText(S::Get("HUD_Colors_Schools", "School Colors").c_str());
 
-            if (ImGui::BeginTable("##schoolcolors", 2, ImGuiMCP::ImGuiTableFlags_BordersInnerV)) {
-                ImGui::TableSetupColumn(S::Get("HUD_Colors_Fill", "Fill").c_str(),
-                                        ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
-                ImGui::TableSetupColumn(S::Get("HUD_Colors_Glow", "Glow").c_str(),
-                                        ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
-                ImGui::TableHeadersRow();
+            if (ImGuiMCP::BeginTable("##schoolcolors", 2, ImGuiMCP::ImGuiTableFlags_BordersInnerV)) {
+                ImGuiMCP::TableSetupColumn(S::Get("HUD_Colors_Fill", "Fill").c_str(),
+                                           ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
+                ImGuiMCP::TableSetupColumn(S::Get("HUD_Colors_Glow", "Glow").c_str(),
+                                           ImGuiMCP::ImGuiTableColumnFlags_WidthStretch);
+                ImGuiMCP::TableHeadersRow();
 
                 auto schoolRow = [&](std::string_view nameKey, std::string_view nameFallback, std::uint32_t& fill,
                                      std::uint32_t& glow) {
                     const std::string name = S::Get(nameKey, nameFallback);
-                    ImGui::TableNextRow();
-                    ImGui::TableSetColumnIndex(0);
+                    ImGuiMCP::TableNextRow();
+                    ImGuiMCP::TableSetColumnIndex(0);
                     colorEdit((name + "##f").c_str(), fill);
-                    ImGui::TableSetColumnIndex(1);
+                    ImGuiMCP::TableSetColumnIndex(1);
                     colorEdit((name + "##g").c_str(), glow);
                 };
 
@@ -900,49 +905,49 @@ namespace {
                 schoolRow("HUD_School_Default", "Default", st.defaultFill, st.defaultGlow);
                 schoolRow("HUD_School_Empty", "Empty", st.emptyFill, st.emptyFill);
 
-                ImGui::EndTable();
+                ImGuiMCP::EndTable();
             }
-            ImGui::Spacing();
+            ImGuiMCP::Spacing();
         }
     }
 
     void DrawPatchesTab(IntegratedMagic::MagicConfig& cfg, bool& dirty) {
-        if (bool v1 = cfg.skipEquipAnimationPatch;
-            ImGui::Checkbox(IntegratedMagic::Strings::Get("Item_SkipEquipAnim", "Skip equip animation").c_str(), &v1)) {
+        if (bool v1 = cfg.skipEquipAnimationPatch; ImGuiMCP::Checkbox(
+                IntegratedMagic::Strings::Get("Item_SkipEquipAnim", "Skip equip animation").c_str(), &v1)) {
             cfg.skipEquipAnimationPatch = v1;
             dirty = true;
         }
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(
+        if (ImGuiMCP::IsItemHovered()) {
+            ImGuiMCP::SetTooltip(
                 "%s", IntegratedMagic::Strings::Get("Tooltip_SkipEquipAnim",
                                                     "Skips the equip animation when activating a slot via hotkey.\n"
                                                     "Recommended for faster spell swapping.")
                           .c_str());
         }
 
-        if (bool v2 = cfg.skipEquipAnimationOnReturnPatch; ImGui::Checkbox(
+        if (bool v2 = cfg.skipEquipAnimationOnReturnPatch; ImGuiMCP::Checkbox(
                 IntegratedMagic::Strings::Get("Item_SkipEquipAnimReturn", "Skip equip animation on return").c_str(),
                 &v2)) {
             cfg.skipEquipAnimationOnReturnPatch = v2;
             dirty = true;
         }
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(
+        if (ImGuiMCP::IsItemHovered()) {
+            ImGuiMCP::SetTooltip(
                 "%s", IntegratedMagic::Strings::Get("Tooltip_SkipEquipAnimReturn",
                                                     "Skips the equip animation when restoring the previous snapshot\n"
                                                     "After exiting a slot.")
                           .c_str());
         }
 
-        if (bool v3 = cfg.requireExclusiveHotkeyPatch; ImGui::Checkbox(
+        if (bool v3 = cfg.requireExclusiveHotkeyPatch; ImGuiMCP::Checkbox(
                 IntegratedMagic::Strings::Get("Item_RequireExclusiveHotkey", "Require exclusive hotkey").c_str(),
                 &v3)) {
             cfg.requireExclusiveHotkeyPatch = v3;
             dirty = true;
         }
 
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(
+        if (ImGuiMCP::IsItemHovered()) {
+            ImGuiMCP::SetTooltip(
                 "%s", IntegratedMagic::Strings::Get("Tooltip_RequireExclusiveHotkey",
                                                     "When enabled, a hotkey combo only triggers if no other keys\n"
                                                     "are held at the same time. Prevents accidental activation\n"
@@ -950,13 +955,13 @@ namespace {
                           .c_str());
         }
 
-        if (bool v4 = cfg.pressBothAtSamePatch; ImGui::Checkbox(
+        if (bool v4 = cfg.pressBothAtSamePatch; ImGuiMCP::Checkbox(
                 IntegratedMagic::Strings::Get("Item_PressBothAtSame", "Press both at the same time").c_str(), &v4)) {
             cfg.pressBothAtSamePatch = v4;
             dirty = true;
         }
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(
+        if (ImGuiMCP::IsItemHovered()) {
+            ImGuiMCP::SetTooltip(
                 "%s", IntegratedMagic::Strings::Get("Tooltip_PressBothAtSame",
                                                     "When enabled, all keys in a combo must be pressed within\n"
                                                     "0.2 seconds of each other.\n"
@@ -974,12 +979,12 @@ void __stdcall IntegratedMagic::MENU::DrawSettings() {
     {
         constexpr float kButtonWidth = 160.0f;
         ImGuiMCP::ImVec2 region{};
-        ImGui::GetContentRegionAvail(&region);
-        const float rightEdge = ImGui::GetCursorPosX() + region.x;
-        ImGui::SetCursorPosX(rightEdge - kButtonWidth);
-        ImGui::BeginDisabled(!g_pending);
-        if (ImGui::Button(IntegratedMagic::Strings::Get("Item_Apply", "Apply changes").c_str(),
-                          ImGui::ImVec2{kButtonWidth, 0.0f})) {
+        ImGuiMCP::GetContentRegionAvail(&region);
+        const float rightEdge = ImGuiMCP::GetCursorPosX() + region.x;
+        ImGuiMCP::SetCursorPosX(rightEdge - kButtonWidth);
+        ImGuiMCP::BeginDisabled(!g_pending);
+        if (ImGuiMCP::Button(IntegratedMagic::Strings::Get("Item_Apply", "Apply changes").c_str(),
+                             ImGuiMCP::ImVec2{kButtonWidth, 0.0f})) {
             cfg.Save();
             IntegratedMagic::StyleConfig::Get().Save();
             if (IntegratedMagic::SpellSettingsDB::Get().IsDirty()) {
@@ -989,28 +994,28 @@ void __stdcall IntegratedMagic::MENU::DrawSettings() {
             Input::OnConfigChanged();
             g_pending = false;
         }
-        ImGui::EndDisabled();
+        ImGuiMCP::EndDisabled();
     }
-    ImGui::Spacing();
+    ImGuiMCP::Spacing();
 
-    if (ImGui::BeginTabBar("IMAGIC_TABS")) {
-        if (ImGui::BeginTabItem(IntegratedMagic::Strings::Get("Tab_General", "General").c_str())) {
+    if (ImGuiMCP::BeginTabBar("IMAGIC_TABS")) {
+        if (ImGuiMCP::BeginTabItem(IntegratedMagic::Strings::Get("Tab_General", "General").c_str())) {
             DrawGeneralTab(cfg, dirty);
-            ImGui::EndTabItem();
+            ImGuiMCP::EndTabItem();
         }
-        if (ImGui::BeginTabItem(IntegratedMagic::Strings::Get("Tab_Controls", "Controls").c_str())) {
+        if (ImGuiMCP::BeginTabItem(IntegratedMagic::Strings::Get("Tab_Controls", "Controls").c_str())) {
             DrawControlsTab(cfg, dirty);
-            ImGui::EndTabItem();
+            ImGuiMCP::EndTabItem();
         }
-        if (ImGui::BeginTabItem(IntegratedMagic::Strings::Get("Tab_HUD", "HUD").c_str())) {
+        if (ImGuiMCP::BeginTabItem(IntegratedMagic::Strings::Get("Tab_HUD", "HUD").c_str())) {
             DrawHudTab(dirty);
-            ImGui::EndTabItem();
+            ImGuiMCP::EndTabItem();
         }
-        if (ImGui::BeginTabItem(IntegratedMagic::Strings::Get("Tab_Patches", "Patches").c_str())) {
+        if (ImGuiMCP::BeginTabItem(IntegratedMagic::Strings::Get("Tab_Patches", "Patches").c_str())) {
             DrawPatchesTab(cfg, dirty);
-            ImGui::EndTabItem();
+            ImGuiMCP::EndTabItem();
         }
-        ImGui::EndTabBar();
+        ImGuiMCP::EndTabBar();
     }
 
     if (dirty) {
