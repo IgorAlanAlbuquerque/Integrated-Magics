@@ -47,7 +47,7 @@ namespace IntegratedMagic {
         return inst;
     }
 
-    void MagicState::EnsureActiveWithSnapshot(RE::PlayerCharacter const* player, int slot) {
+    void MagicState::EnsureActiveWithSnapshot(RE::PlayerCharacter const* player, int slot, bool raiseHandsIfSheathed) {
         if (_session.active) {
 #ifdef DEBUG
             spdlog::info("[State] EnsureActiveWithSnapshot: already active, updating slot {} -> {}",
@@ -68,7 +68,7 @@ namespace IntegratedMagic {
         spdlog::info("[State] EnsureActiveWithSnapshot: ACTIVATING slot={} wasHandsDown={} weaponState={}", slot,
                      _session.wasHandsDown, static_cast<int>(std::to_underlying(ws)));
 #endif
-        if (_session.wasHandsDown) {
+        if (_session.wasHandsDown && raiseHandsIfSheathed) {
             pc->DrawWeaponMagicHands(true);
         }
 
@@ -240,7 +240,9 @@ namespace IntegratedMagic {
         if (PlayerIsDead(pc)) return true;
         if (PlayerIsKnockedOrStaggered(pc) && (!_left.pressActive && !_right.pressActive)) return true;
         if (PlayerIsBlocking(pc) && (!_left.pressActive && !_right.pressActive)) return true;
-        if (!_restore.pendingRestoreAfterSheathe && PlayerIsSheathingOrSheathed(pc)) return true;
+
+        if (!_restore.pendingRestoreAfterSheathe && _shout.modeShoutID == 0 && PlayerIsSheathingOrSheathed(pc))
+            return true;
 
         if (_session.modeSpellRight) {
             auto* caster = MagicAction::GetCaster(pc, RE::MagicSystem::CastingSource::kRightHand);

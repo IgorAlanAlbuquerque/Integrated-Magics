@@ -27,13 +27,19 @@ add_commonlibsse_plugin(${PROJECT_NAME}
     src/UI/HUD.cpp
     src/UI/TextureManager.cpp
     src/UI/StyleConfig.cpp
+    src/UI/Hoveredform.cpp
     src/Config/Config.cpp
     src/Config/Slots.cpp
     src/Config/SpellType.cpp
     src/Persistence/SpellSettingsDB.cpp
     src/Persistence/SaveSpellDB.cpp
     src/Input/Input.cpp
-    src/Input/Assign.cpp
+    src/Input/InputState.cpp
+    src/Input/Hotkeycache.cpp
+    src/Input/Replaysystem.cpp
+    src/Input/ExclusivePending.cpp
+    src/Input/HudToggle.cpp
+    src/Input/Eventfilter.cpp
     src/State/Action.cpp
     src/State/AnimListener.cpp
     src/State/InventoryUtil.cpp
@@ -41,6 +47,8 @@ add_commonlibsse_plugin(${PROJECT_NAME}
     src/State/MagicStateLifecycle.cpp
     src/State/MagicStatePump.cpp
     src/State/MagicStateSlot.cpp
+    src/State/Equipsink.cpp
+    src/State/Assign.cpp
     src/Detours/detours.cpp
     src/Detours/disasm.cpp
     src/Detours/disolx64.cpp
@@ -68,6 +76,7 @@ target_precompile_headers(${PROJECT_NAME}
     src/UI/StyleConfig.h
     src/UI/SlotAnimator.h
     src/UI/SlotLayout.h
+    src/UI/Hoveredform.h
     src/Config/ConfigPath.h
     src/Config/Config.h
     src/Config/Slots.h
@@ -75,14 +84,23 @@ target_precompile_headers(${PROJECT_NAME}
     src/Config/SpellType.h
     src/Persistence/SpellSettingsDB.h
     src/Persistence/SaveSpellDB.h
-    src/Input/Assign.h
     src/Input/Input.h
+    src/Input/InputState.h
+    src/Input/Hotkeycache.h
+    src/Input/Replaysystem.h
+    src/Input/ExclusivePending.h
+    src/Input/HudToggle.h
+    src/Input/Eventfilter.h
+    src/Input/Inputinternal.h
     src/State/State.h
     src/State/Action.h
     src/State/AnimListener.h
     src/State/CastGuardEvents.h
     src/State/InventoryUtil.h
     src/State/SyntheticInput.h
+    src/State/Spellclassify.h
+    src/State/Equipsink.h
+    src/State/Assign.h
 ) 
 
 set_source_files_properties(

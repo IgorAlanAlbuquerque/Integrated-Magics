@@ -141,6 +141,7 @@ namespace IntegratedMagic {
         const HandMode& LeftMode() const noexcept { return _left; }
         const HandMode& RightMode() const noexcept { return _right; }
         bool IsInSlotSetup() const noexcept { return _inSlotSetup; }
+        [[nodiscard]] bool IsShoutActive() const noexcept { return _shout.modeShoutID != 0; }
 
     private:
         MagicState() = default;
@@ -226,7 +227,7 @@ namespace IntegratedMagic {
                 _restore.dirtyRight = true;
         }
 
-        void EnsureActiveWithSnapshot(RE::PlayerCharacter const* player, int slot);
+        void EnsureActiveWithSnapshot(RE::PlayerCharacter const* player, int slot, bool raiseHandsIfSheathed = true);
         void CaptureSnapshot(RE::PlayerCharacter const* player);
         void RestoreSnapshot(RE::PlayerCharacter* player);
 

@@ -2,11 +2,11 @@
 
 #include "Action.h"
 #include "Config/Slots.h"
-#include "Input/Assign.h"
 #include "InventoryUtil.h"
 #include "PCH.h"
 #include "Persistence/SpellSettingsDB.h"
 #include "State.h"
+#include "State/SpellClassify.h"
 
 namespace IntegratedMagic {
 
@@ -149,7 +149,7 @@ namespace IntegratedMagic {
             if (!out.shoutForm) return false;
             out.shoutSettings = SpellSettingsDB::Get().GetOrCreate(out.shoutID, out.shoutForm);
 
-            EnsureActiveWithSnapshot(player, slot);
+            EnsureActiveWithSnapshot(player, slot, false);
             _shout.modeShoutID = out.shoutID;
             _shout.finished = false;
             _shout.isPower = (out.shoutForm->As<RE::SpellItem>() != nullptr);
@@ -359,7 +359,7 @@ namespace IntegratedMagic {
             if (e.hasLeft) {
                 MagicAction::EquipSpellInHand(player, e.leftSpell, Left);
                 MarkDirty(Left);
-                if (!e.hasRight && MagicAssign::IsTwoHandedSpell(e.leftSpell)) {
+                if (!e.hasRight && SpellClassify::IsTwoHandedSpell(e.leftSpell)) {
                     MarkDirty(Right);
                 }
             }
