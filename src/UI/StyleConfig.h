@@ -49,7 +49,20 @@ namespace IntegratedMagic {
         HideOnPress = 2,
     };
 
+    struct FontConfig {
+        std::string path = "";
+        float size = 28.f;
+
+        bool rangePolish = false;
+        bool rangeCyrillic = false;
+        bool rangeJapanese = false;
+        bool rangeChineseSimplified = false;
+        bool rangeKorean = false;
+        bool rangeGreek = false;
+    };
+
     struct StyleConfig {
+        FontConfig font;
         float slotRadius = 32.f;
         float ringRadius = 54.f;
         float popupSlotRadius = 48.f;

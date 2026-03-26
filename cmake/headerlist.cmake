@@ -10,6 +10,7 @@ set(headers
     src/UI/StyleConfig.h
     src/UI/SlotAnimator.h
     src/UI/SlotLayout.h
+    src/UI/FontLoader.h
     src/Config/ConfigPath.h
     src/Config/Config.h
     src/Config/Slots.h

@@ -15,6 +15,7 @@
 #include "State/State.h"
 #include "UI/HudManager.h"
 #include "UI/TextureManager.h"
+#include "UI/FontLoader.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -126,15 +127,34 @@ namespace IntegratedMagic::Hooks {
 
                 IntegratedMagic::TextureManager::Init();
 
-                constexpr float kFontSize = 32.0f;
-                const std::string fontPath = R"(.\Data\SKSE\Plugins\IntegratedMagics\resources\fonts\font.ttf)";
-                if (std::filesystem::exists(fontPath)) {
-                    io.Fonts->AddFontFromFileTTF(fontPath.c_str(), kFontSize, nullptr,
-                                                 io.Fonts->GetGlyphRangesDefault());
-                    spdlog::info("[Hooks] D3DInitHook: loaded font '{}'", fontPath);
+                const auto& fc = IntegratedMagic::StyleConfig::Get().font;
+                const char* fontPath = fc.path.empty() ? nullptr : fc.path.c_str();
+                if (fontPath && std::filesystem::exists(fontPath)) {
+                    io.Fonts->AddFontFromFileTTF(fontPath, fc.size, nullptr, FontLoader::GetGlyphRangesDefault());
+
+                    ImFontConfig mergeCfg;
+                    mergeCfg.MergeMode = true;
+
+                    if (fc.rangePolish)
+                        io.Fonts->AddFontFromFileTTF(fontPath, fc.size, &mergeCfg, FontLoader::GetGlyphRangesPolish());
+                    if (fc.rangeCyrillic)
+                        io.Fonts->AddFontFromFileTTF(fontPath, fc.size, &mergeCfg,
+                                                     FontLoader::GetGlyphRangesCyrillic());
+                    if (fc.rangeJapanese)
+                        io.Fonts->AddFontFromFileTTF(fontPath, fc.size, &mergeCfg,
+                                                     FontLoader::GetGlyphRangesJapanese());
+                    if (fc.rangeChineseSimplified)
+                        io.Fonts->AddFontFromFileTTF(fontPath, fc.size, &mergeCfg,
+                                                     FontLoader::GetGlyphRangesChineseSimplified());
+                    if (fc.rangeKorean)
+                        io.Fonts->AddFontFromFileTTF(fontPath, fc.size, &mergeCfg, FontLoader::GetGlyphRangesKorean());
+                    if (fc.rangeGreek)
+                        io.Fonts->AddFontFromFileTTF(fontPath, fc.size, &mergeCfg, FontLoader::GetGlyphRangesGreek());
+
+                    spdlog::info("[Hooks] D3DInitHook: loaded font '{}' size {}", fontPath, fc.size);
                 } else {
                     io.Fonts->AddFontDefault();
-                    spdlog::warn("[Hooks] D3DInitHook: font not found at '{}', using default", fontPath);
+                    if (fontPath) spdlog::warn("[Hooks] D3DInitHook: font not found at '{}', using default", fontPath);
                 }
 
                 WndProcHook::func = reinterpret_cast<WNDPROC>(
