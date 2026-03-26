@@ -1088,13 +1088,7 @@ void Input::ProcessAndFilter(RE::InputEvent** a_evns) {
     }
 
     DrainOneDeferredReplayEvent();
-
-    for (int i = 0; i < ActiveSlots(); ++i) {
-        const auto s = static_cast<std::size_t>(i);
-        if (g_replay[s].armed && !HasDeferredReplayForSlot(s)) {
-            ResetReplayState(s);
-        }
-    }
+    *a_evns = IntegratedMagic::detail::FlushSyntheticInput(*a_evns);
 
     for (int code = 0; code < kMouseButtonBase; ++code) {
         const auto idx = static_cast<std::size_t>(code);
@@ -1158,6 +1152,13 @@ void Input::ProcessAndFilter(RE::InputEvent** a_evns) {
                 prev = cur;
             }
             cur = next;
+        }
+    }
+
+    for (int i = 0; i < ActiveSlots(); ++i) {
+        const auto s = static_cast<std::size_t>(i);
+        if (g_replay[s].armed && !HasDeferredReplayForSlot(s)) {
+            ResetReplayState(s);
         }
     }
 

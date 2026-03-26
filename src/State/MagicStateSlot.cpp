@@ -350,6 +350,7 @@ namespace IntegratedMagic {
         }
 
         auto* player = e.player;
+        _inSlotSetup = true;
         UpdatePrevExtraEquippedForOverlay([this, player, &e] {
             if (e.hasRight) {
                 MagicAction::EquipSpellInHand(player, e.rightSpell, Right);
@@ -363,6 +364,7 @@ namespace IntegratedMagic {
                 }
             }
         });
+        _inSlotSetup = false;
 
         if (e.hasRight) {
             SetModeSpellsFromHand(Right, e.rightSpell);

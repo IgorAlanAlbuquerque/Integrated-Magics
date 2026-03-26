@@ -71,6 +71,7 @@ namespace IntegratedMagic::MagicAssign {
                         const auto sID = Slots::GetSlotShout(activeSlot);
                         if (formID == lID || formID == rID || formID == sID) return RE::BSEventNotifyControl::kContinue;
                     }
+                    if (state.IsInSlotSetup()) return RE::BSEventNotifyControl::kContinue;
 #ifdef DEBUG
                     spdlog::info(
                         "[Assign] EquipSink: foreign spell {:#010x} equipped during active slot {} -> "

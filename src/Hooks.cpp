@@ -18,11 +18,8 @@ namespace IntegratedMagic::Hooks {
                 if (!a_events) return;
 
                 Input::ProcessAndFilter(const_cast<RE::InputEvent**>(a_events));
-
-                RE::InputEvent* head = IntegratedMagic::detail::FlushSyntheticInput(*a_events);
-
                 if (func == 0) return;
-                RE::InputEvent* const arr[2]{head, nullptr};
+                RE::InputEvent* const arr[2]{*a_events, nullptr};
                 reinterpret_cast<Fn*>(func)(a_dispatcher, arr);
             }
 

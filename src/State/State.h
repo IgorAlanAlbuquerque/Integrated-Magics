@@ -140,6 +140,7 @@ namespace IntegratedMagic {
         void OnSpellFired(Slots::Hand hand);
         const HandMode& LeftMode() const noexcept { return _left; }
         const HandMode& RightMode() const noexcept { return _right; }
+        bool IsInSlotSetup() const noexcept { return _inSlotSetup; }
 
     private:
         MagicState() = default;
@@ -264,6 +265,7 @@ namespace IntegratedMagic {
         AutoAttackState _aa{};
         ShoutState _shout{};
         CastFlags _cast{};
+        bool _inSlotSetup{false};
 
         static constexpr float kDelayedStartSec = 0.050f;
         static constexpr float kMaxActiveTimeoutSecs = 30.f;
