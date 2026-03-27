@@ -5,7 +5,6 @@
 #include <numbers>
 
 #include "Config/Slots.h"
-#include "Input/Assign.h"
 #include "Input/Input.h"
 #include "PCH.h"
 #include "Persistence/SpellSettingsDB.h"
@@ -13,8 +12,11 @@
 #include "RE/P/PlayerCharacter.h"
 #include "RE/U/UI.h"
 #include "SKSEMenuFramework.h"
+#include "State/Assign.h"
+#include "State/SpellClassify.h"
 #include "State/State.h"
 #include "Strings.h"
+#include "UI/HoveredForm.h"
 #include "UI/SlotAnimator.h"
 #include "UI/SlotLayout.h"
 #include "UI/StyleConfig.h"
@@ -850,7 +852,7 @@ namespace IntegratedMagic::HUD {
                 const auto shoutID = Slots::GetSlotShout(i);
                 auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
                 auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
-                const bool isTwoHanded = !shoutID && !rID && lSp && MagicAssign::IsTwoHandedSpell(lSp);
+                const bool isTwoHanded = !shoutID && !rID && lSp && SpellClassify::IsTwoHandedSpell(lSp);
                 DrawSlotVisual(dl, center, slotR, false, isTwoHanded ? nullptr : rSp, isTwoHanded ? nullptr : lSp,
                                isTwoHanded ? lID : shoutID);
             }
@@ -863,7 +865,7 @@ namespace IntegratedMagic::HUD {
                 const auto shoutID = Slots::GetSlotShout(activeSlot);
                 auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
                 auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
-                const bool isTwoHanded = !shoutID && !rID && lSp && MagicAssign::IsTwoHandedSpell(lSp);
+                const bool isTwoHanded = !shoutID && !rID && lSp && SpellClassify::IsTwoHandedSpell(lSp);
                 DrawSlotVisual(dl, center, slotR, true, isTwoHanded ? nullptr : rSp, isTwoHanded ? nullptr : lSp,
                                isTwoHanded ? lID : shoutID);
             }
@@ -930,12 +932,12 @@ namespace IntegratedMagic::HUD {
                 ImDrawList* dl = ImGui::GetWindowDrawList();
                 const int activeSlot = MagicState::Get().ActiveSlot();
 
-                const auto hovType = MagicAssign::GetHoveredMagicType();
+                const auto hovType = HoveredForm::GetHoveredMagicType();
                 const bool hovIsShoutOrPower =
-                    hovType == MagicAssign::HoveredMagicType::Shout || hovType == MagicAssign::HoveredMagicType::Power;
-                const bool hovIsTwoHanded = hovType == MagicAssign::HoveredMagicType::TwoHandedSpell;
-                const bool hovIsRightOnly = hovType == MagicAssign::HoveredMagicType::RightOnlySpell;
-                const bool hovIsLeftOnly = hovType == MagicAssign::HoveredMagicType::LeftOnlySpell;
+                    hovType == HoveredForm::MagicType::Shout || hovType == HoveredForm::MagicType::Power;
+                const bool hovIsTwoHanded = hovType == HoveredForm::MagicType::TwoHandedSpell;
+                const bool hovIsRightOnly = hovType == HoveredForm::MagicType::RightOnlySpell;
+                const bool hovIsLeftOnly = hovType == HoveredForm::MagicType::LeftOnlySpell;
 
                 const bool hovIsFullSlot = hovIsShoutOrPower || hovIsTwoHanded;
 
@@ -947,7 +949,7 @@ namespace IntegratedMagic::HUD {
                     auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
                     auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
 
-                    const bool slotIsTwoHanded = !shoutID && !rID && lSp && MagicAssign::IsTwoHandedSpell(lSp);
+                    const bool slotIsTwoHanded = !shoutID && !rID && lSp && SpellClassify::IsTwoHandedSpell(lSp);
                     const RE::FormID displayShoutID = shoutID ? shoutID : (slotIsTwoHanded ? lID : 0);
                     const RE::SpellItem* displayL = slotIsTwoHanded ? nullptr : lSp;
                     const RE::SpellItem* displayR = slotIsTwoHanded ? nullptr : rSp;
