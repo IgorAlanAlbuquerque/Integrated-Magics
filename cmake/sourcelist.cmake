@@ -8,13 +8,19 @@ set(sources
     src/UI/StyleConfig.cpp
     src/UI/SlotDrawer.cpp
     src/UI/PopupDrawer.cpp
+    src/UI/Hoveredform.cpp
     src/Config/Config.cpp
     src/Config/Slots.cpp
     src/Config/SpellType.cpp
     src/Persistence/SpellSettingsDB.cpp
     src/Persistence/SaveSpellDB.cpp
     src/Input/Input.cpp
-    src/Input/Assign.cpp
+    src/Input/Eventfilter.cpp
+    src/Input/Exclusivepending.cpp
+    src/Input/Hotkeycache.cpp
+    src/Input/Hudtoggle.cpp
+    src/Input/Inputstate.cpp
+    src/Input/Replaysystem.cpp
     src/State/Action.cpp
     src/State/AnimListener.cpp
     src/State/InventoryUtil.cpp
@@ -22,6 +28,8 @@ set(sources
     src/State/MagicStateLifecycle.cpp
     src/State/MagicStatePump.cpp
     src/State/MagicStateSlot.cpp
+    src/State/Assign.cpp
+    src/State/Equipsink.cpp
     src/Detours/detours.cpp
     src/Detours/disasm.cpp
     src/Detours/disolx64.cpp

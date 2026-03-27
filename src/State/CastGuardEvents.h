@@ -1,12 +1,10 @@
 #pragma once
-#include "State.h"
 #include "PCH.h"
+#include "State.h"
 
-class CastGuardEvents :
-    public RE::BSTEventSink<RE::TESDeathEvent>,
-    public RE::BSTEventSink<RE::TESLoadGameEvent>,
-    public RE::BSTEventSink<RE::MenuOpenCloseEvent>
-{
+class CastGuardEvents : public RE::BSTEventSink<RE::TESDeathEvent>,
+                        public RE::BSTEventSink<RE::TESLoadGameEvent>,
+                        public RE::BSTEventSink<RE::MenuOpenCloseEvent> {
 public:
     static CastGuardEvents& Get() {
         static CastGuardEvents instance;
@@ -25,10 +23,8 @@ public:
     }
 
 protected:
-    RE::BSEventNotifyControl ProcessEvent(
-        const RE::TESDeathEvent* ev,
-        RE::BSTEventSource<RE::TESDeathEvent>*) override
-    {
+    RE::BSEventNotifyControl ProcessEvent(const RE::TESDeathEvent* ev,
+                                          RE::BSTEventSource<RE::TESDeathEvent>*) override {
         auto* pc = RE::PlayerCharacter::GetSingleton();
         if (ev && ev->actorDying && ev->actorDying.get() == pc) {
             IntegratedMagic::MagicState::Get().ForceExit();
@@ -36,22 +32,16 @@ protected:
         return RE::BSEventNotifyControl::kContinue;
     }
 
-    RE::BSEventNotifyControl ProcessEvent(
-        const RE::TESLoadGameEvent*,
-        RE::BSTEventSource<RE::TESLoadGameEvent>*) override
-    {
+    RE::BSEventNotifyControl ProcessEvent(const RE::TESLoadGameEvent*,
+                                          RE::BSTEventSource<RE::TESLoadGameEvent>*) override {
         IntegratedMagic::MagicState::Get().ForceExit();
         return RE::BSEventNotifyControl::kContinue;
     }
 
-    RE::BSEventNotifyControl ProcessEvent(
-        const RE::MenuOpenCloseEvent* ev,
-        RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override
-    {
+    RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* ev,
+                                          RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override {
         static constexpr std::array kInterruptMenus = {
-            "ContainerMenu"sv, "InventoryMenu"sv,
-            "MagicMenu"sv,     "MapMenu"sv,
-            "Journal Menu"sv,  "Dialogue Menu"sv,
+            "ContainerMenu"sv, "InventoryMenu"sv, "MagicMenu"sv, "MapMenu"sv, "Journal Menu"sv, "Dialogue Menu"sv,
         };
         if (ev && ev->opening) {
             for (auto m : kInterruptMenus) {

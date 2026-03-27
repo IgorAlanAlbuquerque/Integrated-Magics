@@ -9,10 +9,10 @@
 #include "Config/Config.h"
 #include "Config/Slots.h"
 #include "HudState.h"
-#include "Input/Assign.h"
 #include "Input/Input.h"
 #include "PCH.h"
 #include "RE/P/PlayerCharacter.h"
+#include "State/SpellClassify.h"
 #include "State/State.h"
 #include "UI/SlotAnimator.h"
 #include "UI/SlotLayout.h"
@@ -499,7 +499,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             const auto shID = Slots::GetSlotShout(i);
             auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
             auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
-            const bool is2H = !shID && !rID && lSp && MagicAssign::IsTwoHandedSpell(lSp);
+            const bool is2H = !shID && !rID && lSp && SpellClassify::IsTwoHandedSpell(lSp);
             DrawSlotVisual(dl, center, slotR, active, is2H ? nullptr : rSp, is2H ? nullptr : lSp, is2H ? lID : shID);
         };
 

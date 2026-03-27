@@ -13,9 +13,9 @@
 #include "PCH.h"
 #include "State/AnimListener.h"
 #include "State/State.h"
+#include "UI/FontLoader.h"
 #include "UI/HudManager.h"
 #include "UI/TextureManager.h"
-#include "UI/FontLoader.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -29,11 +29,8 @@ namespace IntegratedMagic::Hooks {
                 if (!a_events) return;
 
                 Input::ProcessAndFilter(const_cast<RE::InputEvent**>(a_events));
-
-                RE::InputEvent* head = IntegratedMagic::detail::FlushSyntheticInput(*a_events);
-
                 if (func == 0) return;
-                RE::InputEvent* const arr[2]{head, nullptr};
+                RE::InputEvent* const arr[2]{*a_events, nullptr};
                 reinterpret_cast<Fn*>(func)(a_dispatcher, arr);
             }
 

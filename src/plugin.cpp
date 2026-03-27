@@ -1,11 +1,11 @@
 #include "Config/Config.h"
 #include "Hooks.h"
-#include "Input/Assign.h"
 #include "Input/Input.h"
 #include "PCH.h"
 #include "Persistence/SaveSpellDB.h"
 #include "Persistence/SpellSettingsDB.h"
 #include "State/CastGuardEvents.h"
+#include "State/EquipSink.h"
 #include "UI/MENU.h"
 #include "UI/Strings.h"
 #include "UI/StyleConfig.h"
@@ -118,9 +118,9 @@ namespace {
                 IntegratedMagic::StyleConfig::Get().Load();
                 IntegratedMagic::MENU::Register();
                 Input::OnConfigChanged();
-                
+
                 CastGuardEvents::Get().Register();
-                IntegratedMagic::MagicAssign::RegisterEquipListener();
+                IntegratedMagic::EquipSink::RegisterEquipListener();
                 break;
             }
             case SKSE::MessagingInterface::kPostLoadGame: {

@@ -11,7 +11,7 @@ namespace IntegratedMagic::detail {
     static const RE::BSFixedString kShoutUserEvent{"Shout"};
 
     const RE::BSFixedString& RightAttackEvent() { return kRightAttackEvent; }
-    const RE::BSFixedString& LeftAttackEvent()  { return kLeftAttackEvent; }
+    const RE::BSFixedString& LeftAttackEvent() { return kLeftAttackEvent; }
 
     struct SyntheticInputState {
         std::mutex mutex;
@@ -30,7 +30,7 @@ namespace IntegratedMagic::detail {
 
     static RE::ButtonEvent* MakeAttackButtonEvent(bool leftHand, float value, float heldSecs) {
         const auto& ue = leftHand ? LeftAttackEvent() : RightAttackEvent();
-        const auto  id = leftHand ? kLeftAttackMouseId : kRightAttackMouseId;
+        const auto id = leftHand ? kLeftAttackMouseId : kRightAttackMouseId;
         return RE::ButtonEvent::Create(RE::INPUT_DEVICE::kMouse, ue, id, value, heldSecs);
     }
 
@@ -68,8 +68,7 @@ namespace IntegratedMagic::detail {
         st.pending.push(ev);
     }
 
-    void EnqueueRetainedEvent(RE::INPUT_DEVICE dev, std::uint32_t idCode,
-                              const RE::BSFixedString& userEvent,
+    void EnqueueRetainedEvent(RE::INPUT_DEVICE dev, std::uint32_t idCode, const RE::BSFixedString& userEvent,
                               float value, float heldSecs) {
         auto* ev = RE::ButtonEvent::Create(dev, userEvent, idCode, value, heldSecs);
         if (!ev) return;
@@ -79,7 +78,7 @@ namespace IntegratedMagic::detail {
     }
 
     RE::InputEvent* FlushSyntheticInput(RE::InputEvent* head) {
-        head = DrainQueue(GetSynth(),  head);
+        head = DrainQueue(GetSynth(), head);
         head = DrainQueue(GetRetain(), head);
         return head;
     }
@@ -90,8 +89,7 @@ namespace IntegratedMagic::detail {
     }
 
     void DispatchShout(float value, float heldSecs) {
-        auto* ev = RE::ButtonEvent::Create(RE::INPUT_DEVICE::kKeyboard,
-                                           kShoutUserEvent, 0, value, heldSecs);
+        auto* ev = RE::ButtonEvent::Create(RE::INPUT_DEVICE::kKeyboard, kShoutUserEvent, 0, value, heldSecs);
         if (ev) EnqueueSyntheticAttack(ev);
     }
 }
