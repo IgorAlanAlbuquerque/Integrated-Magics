@@ -147,11 +147,14 @@ namespace IntegratedMagic::Hooks {
                         io.Fonts->AddFontFromFileTTF(fontPath, fc.size, &mergeCfg, FontLoader::GetGlyphRangesKorean());
                     if (fc.rangeGreek)
                         io.Fonts->AddFontFromFileTTF(fontPath, fc.size, &mergeCfg, FontLoader::GetGlyphRangesGreek());
-
+#ifdef DEBUG
                     spdlog::info("[Hooks] D3DInitHook: loaded font '{}' size {}", fontPath, fc.size);
+#endif
                 } else {
                     io.Fonts->AddFontDefault();
+#ifdef DEBUG
                     spdlog::info("[Hooks] D3DInitHook: font not found, using default");
+#endif
                 }
 
                 WndProcHook::func = reinterpret_cast<WNDPROC>(
@@ -176,6 +179,9 @@ namespace IntegratedMagic::Hooks {
             static constexpr auto id = REL::RelocationID(75461, 77246);
             static constexpr auto offset = REL::VariantOffset(0x9, 0x9, 0x9);
 
+            static inline float s_bbWidth = 0.f;
+            static inline float s_bbHeight = 0.f;
+
             static void thunk(std::uint32_t a_p1) {
                 func(a_p1);
 
@@ -185,10 +191,38 @@ namespace IntegratedMagic::Hooks {
 
                 ImGui_ImplDX11_NewFrame();
                 ImGui_ImplWin32_NewFrame();
+
+                if (s_bbWidth <= 0.f) {
+                    ID3D11RenderTargetView* rtv = nullptr;
+                    g_deviceContext->OMGetRenderTargets(1, &rtv, nullptr);
+                    if (rtv) {
+                        ID3D11Resource* res = nullptr;
+                        rtv->GetResource(&res);
+                        if (res) {
+                            ID3D11Texture2D* tex = nullptr;
+                            if (SUCCEEDED(
+                                    res->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&tex)))) {
+                                D3D11_TEXTURE2D_DESC desc{};
+                                tex->GetDesc(&desc);
+                                s_bbWidth = static_cast<float>(desc.Width);
+                                s_bbHeight = static_cast<float>(desc.Height);
+#ifdef DEBUG
+                                spdlog::info("[Hooks] backbuffer: {}x{}  hwnd: {}x{}", desc.Width, desc.Height,
+                                             static_cast<int>(ImGui::GetIO().DisplaySize.x),
+                                             static_cast<int>(ImGui::GetIO().DisplaySize.y));
+#endif
+                                tex->Release();
+                            }
+                            res->Release();
+                        }
+                        rtv->Release();
+                    }
+                }
+
+                if (s_bbWidth > 0.f) ImGui::GetIO().DisplaySize = {s_bbWidth, s_bbHeight};
+
                 ImGui::NewFrame();
-
                 IntegratedMagic::HUD::DrawHudFrame();
-
                 ImGui::EndFrame();
                 ImGui::Render();
                 ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());

@@ -61,8 +61,24 @@ namespace IntegratedMagic {
         bool rangeGreek = false;
     };
 
+    struct SlotShapeVertex {
+        float x = 0.f;
+        float y = 0.f;
+    };
+
+    struct SlotShapeConfig {
+        std::vector<SlotShapeVertex> vertices;
+        bool useCustomShape = false;
+
+        void SetCircle(int segments = 16);
+        void SetSquare();
+        void SetDiamond();
+        void SetStar(int points = 5, float innerFactor = 0.45f);
+    };
+
     struct StyleConfig {
         FontConfig font;
+        SlotShapeConfig slotShape;
         float slotRadius = 32.f;
         float ringRadius = 54.f;
         float popupSlotRadius = 48.f;

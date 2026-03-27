@@ -1,6 +1,7 @@
 #include "SlotDrawer.h"
 
 #include <imgui.h>
+#include "UI/PolyFill.h"
 
 #include <chrono>
 #include <cmath>
@@ -128,6 +129,47 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         }
     }
 
+    void PathSlotShape(ImDrawList* dl, ImVec2 center, float r) {
+        const auto& shape = StyleConfig::Get().slotShape;
+        if (shape.vertices.size() >= 3) {
+            for (const auto& v : shape.vertices) dl->PathLineTo({center.x + v.x * r, center.y + v.y * r});
+        } else {
+            dl->PathArcTo(center, r, 0.f, 2.f * kPI, 48);
+        }
+    }
+
+    void FillSlotShape(ImDrawList* dl, ImVec2 center, float r, ImU32 col) {
+        const auto& shape = StyleConfig::Get().slotShape;
+        if (shape.vertices.size() >= 3) {
+            for (const auto& t : PolyFill::Triangulate(shape.vertices, center.x, center.y, r))
+                dl->AddTriangleFilled({t.ax, t.ay}, {t.bx, t.by}, {t.cx, t.cy}, col);
+        } else {
+            dl->AddCircleFilled(center, r, col, 48);
+        }
+    }
+
+    void StrokeSlotShape(ImDrawList* dl, ImVec2 center, float r, ImU32 col, float thickness) {
+        PathSlotShape(dl, center, r);
+        dl->PathStroke(col, ImDrawFlags_Closed, thickness);
+    }
+
+    void DrawGlowShape(ImDrawList* dl, ImVec2 c, float r, ImU32 glowCol) {
+        const auto& shape = StyleConfig::Get().slotShape;
+        const ImU32 base = glowCol & 0x00FFFFFFu;
+        const auto baseA = static_cast<int>((glowCol >> 24) & 0xFF);
+        if (shape.useCustomShape && shape.vertices.size() >= 3) {
+            for (int i = 5; i >= 1; --i) {
+                const ImU32 layer = base | (static_cast<ImU32>(baseA / (i + 1)) << 24);
+                StrokeSlotShape(dl, c, r + static_cast<float>(i) * 2.5f, layer, 1.2f);
+            }
+        } else {
+            for (int i = 5; i >= 1; --i) {
+                const ImU32 layer = base | (static_cast<ImU32>(baseA / (i + 1)) << 24);
+                dl->AddCircle(c, r + static_cast<float>(i) * 2.5f, layer, 48, 1.2f);
+            }
+        }
+    }
+
     void DrawGlow(ImDrawList* dl, ImVec2 c, float r, ImU32 glowCol) {
         const ImU32 base = glowCol & 0x00FFFFFFu;
         const auto baseA = static_cast<int>((glowCol >> 24) & 0xFF);
@@ -151,8 +193,8 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         const auto lPal = SpellPalette(lSpell);
 
         if (isActive) {
-            DrawGlow(dl, center, r, rPal.glow);
-            DrawGlow(dl, center, r, lPal.glow);
+            DrawGlowShape(dl, center, r, rPal.glow);
+            DrawGlowShape(dl, center, r, lPal.glow);
         }
 
         const auto& st = Style();
@@ -170,12 +212,13 @@ namespace IntegratedMagic::HUD::SlotDrawer {
                 return TextureManager::GetUiTexture(UiTextureType::slot_bg);
             }();
             if (bgImg.valid())
+
                 dl->AddImage(reinterpret_cast<ImTextureID>(bgImg.texture), {center.x - r, center.y - r},
                              {center.x + r, center.y + r}, {0.f, 0.f}, {1.f, 1.f}, IM_COL32(255, 255, 255, 255));
             else
-                dl->AddCircleFilled(center, r, isActive ? st.slotBgActive : st.slotBgInactive, 48);
+                FillSlotShape(dl, center, r, isActive ? st.slotBgActive : st.slotBgInactive);
         } else {
-            dl->AddCircleFilled(center, r, isActive ? st.slotBgActive : st.slotBgInactive, 48);
+            FillSlotShape(dl, center, r, isActive ? st.slotBgActive : st.slotBgInactive);
         }
 
         const float iconSize = r * st.iconSizeFactor;
@@ -198,10 +241,10 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             const double pulse = 0.65 + 0.35 * std::sin(t * 4.5);
             const ImU32 ring =
                 IM_COL32(255, static_cast<int>(210 * pulse), static_cast<int>(50 * pulse), st.slotRingActiveAlpha);
-            dl->AddCircle(center, r, ring, 48, st.slotRingWidth);
-            dl->AddCircle(center, r + st.slotRingWidth + 0.5f, (ring & 0x00FFFFFFu) | (70u << 24), 48, 1.0f);
+            StrokeSlotShape(dl, center, r, ring, st.slotRingWidth);
+            StrokeSlotShape(dl, center, r + st.slotRingWidth + 0.5f, (ring & 0x00FFFFFFu) | (70u << 24), 1.0f);
         } else {
-            dl->AddCircle(center, r, st.slotRingInactive, 48, st.slotRingWidth * 0.5f);
+            StrokeSlotShape(dl, center, r, st.slotRingInactive, st.slotRingWidth * 0.5f);
         }
 
         if (!rSpell && !lSpell && !shoutFormID) {
@@ -464,7 +507,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             return LayoutVec2{h.x + kGlowPad, h.y + kGlowPad};
         }();
 
-        const ImVec2 hudOrigin = ComputeHudCenter(io, {fixedHalf.x, fixedHalf.y});
+        const ImVec2 hudOrigin = ComputeHudCenter(io, {animHalf.x, animHalf.y});
 
         LayoutVec2 relPos[SlotLayout::kMaxSlots]{};
         SlotLayout::Compute(st.hudLayout, n, st.slotRadius, st.ringRadius, st.slotSpacing, st.gridColumns, relPos);
@@ -519,5 +562,4 @@ namespace IntegratedMagic::HUD::SlotDrawer {
 
         ImGui::End();
     }
-
 }
