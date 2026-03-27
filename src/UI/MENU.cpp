@@ -13,6 +13,7 @@
 #include "SKSEMenuFramework.h"
 #include "Strings.h"
 #include "UI/HudManager.h"
+#include "UI/PolyFill.h"
 #include "UI/StyleConfig.h"
 
 namespace {
@@ -469,8 +470,8 @@ namespace {
         DL::AddLine(dl, {center.x, center.y - kRadius}, {center.x, center.y + kRadius}, IM_COL32(50, 50, 50, 200), 1.f);
 
         if (verts.size() >= 3) {
-            for (const auto& v : verts) DL::PathLineTo(dl, {center.x + v.x * kRadius, center.y + v.y * kRadius});
-            DL::PathFillConvex(dl, IM_COL32(100, 160, 255, 50));
+            for (const auto& t : IntegratedMagic::PolyFill::Triangulate(verts, center.x, center.y, kRadius))
+                DL::AddTriangleFilled(dl, {t.ax, t.ay}, {t.bx, t.by}, {t.cx, t.cy}, IM_COL32(100, 160, 255, 50));
 
             for (const auto& v : verts) DL::PathLineTo(dl, {center.x + v.x * kRadius, center.y + v.y * kRadius});
             DL::PathStroke(dl, IM_COL32(100, 160, 255, 200), ImGuiMCP::ImDrawFlags_Closed, 1.5f);

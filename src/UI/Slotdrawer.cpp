@@ -1,6 +1,7 @@
 #include "SlotDrawer.h"
 
 #include <imgui.h>
+#include "UI/PolyFill.h"
 
 #include <chrono>
 #include <cmath>
@@ -138,8 +139,13 @@ namespace IntegratedMagic::HUD::SlotDrawer {
     }
 
     void FillSlotShape(ImDrawList* dl, ImVec2 center, float r, ImU32 col) {
-        PathSlotShape(dl, center, r);
-        dl->PathFillConvex(col);
+        const auto& shape = StyleConfig::Get().slotShape;
+        if (shape.vertices.size() >= 3) {
+            for (const auto& t : PolyFill::Triangulate(shape.vertices, center.x, center.y, r))
+                dl->AddTriangleFilled({t.ax, t.ay}, {t.bx, t.by}, {t.cx, t.cy}, col);
+        } else {
+            dl->AddCircleFilled(center, r, col, 48);
+        }
     }
 
     void StrokeSlotShape(ImDrawList* dl, ImVec2 center, float r, ImU32 col, float thickness) {
@@ -556,5 +562,4 @@ namespace IntegratedMagic::HUD::SlotDrawer {
 
         ImGui::End();
     }
-
 }

@@ -17,6 +17,7 @@
 #include "State/State.h"
 #include "Strings.h"
 #include "UI/HoveredForm.h"
+#include "UI/PolyFill.h"
 #include "UI/SlotLayout.h"
 #include "UI/StyleConfig.h"
 #include "UI/TextureManager.h"
@@ -76,9 +77,9 @@ namespace IntegratedMagic::HUD::PopupDrawer {
 
         void FillSlotShapeHighlight(ImDrawList* dl, ImVec2 center, float r, ImU32 col) {
             const auto& shape = StyleConfig::Get().slotShape;
-            if (shape.useCustomShape && shape.vertices.size() >= 3) {
-                for (const auto& v : shape.vertices) dl->PathLineTo({center.x + v.x * r, center.y + v.y * r});
-                dl->PathFillConvex(col);
+            if (shape.vertices.size() >= 3) {
+                for (const auto& t : PolyFill::Triangulate(shape.vertices, center.x, center.y, r))
+                    dl->AddTriangleFilled({t.ax, t.ay}, {t.bx, t.by}, {t.cx, t.cy}, col);
             } else {
                 dl->AddCircleFilled(center, r, col, 48);
             }
@@ -86,16 +87,16 @@ namespace IntegratedMagic::HUD::PopupDrawer {
 
         void FillSlotHalfHighlight(ImDrawList* dl, ImVec2 center, float r, bool rightHalf, ImU32 col) {
             const auto& shape = StyleConfig::Get().slotShape;
-            if (shape.useCustomShape && shape.vertices.size() >= 3) {
+            if (shape.vertices.size() >= 3) {
                 const float sign = rightHalf ? 1.f : -1.f;
-                std::vector<ImVec2> clipped;
+                std::vector<SlotShapeVertex> clipped;
                 const auto& verts = shape.vertices;
                 const int n = static_cast<int>(verts.size());
                 for (int i = 0; i < n; ++i) {
-                    const ImVec2 a = {center.x + verts[i].x * r, center.y + verts[i].y * r};
-                    const ImVec2 b = {center.x + verts[(i + 1) % n].x * r, center.y + verts[(i + 1) % n].y * r};
-                    const float da = (a.x - center.x) * sign;
-                    const float db = (b.x - center.x) * sign;
+                    const SlotShapeVertex& a = verts[i];
+                    const SlotShapeVertex& b = verts[(i + 1) % n];
+                    const float da = a.x * sign;
+                    const float db = b.x * sign;
                     if (da >= 0.f) clipped.push_back(a);
                     if ((da >= 0.f) != (db >= 0.f)) {
                         const float t = da / (da - db);
@@ -103,10 +104,10 @@ namespace IntegratedMagic::HUD::PopupDrawer {
                     }
                 }
 
-                clipped.push_back(center);
+                clipped.push_back({0.f, 0.f});
                 if (clipped.size() >= 3) {
-                    for (const auto& p : clipped) dl->PathLineTo(p);
-                    dl->PathFillConvex(col);
+                    for (const auto& t : PolyFill::Triangulate(clipped, center.x, center.y, r))
+                        dl->AddTriangleFilled({t.ax, t.ay}, {t.bx, t.by}, {t.cx, t.cy}, col);
                 }
             } else {
                 if (rightHalf)
@@ -429,5 +430,4 @@ namespace IntegratedMagic::HUD::PopupDrawer {
 
         DrawOverlayAndCursor({io.DisplaySize.x, io.DisplaySize.y}, g_mousePos);
     }
-
 }
