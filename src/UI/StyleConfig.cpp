@@ -1,10 +1,15 @@
 #include "StyleConfig.h"
 
+#include <cmath>
+#include <numbers>
+
 #include "PCH.h"
 #include "SimpleIni.h"
 
 namespace IntegratedMagic {
     namespace {
+        constexpr float kPI = std::numbers::pi_v<float>;
+
         float GetFloat(const CSimpleIniA& ini, const char* section, const char* key, float def) {
             const char* v = ini.GetValue(section, key, nullptr);
             if (!v) return def;
@@ -99,8 +104,28 @@ namespace IntegratedMagic {
         }
     }
 
+    void SlotShapeConfig::SetCircle(int segments) {
+        vertices.clear();
+        for (int i = 0; i < segments; ++i) {
+            const float a = (2.f * kPI * i) / segments - kPI * 0.5f;
+            vertices.push_back({std::cos(a), std::sin(a)});
+        }
+    }
+    void SlotShapeConfig::SetSquare() { vertices = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}}; }
+    void SlotShapeConfig::SetDiamond() { vertices = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}}; }
+    void SlotShapeConfig::SetStar(int points, float inner) {
+        vertices.clear();
+        for (int i = 0; i < points * 2; ++i) {
+            const float a = (kPI * i / points) - kPI * 0.5f;
+            const float r = (i % 2 == 0) ? 1.f : inner;
+            vertices.push_back({r * std::cos(a), r * std::sin(a)});
+        }
+    }
+
     void StyleConfig::Load() {
         constexpr const char* kPath = R"(.\Data\SKSE\Plugins\IntegratedMagics\styles.ini)";
+        auto& shape = slotShape;
+        auto& verts = slotShape.vertices;
 
         CSimpleIniA ini;
         ini.SetUnicode();
@@ -119,6 +144,17 @@ namespace IntegratedMagic {
         font.rangeChineseSimplified = ini.GetBoolValue("Font", "RangeChineseSimplified", false);
         font.rangeKorean = ini.GetBoolValue("Font", "RangeKorean", false);
         font.rangeGreek = ini.GetBoolValue("Font", "RangeGreek", false);
+
+        long count = ini.GetLongValue("SlotShape", "Count", 0);
+        verts.clear();
+        for (long i = 0; i < count; ++i) {
+            std::string key = "V" + std::to_string(i);
+            std::string val = ini.GetValue("SlotShape", key.c_str(), "0,0");
+            float x = 0.f, y = 0.f;
+            sscanf_s(val.c_str(), "%f,%f", &x, &y);
+            verts.push_back({x, y});
+        }
+        if (verts.empty()) shape.SetCircle();
 
         slotRadius = GetFloat(ini, "HUD", "SlotRadius", slotRadius);
         ringRadius = GetFloat(ini, "HUD", "RingRadius", ringRadius);
@@ -205,6 +241,7 @@ namespace IntegratedMagic {
 
     void StyleConfig::Save() {
         constexpr const char* kPath = R"(.\Data\SKSE\Plugins\IntegratedMagics\styles.ini)";
+        auto& verts = slotShape.vertices;
 
         CSimpleIniA ini;
         ini.SetUnicode();
@@ -213,7 +250,7 @@ namespace IntegratedMagic {
         auto setFloat = [&](const char* sec, const char* key, float v) {
             std::string s = std::to_string(v);
 
-            if (s.find('.') != std::string::npos) {
+            if (s.contains('.')) {
                 s.erase(s.find_last_not_of('0') + 1);
                 if (s.back() == '.') s += '0';
             }
@@ -237,6 +274,13 @@ namespace IntegratedMagic {
         static const char* kButtonLabelVisibilityNames[] = {"Never", "Always", "OnModifier"};
         static const char* kButtonLabelCornerNames[] = {"Top",  "Right",        "Bottom",
                                                         "Left", "TowardCenter", "AwayFromCenter"};
+
+        for (int i = 0; i < verts.size(); ++i) {
+            std::string key = "V" + std::to_string(i);
+            std::string val = std::to_string(verts[i].x) + "," + std::to_string(verts[i].y);
+            ini.SetValue("SlotShape", key.c_str(), val.c_str());
+        }
+        ini.SetLongValue("SlotShape", "Count", static_cast<long>(verts.size()));
 
         ini.SetValue("Font", "Path", font.path.c_str());
         setFloat("Font", "Size", font.size);

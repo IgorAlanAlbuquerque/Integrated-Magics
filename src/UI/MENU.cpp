@@ -443,6 +443,116 @@ namespace {
         }
     }
 
+    void DrawShapeEditor(bool& dirty) {
+        namespace S = IntegratedMagic::Strings;
+        auto& shape = IntegratedMagic::StyleConfig::Get().slotShape;
+        auto& verts = shape.vertices;
+
+        constexpr float kCanvasSize = 200.f;
+        constexpr float kRadius = 80.f;
+
+        ImGuiMCP::ImVec2 origin{};
+        ImGuiMCP::GetCursorScreenPos(&origin);
+        const ImGuiMCP::ImVec2 center = {origin.x + kCanvasSize * 0.5f, origin.y + kCanvasSize * 0.5f};
+        const ImGuiMCP::ImVec2 canvasEnd = {origin.x + kCanvasSize, origin.y + kCanvasSize};
+
+        ImGuiMCP::InvisibleButton("##shapeeditorcanvas", {kCanvasSize, kCanvasSize});
+        const bool canvasHovered = ImGuiMCP::IsItemHovered();
+
+        ImGuiMCP::ImDrawList* dl = ImGuiMCP::GetWindowDrawList();
+        namespace DL = ImGuiMCP::ImDrawListManager;
+
+        DL::AddRectFilled(dl, origin, canvasEnd, IM_COL32(25, 25, 25, 220), 4.f, 0);
+        DL::AddRect(dl, origin, canvasEnd, IM_COL32(80, 80, 80, 180), 4.f, 0, 1.f);
+        DL::AddCircle(dl, center, kRadius, IM_COL32(55, 55, 55, 255), 48, 1.f);
+        DL::AddLine(dl, {center.x - kRadius, center.y}, {center.x + kRadius, center.y}, IM_COL32(50, 50, 50, 200), 1.f);
+        DL::AddLine(dl, {center.x, center.y - kRadius}, {center.x, center.y + kRadius}, IM_COL32(50, 50, 50, 200), 1.f);
+
+        if (verts.size() >= 3) {
+            for (const auto& v : verts) DL::PathLineTo(dl, {center.x + v.x * kRadius, center.y + v.y * kRadius});
+            DL::PathFillConvex(dl, IM_COL32(100, 160, 255, 50));
+
+            for (const auto& v : verts) DL::PathLineTo(dl, {center.x + v.x * kRadius, center.y + v.y * kRadius});
+            DL::PathStroke(dl, IM_COL32(100, 160, 255, 200), ImGuiMCP::ImDrawFlags_Closed, 1.5f);
+        }
+
+        const ImGuiMCP::ImVec2 mousePos = ImGuiMCP::GetIO()->MousePos;
+        static int s_dragging = -1;
+
+        for (int i = 0; i < static_cast<int>(verts.size()); ++i) {
+            const ImGuiMCP::ImVec2 vp = {center.x + verts[i].x * kRadius, center.y + verts[i].y * kRadius};
+            const float dx = mousePos.x - vp.x;
+            const float dy = mousePos.y - vp.y;
+            const bool hovered = canvasHovered && (dx * dx + dy * dy) < 64.f;
+
+            if (hovered && ImGuiMCP::IsMouseClicked(0)) s_dragging = i;
+
+            if (s_dragging == i && ImGuiMCP::IsMouseDown(0)) {
+                verts[i].x = std::clamp((mousePos.x - center.x) / kRadius, -1.f, 1.f);
+                verts[i].y = std::clamp((mousePos.y - center.y) / kRadius, -1.f, 1.f);
+                dirty = true;
+            }
+
+            const ImGuiMCP::ImU32 col =
+                (hovered || s_dragging == i) ? IM_COL32(255, 200, 80, 255) : IM_COL32(200, 200, 200, 220);
+            DL::AddCircleFilled(dl, vp, 6.f, col, 12);
+            DL::AddCircle(dl, vp, 6.f, IM_COL32(0, 0, 0, 180), 12, 1.f);
+
+            if (hovered) ImGuiMCP::SetTooltip("%.2f, %.2f", verts[i].x, verts[i].y);
+        }
+
+        if (!ImGuiMCP::IsMouseDown(0)) s_dragging = -1;
+
+        ImGuiMCP::Spacing();
+
+        if (ImGuiMCP::Button(S::Get("Shape_AddVertex", "+ Vertex").c_str())) {
+            if (verts.size() >= 2) {
+                const auto& a = verts[verts.size() - 1];
+                const auto& b = verts[0];
+                verts.push_back({(a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f});
+            } else {
+                verts.push_back({0.f, -1.f});
+            }
+            dirty = true;
+        }
+        ImGuiMCP::SameLine();
+        ImGuiMCP::BeginDisabled(verts.size() <= 3);
+        if (ImGuiMCP::Button(S::Get("Shape_RemoveVertex", "- Vertex").c_str())) {
+            verts.pop_back();
+            dirty = true;
+        }
+        ImGuiMCP::EndDisabled();
+
+        ImGuiMCP::Spacing();
+        ImGuiMCP::SeparatorText(S::Get("Shape_Presets", "Presets").c_str());
+        ImGuiMCP::Spacing();
+
+        if (ImGuiMCP::Button(S::Get("Shape_Circle", "Circle").c_str())) {
+            shape.SetCircle(16);
+            dirty = true;
+        }
+        ImGuiMCP::SameLine();
+        if (ImGuiMCP::Button(S::Get("Shape_Square", "Square").c_str())) {
+            shape.SetSquare();
+            dirty = true;
+        }
+        ImGuiMCP::SameLine();
+        if (ImGuiMCP::Button(S::Get("Shape_Diamond", "Diamond").c_str())) {
+            shape.SetDiamond();
+            dirty = true;
+        }
+        ImGuiMCP::SameLine();
+        if (ImGuiMCP::Button(S::Get("Shape_Star5", "Star (5)").c_str())) {
+            shape.SetStar(5, 0.45f);
+            dirty = true;
+        }
+        ImGuiMCP::SameLine();
+        if (ImGuiMCP::Button(S::Get("Shape_Star6", "Star (6)").c_str())) {
+            shape.SetStar(6, 0.45f);
+            dirty = true;
+        }
+    }
+
     void DrawHudTab(bool& dirty) {
         namespace S = IntegratedMagic::Strings;
         auto& st = IntegratedMagic::StyleConfig::Get();
@@ -663,6 +773,14 @@ namespace {
                 st.overlayAlpha = static_cast<std::uint8_t>(std::clamp(oa, 0, 255));
                 dirty = true;
             }
+        }
+
+        ImGuiMCP::Spacing();
+
+        if (ImGuiMCP::CollapsingHeader(S::Get("HUD_Section_SlotShape", "Slot Shape").c_str())) {
+            ImGuiMCP::Spacing();
+            DrawShapeEditor(dirty);
+            ImGuiMCP::Spacing();
         }
 
         ImGuiMCP::Spacing();

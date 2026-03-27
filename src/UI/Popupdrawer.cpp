@@ -74,6 +74,48 @@ namespace IntegratedMagic::HUD::PopupDrawer {
             dl->PathFillConvex(col);
         }
 
+        void FillSlotShapeHighlight(ImDrawList* dl, ImVec2 center, float r, ImU32 col) {
+            const auto& shape = StyleConfig::Get().slotShape;
+            if (shape.useCustomShape && shape.vertices.size() >= 3) {
+                for (const auto& v : shape.vertices) dl->PathLineTo({center.x + v.x * r, center.y + v.y * r});
+                dl->PathFillConvex(col);
+            } else {
+                dl->AddCircleFilled(center, r, col, 48);
+            }
+        }
+
+        void FillSlotHalfHighlight(ImDrawList* dl, ImVec2 center, float r, bool rightHalf, ImU32 col) {
+            const auto& shape = StyleConfig::Get().slotShape;
+            if (shape.useCustomShape && shape.vertices.size() >= 3) {
+                const float sign = rightHalf ? 1.f : -1.f;
+                std::vector<ImVec2> clipped;
+                const auto& verts = shape.vertices;
+                const int n = static_cast<int>(verts.size());
+                for (int i = 0; i < n; ++i) {
+                    const ImVec2 a = {center.x + verts[i].x * r, center.y + verts[i].y * r};
+                    const ImVec2 b = {center.x + verts[(i + 1) % n].x * r, center.y + verts[(i + 1) % n].y * r};
+                    const float da = (a.x - center.x) * sign;
+                    const float db = (b.x - center.x) * sign;
+                    if (da >= 0.f) clipped.push_back(a);
+                    if ((da >= 0.f) != (db >= 0.f)) {
+                        const float t = da / (da - db);
+                        clipped.push_back({a.x + t * (b.x - a.x), a.y + t * (b.y - a.y)});
+                    }
+                }
+
+                clipped.push_back(center);
+                if (clipped.size() >= 3) {
+                    for (const auto& p : clipped) dl->PathLineTo(p);
+                    dl->PathFillConvex(col);
+                }
+            } else {
+                if (rightHalf)
+                    FillSector(dl, center, r, -kPI * 0.5f, kPI * 0.5f, col);
+                else
+                    FillSector(dl, center, r, kPI * 0.5f, kPI * 1.5f, col);
+            }
+        }
+
         float DrawActionBadge(ImDrawList* dl, ImVec2 origin, float iconSize, const TextureManager::Image& icon,
                               const char* fallbackLabel, const char* actionLabel, ImU32 bgColor) {
             constexpr float kGap = 6.f;
@@ -320,7 +362,7 @@ namespace IntegratedMagic::HUD::PopupDrawer {
                     const float dy = g_mousePos.y - center.y;
                     if ((dx * dx + dy * dy) < (st.popupSlotRadius * st.popupSlotRadius)) {
                         if (hovIsFullSlot) {
-                            dl->AddCircleFilled(center, st.popupSlotRadius - 1.f, IM_COL32(255, 200, 80, 40), 48);
+                            FillSlotShapeHighlight(dl, center, st.popupSlotRadius - 1.f, IM_COL32(255, 200, 80, 40));
                             if (clicked) {
                                 hovIsTwoHanded ? MagicAssign::TryAssignHoveredSpellToSlot(i, Slots::Hand::Left)
                                                : MagicAssign::TryAssignHoveredShoutToSlot(i);
@@ -336,9 +378,8 @@ namespace IntegratedMagic::HUD::PopupDrawer {
                         } else {
                             const bool hoverRight = hovIsRightOnly ? true : hovIsLeftOnly ? false : (dx >= 0.f);
                             const ImU32 hlCol = IM_COL32(255, 200, 80, 40);
-                            hoverRight
-                                ? FillSector(dl, center, st.popupSlotRadius - 1.f, -kPI * 0.5f, kPI * 0.5f, hlCol)
-                                : FillSector(dl, center, st.popupSlotRadius - 1.f, kPI * 0.5f, kPI * 1.5f, hlCol);
+                            hoverRight ? FillSlotHalfHighlight(dl, center, st.popupSlotRadius - 1.f, true, hlCol)
+                                       : FillSlotHalfHighlight(dl, center, st.popupSlotRadius - 1.f, false, hlCol);
                             if (clicked) {
                                 hoverRight ? MagicAssign::TryAssignHoveredSpellToSlot(i, Slots::Hand::Right)
                                            : MagicAssign::TryAssignHoveredSpellToSlot(i, Slots::Hand::Left);
