@@ -4,17 +4,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace RE {
-    class PlayerCharacter;
-    class Actor;
-    class ActorEquipManager;
-    class TESBoundObject;
-    class ExtraDataList;
-    class InventoryEntryData;
-    class ActorMagicCaster;
-    class SpellItem;
-    struct BGSEquipSlot;
-}
+#include "PCH.h"
 
 namespace IntegratedMagic {
     struct ObjSnapshot {

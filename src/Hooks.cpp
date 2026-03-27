@@ -151,7 +151,7 @@ namespace IntegratedMagic::Hooks {
                     spdlog::info("[Hooks] D3DInitHook: loaded font '{}' size {}", fontPath, fc.size);
                 } else {
                     io.Fonts->AddFontDefault();
-                    if (fontPath) spdlog::warn("[Hooks] D3DInitHook: font not found at '{}', using default", fontPath);
+                    spdlog::info("[Hooks] D3DInitHook: font not found, using default");
                 }
 
                 WndProcHook::func = reinterpret_cast<WNDPROC>(

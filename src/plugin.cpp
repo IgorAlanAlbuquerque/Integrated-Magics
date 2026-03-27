@@ -115,7 +115,6 @@ namespace {
                 IntegratedMagic::Strings::Load();
                 IntegratedMagic::GetMagicConfig().Load();
                 IntegratedMagic::SpellSettingsDB::Get().Load();
-                IntegratedMagic::StyleConfig::Get().Load();
                 IntegratedMagic::MENU::Register();
                 Input::OnConfigChanged();
 
@@ -173,6 +172,7 @@ namespace {
 extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* skse) {
     SKSE::Init(skse);
     InitializeLogger();
+    IntegratedMagic::StyleConfig::Get().Load();
     if (const auto mi = SKSE::GetMessagingInterface()) {
         mi->RegisterListener(GlobalMessageHandler);
     }
