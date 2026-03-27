@@ -110,6 +110,16 @@ namespace IntegratedMagic {
             return;
         }
 
+        font.path = ini.GetValue("Font", "Path", R"(.\Data\SKSE\Plugins\IntegratedMagics\resources\font)");
+        font.size = static_cast<float>(ini.GetDoubleValue("Font", "Size", 28.0));
+
+        font.rangePolish = ini.GetBoolValue("Font", "RangePolish", false);
+        font.rangeCyrillic = ini.GetBoolValue("Font", "RangeCyrillic", false);
+        font.rangeJapanese = ini.GetBoolValue("Font", "RangeJapanese", false);
+        font.rangeChineseSimplified = ini.GetBoolValue("Font", "RangeChineseSimplified", false);
+        font.rangeKorean = ini.GetBoolValue("Font", "RangeKorean", false);
+        font.rangeGreek = ini.GetBoolValue("Font", "RangeGreek", false);
+
         slotRadius = GetFloat(ini, "HUD", "SlotRadius", slotRadius);
         ringRadius = GetFloat(ini, "HUD", "RingRadius", ringRadius);
         popupSlotRadius = GetFloat(ini, "Popup", "SlotRadius", popupSlotRadius);
@@ -227,6 +237,15 @@ namespace IntegratedMagic {
         static const char* kButtonLabelVisibilityNames[] = {"Never", "Always", "OnModifier"};
         static const char* kButtonLabelCornerNames[] = {"Top",  "Right",        "Bottom",
                                                         "Left", "TowardCenter", "AwayFromCenter"};
+
+        ini.SetValue("Font", "Path", font.path.c_str());
+        setFloat("Font", "Size", font.size);
+        setBool("Font", "RangePolish", font.rangePolish);
+        setBool("Font", "RangeCyrillic", font.rangeCyrillic);
+        setBool("Font", "RangeJapanese", font.rangeJapanese);
+        setBool("Font", "RangeChineseSimplified", font.rangeChineseSimplified);
+        setBool("Font", "RangeKorean", font.rangeKorean);
+        setBool("Font", "RangeGreek", font.rangeGreek);
 
         setFloat("HUD", "SlotRadius", slotRadius);
         setFloat("HUD", "RingRadius", ringRadius);

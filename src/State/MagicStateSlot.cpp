@@ -1,6 +1,7 @@
 #include <utility>
 
 #include "Action.h"
+#include "Config/Config.h"
 #include "Config/Slots.h"
 #include "InventoryUtil.h"
 #include "PCH.h"

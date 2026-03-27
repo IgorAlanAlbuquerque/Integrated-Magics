@@ -10,6 +10,9 @@
 #include "InputState.h"
 #include "PCH.h"
 #include "ReplaySystem.h"
+#include "SKSEMenuFramework.h"
+#include "State/State.h"
+#include "UI/HudManager.h"
 
 namespace {
 

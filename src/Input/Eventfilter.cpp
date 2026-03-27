@@ -6,12 +6,12 @@
 #include "ExclusivePending.h"
 #include "HotkeyCache.h"
 #include "HudToggle.h"
-#include "Input.h"
+#include "InputInternal.h"
 #include "PCH.h"
 #include "ReplaySystem.h"
 #include "SKSEMenuFramework.h"
 #include "State/State.h"
-#include "UI/HUD.h"
+#include "UI/HudManager.h"
 
 namespace Input::detail {
 

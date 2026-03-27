@@ -6,7 +6,11 @@
     "fmt",
     "spdlog",
     "directxtk",
-    "rapidcsv"
+    "rapidcsv",
+    {
+      "name": "imgui",
+      "features": ["dx11-binding", "win32-binding", "freetype"]
+    }
   ],
   "builtin-baseline": "b94ab47c998b93fe72b0f501eaac70f96328019e"
 }

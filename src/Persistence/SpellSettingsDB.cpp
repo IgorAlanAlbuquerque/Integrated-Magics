@@ -6,6 +6,8 @@
 #include <iomanip>
 #include <nlohmann/json.hpp>
 
+#include "Config/Config.h"
+#include "Config/SpellType.h"
 #include "PCH.h"
 
 namespace {

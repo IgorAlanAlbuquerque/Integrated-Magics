@@ -9,6 +9,7 @@
 #include "UI/MENU.h"
 #include "UI/Strings.h"
 #include "UI/StyleConfig.h"
+#include "UI/TextureManager.h"
 
 #ifndef DLLEXPORT
     #include "REL/Relocation.h"
@@ -114,12 +115,9 @@ namespace {
                 IntegratedMagic::Strings::Load();
                 IntegratedMagic::GetMagicConfig().Load();
                 IntegratedMagic::SpellSettingsDB::Get().Load();
-                IntegratedMagic::StyleConfig::Get().Load();
                 IntegratedMagic::MENU::Register();
-                IntegratedMagic::HUD::Register();
-                IntegratedMagic::TextureManager::Init();
                 Input::OnConfigChanged();
-                IntegratedMagic::Hooks::Install_Hooks();
+
                 CastGuardEvents::Get().Register();
                 IntegratedMagic::EquipSink::RegisterEquipListener();
                 break;
@@ -174,8 +172,10 @@ namespace {
 extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* skse) {
     SKSE::Init(skse);
     InitializeLogger();
+    IntegratedMagic::StyleConfig::Get().Load();
     if (const auto mi = SKSE::GetMessagingInterface()) {
         mi->RegisterListener(GlobalMessageHandler);
     }
+    IntegratedMagic::Hooks::Install_Hooks();
     return true;
 }

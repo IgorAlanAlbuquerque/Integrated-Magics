@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "PCH.h"
+#include "State/SyntheticInput.h"
 
 namespace Input::detail {
 
@@ -54,5 +55,4 @@ namespace Input::detail {
         IntegratedMagic::detail::EnqueueRetainedEvent(item.ev.dev, item.ev.rawIdCode, item.ev.userEvent, item.ev.value,
                                                       item.ev.heldSecs);
     }
-
 }

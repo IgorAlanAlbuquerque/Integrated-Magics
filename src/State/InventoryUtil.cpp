@@ -1,5 +1,9 @@
 #include "InventoryUtil.h"
 
+#ifdef GetObject
+    #undef GetObject
+#endif
+
 #include "Action.h"
 #include "Config/EquipSlots.h"
 #include "Config/Slots.h"

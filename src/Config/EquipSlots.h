@@ -1,5 +1,9 @@
 #pragma once
 
+#ifdef GetObject
+    #undef GetObject
+#endif
+
 #include "PCH.h"
 #include "Slots.h"
 
