@@ -104,7 +104,6 @@ namespace IntegratedMagic::HUD::PopupDrawer {
                     }
                 }
 
-                clipped.push_back({0.f, 0.f});
                 if (clipped.size() >= 3) {
                     for (const auto& t : PolyFill::Triangulate(clipped, center.x, center.y, r))
                         dl->AddTriangleFilled({t.ax, t.ay}, {t.bx, t.by}, {t.cx, t.cy}, col);
