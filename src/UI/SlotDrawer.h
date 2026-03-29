@@ -1,7 +1,7 @@
 #pragma once
 #include <imgui.h>
 
-#include "RE/S/SpellItem.h"
+#include "PCH.h"
 
 namespace IntegratedMagic::HUD::SlotDrawer {
 

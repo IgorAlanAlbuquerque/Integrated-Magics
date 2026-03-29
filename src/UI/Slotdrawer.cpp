@@ -1,7 +1,6 @@
 #include "SlotDrawer.h"
 
 #include <imgui.h>
-#include "UI/PolyFill.h"
 
 #include <chrono>
 #include <cmath>
@@ -12,9 +11,9 @@
 #include "HudState.h"
 #include "Input/Input.h"
 #include "PCH.h"
-#include "RE/P/PlayerCharacter.h"
 #include "State/SpellClassify.h"
 #include "State/State.h"
+#include "UI/PolyFill.h"
 #include "UI/SlotAnimator.h"
 #include "UI/SlotLayout.h"
 #include "UI/StyleConfig.h"
@@ -415,8 +414,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
                 break;
             case ButtonLabelCorner::TowardCenter: {
                 const float dx = hudOrigin.x - center.x, dy = hudOrigin.y - center.y;
-                const float len = std::sqrt(dx * dx + dy * dy);
-                if (len > 0.5f) {
+                if (const float len = std::sqrt(dx * dx + dy * dy); len > 0.5f) {
                     const float ax = center.x + (dx / len) * (slotR + margin + iconSize * 0.5f);
                     const float ay = center.y + (dy / len) * (slotR + margin + iconSize * 0.5f);
                     startX = ax - totalW * 0.5f;
@@ -429,8 +427,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             }
             case ButtonLabelCorner::AwayFromCenter: {
                 const float dx = center.x - hudOrigin.x, dy = center.y - hudOrigin.y;
-                const float len = std::sqrt(dx * dx + dy * dy);
-                if (len > 0.5f) {
+                if (const float len = std::sqrt(dx * dx + dy * dy); len > 0.5f) {
                     const float ax = center.x + (dx / len) * (slotR + margin + iconSize * 0.5f);
                     const float ay = center.y + (dy / len) * (slotR + margin + iconSize * 0.5f);
                     startX = ax - totalW * 0.5f;
@@ -491,12 +488,6 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             }
             for (int i = n; i < SlotLayout::kMaxSlots; ++i) s_labelAlpha[i] = 0.f;
         }
-
-        const LayoutVec2 fixedHalf = [&] {
-            LayoutVec2 h =
-                SlotLayout::BoundingHalf(st.hudLayout, n, st.slotRadius, st.ringRadius, st.slotSpacing, st.gridColumns);
-            return LayoutVec2{h.x + kGlowPad, h.y + kGlowPad};
-        }();
 
         float maxScale = SlotAnimator::MaxPossibleScale();
         for (int i = 0; i < n; ++i) maxScale = std::max(maxScale, SlotAnimator::GetScale(i));

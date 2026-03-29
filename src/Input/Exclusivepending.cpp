@@ -1,3 +1,5 @@
+#include <utility>
+
 #include "ExclusivePending.h"
 
 #include "Config/Config.h"
@@ -129,9 +131,9 @@ namespace Input::detail {
                             return true;
                         }
 
-                        const bool anyHeld = (src == PendingSrc::Gp) ? AnyComboKeyDown(hk.gp, g_gpDown)
-                                                                     : AnyComboKeyDown(hk.kb, g_kbDown);
-                        if (anyHeld) {
+                        if (const bool anyHeld = (src == PendingSrc::Gp) ? AnyComboKeyDown(hk.gp, g_gpDown)
+                                                                         : AnyComboKeyDown(hk.kb, g_kbDown);
+                            anyHeld) {
                             g_exclusivePendingTimer[s] -= dt;
                             if (g_exclusivePendingTimer[s] <= 0.0f) {
 #ifdef DEBUG
@@ -195,8 +197,8 @@ namespace Input::detail {
                 const bool kbExclOk = !requireExcl || !kbIsMulti ||
                                       ComboExclusiveNow(hk.kb, g_kbDown, IsAllowedExtra_Keyboard_MoveOrCamera);
                 if (kbExclOk) {
-                    const bool kbSimPatch = cfg.pressBothAtSamePatch && kbIsMulti;
-                    if (kbSimPatch && !g_simWindowActive[s]) {
+                    if (const bool kbSimPatch = cfg.pressBothAtSamePatch && kbIsMulti;
+                        kbSimPatch && !g_simWindowActive[s]) {
 #ifdef DEBUG
                         spdlog::info(
                             "[Input] ComputeAcceptedExclusive: slot={} KB edge REJECTED by sim-window "
@@ -223,8 +225,8 @@ namespace Input::detail {
                 const bool gpExclOk = !requireExcl || !gpIsMulti ||
                                       ComboExclusiveNow(hk.gp, g_gpDown, IsAllowedExtra_Gamepad_MoveOrCamera);
                 if (gpExclOk) {
-                    const bool gpSimPatch = cfg.pressBothAtSamePatch && gpIsMulti;
-                    if (gpSimPatch && !g_simWindowActive[s]) {
+                    if (const bool gpSimPatch = cfg.pressBothAtSamePatch && gpIsMulti;
+                        gpSimPatch && !g_simWindowActive[s]) {
 #ifdef DEBUG
                         spdlog::info(
                             "[Input] ComputeAcceptedExclusive: slot={} GP edge REJECTED by sim-window "
@@ -254,7 +256,7 @@ namespace Input::detail {
         if (g_exclusivePendingSrc[s] != PendingSrc::None || !g_retainedEvents[s].empty()) {
 #ifdef DEBUG
             spdlog::info("[Input] DiscardExclusivePending: slot={} (had pending src={} retained={})", s,
-                         static_cast<int>(g_exclusivePendingSrc[s]), g_retainedEvents[s].size());
+                         static_cast<int>(std::to_underlying(g_exclusivePendingSrc[s])), g_retainedEvents[s].size());
 #endif
         }
         g_retainedEvents[s].clear();

@@ -2,14 +2,14 @@
 
 #include <chrono>
 
-#include "EventFilter.h"
-#include "ExclusivePending.h"
-#include "HotkeyCache.h"
-#include "HudToggle.h"
-#include "InputInternal.h"
-#include "InputState.h"
+#include "Input/EventFilter.h"
+#include "Input/ExclusivePending.h"
+#include "Input/HotkeyCache.h"
+#include "Input/HudToggle.h"
+#include "Input/InputInternal.h"
+#include "Input/InputState.h"
+#include "Input/ReplaySystem.h"
 #include "PCH.h"
-#include "ReplaySystem.h"
 #include "SKSEMenuFramework.h"
 #include "State/State.h"
 #include "UI/HudManager.h"
@@ -112,7 +112,6 @@ void Input::ProcessAndFilter(RE::InputEvent** a_evns) {
     }
 
     Input::detail::DrainOneDeferredReplayEvent();
-    *a_evns = IntegratedMagic::detail::FlushSyntheticInput(*a_evns);
 
     ClearStuckKeysOnFocusRegain();
 
@@ -238,3 +237,24 @@ bool Input::IsModifierHeld() {
 }
 
 void Input::SetCaptureModeActive(bool active) { g_captureModeActive.store(active, std::memory_order_relaxed); }
+
+bool Input::IsCaptureModeActive() { return g_captureModeActive.load(std::memory_order_relaxed); }
+
+void Input::InjectCapturedScancode(int scancode) {
+    auto& cap = GetCaptureState();
+    if (!cap.captureRequested.load(std::memory_order_relaxed)) return;
+    spdlog::info("[Input] InjectCapturedScancode: scancode={}", scancode);
+    cap.capturedEncoded.store(scancode, std::memory_order_relaxed);
+    cap.captureRequested.store(false, std::memory_order_relaxed);
+    g_captureModeActive.store(false, std::memory_order_relaxed);
+}
+
+void Input::InjectCapturedGamepad(int buttonIndex) {
+    auto& cap = GetCaptureState();
+    if (!cap.captureRequested.load(std::memory_order_relaxed)) return;
+    const int encoded = -(buttonIndex + 2);
+    spdlog::info("[Input] InjectCapturedGamepad: index={} encoded={}", buttonIndex, encoded);
+    cap.capturedEncoded.store(encoded, std::memory_order_relaxed);
+    cap.captureRequested.store(false, std::memory_order_relaxed);
+    g_captureModeActive.store(false, std::memory_order_relaxed);
+}
