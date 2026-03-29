@@ -558,221 +558,244 @@ namespace {
         namespace S = IntegratedMagic::Strings;
         auto& st = IntegratedMagic::StyleConfig::Get();
 
-        ImGuiMCP::SeparatorText(S::Get("HUD_Section_Layout", "Layout").c_str());
+        if (ImGuiMCP::CollapsingHeader(S::Get("HUD_Section_InGame", "In-game HUD").c_str())) {
+            ImGuiMCP::SeparatorText(S::Get("HUD_Section_Layout", "Layout").c_str());
+            ImGuiMCP::Spacing();
+
+            {
+                using LT = IntegratedMagic::HudLayoutType;
+                const std::string layoutNames =
+                    S::Get("HUD_Layout_Circular", "Circular") + '\0' + S::Get("HUD_Layout_Horizontal", "Horizontal") +
+                    '\0' + S::Get("HUD_Layout_Vertical", "Vertical") + '\0' + S::Get("HUD_Layout_Grid", "Grid") + '\0';
+                int layoutIdx = static_cast<int>(st.hudLayout);
+                ImGuiMCP::SetNextItemWidth(150.f);
+                if (ImGuiMCP::Combo(S::Get("HUD_Layout_Label", "Layout##hudlayout").c_str(), &layoutIdx,
+                                    layoutNames.c_str())) {
+                    st.hudLayout = static_cast<LT>(layoutIdx);
+                    dirty = true;
+                }
+
+                {
+                    ImGuiMCP::SameLine();
+                    ImGuiMCP::SetNextItemWidth(150.f);
+                    float spacing = st.slotSpacing;
+                    if (ImGuiMCP::InputFloat(S::Get("HUD_Spacing_Label", "Spacing##slotspacing").c_str(), &spacing, 1.f,
+                                             5.f, "%.1f")) {
+                        st.slotSpacing = spacing;
+                        dirty = true;
+                    }
+                }
+                if (st.hudLayout == LT::Grid) {
+                    ImGuiMCP::SetNextItemWidth(150.f);
+                    int cols = st.gridColumns;
+                    if (ImGuiMCP::InputInt(S::Get("HUD_Columns_Label", "Columns##gridcols").c_str(), &cols, 1, 1)) {
+                        st.gridColumns = std::max(1, cols);
+                        dirty = true;
+                    }
+                }
+                if (st.hudLayout == LT::Circular) {
+                    ImGuiMCP::SetNextItemWidth(150.f);
+                    float rr = st.ringRadius;
+                    if (ImGuiMCP::InputFloat(S::Get("HUD_RingRadius_Label", "Ring R##ringradius").c_str(), &rr, 1.f,
+                                             5.f, "%.1f")) {
+                        st.ringRadius = rr;
+                        dirty = true;
+                    }
+                }
+            }
+
+            ImGuiMCP::Spacing();
+
+            ImGuiMCP::SeparatorText(S::Get("HUD_Section_Position", "Position").c_str());
+            ImGuiMCP::Spacing();
+
+            DrawAnchorWidget(dirty);
+
+            ImGuiMCP::SameLine(0.f, 16.f);
+            ImGuiMCP::BeginGroup();
+            ImGuiMCP::SetNextItemWidth(150.f);
+            float ox = st.hudOffsetX;
+            if (ImGuiMCP::InputFloat(S::Get("HUD_OffsetX_Label", "X##hudox").c_str(), &ox, 1.f, 5.f, "%.0f")) {
+                st.hudOffsetX = ox;
+                dirty = true;
+            }
+            ImGuiMCP::SetNextItemWidth(150.f);
+            float oy = st.hudOffsetY;
+            if (ImGuiMCP::InputFloat(S::Get("HUD_OffsetY_Label", "Y##hudoy").c_str(), &oy, 1.f, 5.f, "%.0f")) {
+                st.hudOffsetY = oy;
+                dirty = true;
+            }
+            ImGuiMCP::EndGroup();
+
+            ImGuiMCP::Spacing();
+
+            ImGuiMCP::SeparatorText(S::Get("HUD_Section_Slots", "Slots").c_str());
+            ImGuiMCP::Spacing();
+
+            {
+                ImGuiMCP::SetNextItemWidth(150.f);
+                float sr = st.slotRadius;
+                if (ImGuiMCP::InputFloat(S::Get("HUD_SlotRadius_Label", "Radius##slotradius").c_str(), &sr, 1.f, 5.f,
+                                         "%.1f")) {
+                    st.slotRadius = sr;
+                    dirty = true;
+                }
+                ImGuiMCP::SameLine();
+                ImGuiMCP::SetNextItemWidth(150.f);
+                float rw = st.slotRingWidth;
+                if (ImGuiMCP::InputFloat(S::Get("HUD_RingWidth_Label", "Ring Width##ringwidth").c_str(), &rw, 0.5f, 1.f,
+                                         "%.1f")) {
+                    st.slotRingWidth = std::max(0.f, rw);
+                    dirty = true;
+                }
+                ImGuiMCP::Spacing();
+
+                ImGuiMCP::SetNextItemWidth(150.f);
+                float as = st.slotActiveScale;
+                if (ImGuiMCP::InputFloat(S::Get("HUD_ActiveScale_Label", "Active##activescale").c_str(), &as, 0.05f,
+                                         0.1f, "%.2f")) {
+                    st.slotActiveScale = as;
+                    dirty = true;
+                }
+                ImGuiMCP::SameLine();
+                ImGuiMCP::SetNextItemWidth(150.f);
+                float ms = st.slotModifierScale;
+                if (ImGuiMCP::InputFloat(S::Get("HUD_ModifierScale_Label", "Modifier##modscale").c_str(), &ms, 0.05f,
+                                         0.1f, "%.2f")) {
+                    st.slotModifierScale = ms;
+                    dirty = true;
+                }
+                ImGuiMCP::SameLine();
+                ImGuiMCP::SetNextItemWidth(150.f);
+                float ns = st.slotNeighborScale;
+                if (ImGuiMCP::InputFloat(S::Get("HUD_NeighborScale_Label", "Neighbor##neighborscale").c_str(), &ns,
+                                         0.05f, 0.1f, "%.2f")) {
+                    st.slotNeighborScale = ns;
+                    dirty = true;
+                }
+                ImGuiMCP::Spacing();
+
+                ImGuiMCP::SetNextItemWidth(150.f);
+                float et = st.slotExpandTime;
+                if (ImGuiMCP::InputFloat(S::Get("HUD_ExpandTime_Label", "Expand##expandtime").c_str(), &et, 0.01f,
+                                         0.05f, "%.2f")) {
+                    st.slotExpandTime = std::max(0.f, et);
+                    dirty = true;
+                }
+                ImGuiMCP::SameLine();
+                ImGuiMCP::SetNextItemWidth(150.f);
+                float rt = st.slotRetractTime;
+                if (ImGuiMCP::InputFloat(S::Get("HUD_RetractTime_Label", "Retract##retracttime").c_str(), &rt, 0.01f,
+                                         0.05f, "%.2f")) {
+                    st.slotRetractTime = std::max(0.f, rt);
+                    dirty = true;
+                }
+            }
+
+            ImGuiMCP::Spacing();
+
+            ImGuiMCP::SeparatorText(S::Get("HUD_Section_Icons", "Icons").c_str());
+            ImGuiMCP::Spacing();
+
+            {
+                ImGuiMCP::SetNextItemWidth(150.f);
+                float isf = st.iconSizeFactor;
+                if (ImGuiMCP::InputFloat(S::Get("HUD_IconSize_Label", "Size##iconsizefactor").c_str(), &isf, 0.05f,
+                                         0.1f, "%.2f")) {
+                    st.iconSizeFactor = std::clamp(isf, 0.1f, 2.f);
+                    dirty = true;
+                }
+                ImGuiMCP::SameLine();
+                ImGuiMCP::SetNextItemWidth(150.f);
+                float iof = st.iconOffsetFactor;
+                if (ImGuiMCP::InputFloat(S::Get("HUD_IconOffset_Label", "Offset##iconoffsetfactor").c_str(), &iof,
+                                         0.05f, 0.1f, "%.2f")) {
+                    st.iconOffsetFactor = std::clamp(iof, 0.f, 1.f);
+                    dirty = true;
+                }
+            }
+
+            ImGuiMCP::Spacing();
+        }
+
         ImGuiMCP::Spacing();
 
-        {
-            using LT = IntegratedMagic::HudLayoutType;
-            const std::string layoutNames =
-                S::Get("HUD_Layout_Circular", "Circular") + '\0' + S::Get("HUD_Layout_Horizontal", "Horizontal") +
-                '\0' + S::Get("HUD_Layout_Vertical", "Vertical") + '\0' + S::Get("HUD_Layout_Grid", "Grid") + '\0';
-            int layoutIdx = static_cast<int>(st.hudLayout);
-            ImGuiMCP::SetNextItemWidth(150.f);
-            if (ImGuiMCP::Combo(S::Get("HUD_Layout_Label", "Layout##hudlayout").c_str(), &layoutIdx,
-                                layoutNames.c_str())) {
-                st.hudLayout = static_cast<LT>(layoutIdx);
-                dirty = true;
+        if (ImGuiMCP::CollapsingHeader(S::Get("HUD_Section_Popup", "Popup").c_str())) {
+            ImGuiMCP::Spacing();
+
+            {
+                const std::string popupLayoutNames =
+                    S::Get("HUD_Layout_Circular", "Circular") + '\0' + S::Get("HUD_Layout_Horizontal", "Horizontal") +
+                    '\0' + S::Get("HUD_Layout_Vertical", "Vertical") + '\0' + S::Get("HUD_Layout_Grid", "Grid") + '\0';
+                int popupLayoutIdx = static_cast<int>(st.popupLayout);
+                ImGuiMCP::SetNextItemWidth(180.f);
+                if (ImGuiMCP::Combo(S::Get("HUD_PopupLayout_Label", "Layout##popuplayout").c_str(), &popupLayoutIdx,
+                                    popupLayoutNames.c_str())) {
+                    st.popupLayout = static_cast<IntegratedMagic::HudLayoutType>(popupLayoutIdx);
+                    dirty = true;
+                }
+                ImGuiMCP::Spacing();
             }
 
             {
+                ImGuiMCP::SetNextItemWidth(150.f);
+                float psr = st.popupSlotRadius;
+                if (ImGuiMCP::InputFloat(S::Get("HUD_PopupSlotR_Label", "Slot R##popupslotradius").c_str(), &psr, 1.f,
+                                         5.f, "%.0f")) {
+                    st.popupSlotRadius = std::max(1.f, psr);
+                    dirty = true;
+                }
                 ImGuiMCP::SameLine();
                 ImGuiMCP::SetNextItemWidth(150.f);
-                float spacing = st.slotSpacing;
-                if (ImGuiMCP::InputFloat(S::Get("HUD_Spacing_Label", "Spacing##slotspacing").c_str(), &spacing, 1.f,
-                                         5.f, "%.1f")) {
-                    st.slotSpacing = spacing;
+                float prr = st.popupRingRadius;
+                if (ImGuiMCP::InputFloat(S::Get("HUD_PopupRingR_Label", "Ring R##popupringradius").c_str(), &prr, 1.f,
+                                         5.f, "%.0f")) {
+                    st.popupRingRadius = std::max(1.f, prr);
                     dirty = true;
                 }
-            }
-            if (st.hudLayout == LT::Grid) {
+                ImGuiMCP::SameLine();
                 ImGuiMCP::SetNextItemWidth(150.f);
-                int cols = st.gridColumns;
-                if (ImGuiMCP::InputInt(S::Get("HUD_Columns_Label", "Columns##gridcols").c_str(), &cols, 1, 1)) {
-                    st.gridColumns = std::max(1, cols);
+                float psg = st.popupSlotGap;
+                if (ImGuiMCP::InputFloat(S::Get("HUD_PopupGap_Label", "Gap##popupslotgap").c_str(), &psg, 1.f, 5.f,
+                                         "%.0f")) {
+                    st.popupSlotGap = psg;
                     dirty = true;
                 }
-            }
-            if (st.hudLayout == LT::Circular) {
+                ImGuiMCP::Spacing();
+
                 ImGuiMCP::SetNextItemWidth(150.f);
-                float rr = st.ringRadius;
-                if (ImGuiMCP::InputFloat(S::Get("HUD_RingRadius_Label", "Ring R##ringradius").c_str(), &rr, 1.f, 5.f,
-                                         "%.1f")) {
-                    st.ringRadius = rr;
+                float mww = st.modeWidgetW;
+                if (ImGuiMCP::InputFloat(S::Get("HUD_ModeWidgetW_Label", "Widget W##modewidgetw").c_str(), &mww, 1.f,
+                                         5.f, "%.0f")) {
+                    st.modeWidgetW = std::max(1.f, mww);
                     dirty = true;
                 }
-            }
-        }
+                ImGuiMCP::SameLine();
+                ImGuiMCP::SetNextItemWidth(150.f);
+                int oa = static_cast<int>(st.overlayAlpha);
+                if (ImGuiMCP::InputInt(S::Get("HUD_OverlayAlpha_Label", "Overlay Alpha##overlayalpha").c_str(), &oa, 5,
+                                       20)) {
+                    st.overlayAlpha = static_cast<std::uint8_t>(std::clamp(oa, 0, 255));
+                    dirty = true;
+                }
 
-        ImGuiMCP::Spacing();
+                ImGuiMCP::Spacing();
 
-        ImGuiMCP::SeparatorText(S::Get("HUD_Section_Position", "Position").c_str());
-        ImGuiMCP::Spacing();
-
-        DrawAnchorWidget(dirty);
-
-        ImGuiMCP::SameLine(0.f, 16.f);
-        ImGuiMCP::BeginGroup();
-        ImGuiMCP::SetNextItemWidth(150.f);
-        float ox = st.hudOffsetX;
-        if (ImGuiMCP::InputFloat(S::Get("HUD_OffsetX_Label", "X##hudox").c_str(), &ox, 1.f, 5.f, "%.0f")) {
-            st.hudOffsetX = ox;
-            dirty = true;
-        }
-        ImGuiMCP::SetNextItemWidth(150.f);
-        float oy = st.hudOffsetY;
-        if (ImGuiMCP::InputFloat(S::Get("HUD_OffsetY_Label", "Y##hudoy").c_str(), &oy, 1.f, 5.f, "%.0f")) {
-            st.hudOffsetY = oy;
-            dirty = true;
-        }
-        ImGuiMCP::EndGroup();
-
-        ImGuiMCP::Spacing();
-
-        ImGuiMCP::SeparatorText(S::Get("HUD_Section_Slots", "Slots").c_str());
-        ImGuiMCP::Spacing();
-
-        {
-            ImGuiMCP::SetNextItemWidth(150.f);
-            float sr = st.slotRadius;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_SlotRadius_Label", "Radius##slotradius").c_str(), &sr, 1.f, 5.f,
-                                     "%.1f")) {
-                st.slotRadius = sr;
-                dirty = true;
-            }
-            ImGuiMCP::SameLine();
-            ImGuiMCP::SetNextItemWidth(150.f);
-            float rw = st.slotRingWidth;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_RingWidth_Label", "Ring Width##ringwidth").c_str(), &rw, 0.5f, 1.f,
-                                     "%.1f")) {
-                st.slotRingWidth = std::max(0.f, rw);
-                dirty = true;
-            }
-            ImGuiMCP::Spacing();
-
-            ImGuiMCP::SetNextItemWidth(150.f);
-            float as = st.slotActiveScale;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_ActiveScale_Label", "Active##activescale").c_str(), &as, 0.05f, 0.1f,
-                                     "%.2f")) {
-                st.slotActiveScale = as;
-                dirty = true;
-            }
-            ImGuiMCP::SameLine();
-            ImGuiMCP::SetNextItemWidth(150.f);
-            float ms = st.slotModifierScale;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_ModifierScale_Label", "Modifier##modscale").c_str(), &ms, 0.05f, 0.1f,
-                                     "%.2f")) {
-                st.slotModifierScale = ms;
-                dirty = true;
-            }
-            ImGuiMCP::SameLine();
-            ImGuiMCP::SetNextItemWidth(150.f);
-            float ns = st.slotNeighborScale;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_NeighborScale_Label", "Neighbor##neighborscale").c_str(), &ns, 0.05f,
-                                     0.1f, "%.2f")) {
-                st.slotNeighborScale = ns;
-                dirty = true;
-            }
-            ImGuiMCP::Spacing();
-
-            ImGuiMCP::SetNextItemWidth(150.f);
-            float et = st.slotExpandTime;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_ExpandTime_Label", "Expand##expandtime").c_str(), &et, 0.01f, 0.05f,
-                                     "%.2f")) {
-                st.slotExpandTime = std::max(0.f, et);
-                dirty = true;
-            }
-            ImGuiMCP::SameLine();
-            ImGuiMCP::SetNextItemWidth(150.f);
-            float rt = st.slotRetractTime;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_RetractTime_Label", "Retract##retracttime").c_str(), &rt, 0.01f, 0.05f,
-                                     "%.2f")) {
-                st.slotRetractTime = std::max(0.f, rt);
-                dirty = true;
-            }
-        }
-
-        ImGuiMCP::Spacing();
-
-        ImGuiMCP::SeparatorText(S::Get("HUD_Section_Icons", "Icons").c_str());
-        ImGuiMCP::Spacing();
-
-        {
-            ImGuiMCP::SetNextItemWidth(150.f);
-            float isf = st.iconSizeFactor;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_IconSize_Label", "Size##iconsizefactor").c_str(), &isf, 0.05f, 0.1f,
-                                     "%.2f")) {
-                st.iconSizeFactor = std::clamp(isf, 0.1f, 2.f);
-                dirty = true;
-            }
-            ImGuiMCP::SameLine();
-            ImGuiMCP::SetNextItemWidth(150.f);
-            float iof = st.iconOffsetFactor;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_IconOffset_Label", "Offset##iconoffsetfactor").c_str(), &iof, 0.05f,
-                                     0.1f, "%.2f")) {
-                st.iconOffsetFactor = std::clamp(iof, 0.f, 1.f);
-                dirty = true;
-            }
-        }
-
-        ImGuiMCP::Spacing();
-
-        ImGuiMCP::SeparatorText(S::Get("HUD_Section_Popup", "Popup").c_str());
-        ImGuiMCP::Spacing();
-
-        {
-            const std::string popupLayoutNames =
-                S::Get("HUD_Layout_Circular", "Circular") + '\0' + S::Get("HUD_Layout_Horizontal", "Horizontal") +
-                '\0' + S::Get("HUD_Layout_Vertical", "Vertical") + '\0' + S::Get("HUD_Layout_Grid", "Grid") + '\0';
-            int popupLayoutIdx = static_cast<int>(st.popupLayout);
-            ImGuiMCP::SetNextItemWidth(180.f);
-            if (ImGuiMCP::Combo(S::Get("HUD_PopupLayout_Label", "Layout##popuplayout").c_str(), &popupLayoutIdx,
-                                popupLayoutNames.c_str())) {
-                st.popupLayout = static_cast<IntegratedMagic::HudLayoutType>(popupLayoutIdx);
-                dirty = true;
-            }
-            ImGuiMCP::Spacing();
-        }
-
-        {
-            ImGuiMCP::SetNextItemWidth(150.f);
-            float psr = st.popupSlotRadius;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_PopupSlotR_Label", "Slot R##popupslotradius").c_str(), &psr, 1.f, 5.f,
-                                     "%.0f")) {
-                st.popupSlotRadius = std::max(1.f, psr);
-                dirty = true;
-            }
-            ImGuiMCP::SameLine();
-            ImGuiMCP::SetNextItemWidth(150.f);
-            float prr = st.popupRingRadius;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_PopupRingR_Label", "Ring R##popupringradius").c_str(), &prr, 1.f, 5.f,
-                                     "%.0f")) {
-                st.popupRingRadius = std::max(1.f, prr);
-                dirty = true;
-            }
-            ImGuiMCP::SameLine();
-            ImGuiMCP::SetNextItemWidth(150.f);
-            float psg = st.popupSlotGap;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_PopupGap_Label", "Gap##popupslotgap").c_str(), &psg, 1.f, 5.f,
-                                     "%.0f")) {
-                st.popupSlotGap = psg;
-                dirty = true;
-            }
-            ImGuiMCP::Spacing();
-
-            ImGuiMCP::SetNextItemWidth(150.f);
-            float mww = st.modeWidgetW;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_ModeWidgetW_Label", "Widget W##modewidgetw").c_str(), &mww, 1.f, 5.f,
-                                     "%.0f")) {
-                st.modeWidgetW = std::max(1.f, mww);
-                dirty = true;
-            }
-            ImGuiMCP::SameLine();
-            ImGuiMCP::SetNextItemWidth(150.f);
-            int oa = static_cast<int>(st.overlayAlpha);
-            if (ImGuiMCP::InputInt(S::Get("HUD_OverlayAlpha_Label", "Overlay Alpha##overlayalpha").c_str(), &oa, 5,
-                                   20)) {
-                st.overlayAlpha = static_cast<std::uint8_t>(std::clamp(oa, 0, 255));
-                dirty = true;
+                ImGuiMCP::SetNextItemWidth(150.f);
+                float pox = st.popupOffsetX;
+                if (ImGuiMCP::InputFloat(S::Get("HUD_PopupOffsetX_Label", "Offset X##popupox").c_str(), &pox, 1.f, 5.f,
+                                         "%.0f")) {
+                    st.popupOffsetX = pox;
+                    dirty = true;
+                }
+                ImGuiMCP::SameLine();
+                ImGuiMCP::SetNextItemWidth(150.f);
+                float poy = st.popupOffsetY;
+                if (ImGuiMCP::InputFloat(S::Get("HUD_PopupOffsetY_Label", "Offset Y##popupoy").c_str(), &poy, 1.f, 5.f,
+                                         "%.0f")) {
+                    st.popupOffsetY = poy;
+                    dirty = true;
+                }
             }
         }
 

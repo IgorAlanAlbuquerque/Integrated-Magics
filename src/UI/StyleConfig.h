@@ -86,6 +86,8 @@ namespace IntegratedMagic {
         float popupSlotGap = 24.f;
         HudLayoutType popupLayout = HudLayoutType::Circular;
         float modeWidgetW = 58.f;
+        float popupOffsetX = 0.f;
+        float popupOffsetY = 0.f;
         float iconSizeFactor = 0.90f;
         float iconOffsetFactor = 0.28f;
         std::uint8_t overlayAlpha = 160;

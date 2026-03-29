@@ -162,6 +162,8 @@ namespace IntegratedMagic {
         popupRingRadius = GetFloat(ini, "Popup", "RingRadius", popupRingRadius);
         popupSlotGap = GetFloat(ini, "Popup", "SlotGap", popupSlotGap);
         popupLayout = GetLayout(ini, "Popup", "Layout", popupLayout);
+        popupOffsetX = GetFloat(ini, "Popup", "OffsetX", popupOffsetX);
+        popupOffsetY = GetFloat(ini, "Popup", "OffsetY", popupOffsetY);
         modeWidgetW = GetFloat(ini, "Popup", "ModeWidgetWidth", modeWidgetW);
         iconSizeFactor = GetFloat(ini, "Icons", "SizeFactor", iconSizeFactor);
         iconOffsetFactor = GetFloat(ini, "Icons", "OffsetFactor", iconOffsetFactor);
@@ -331,6 +333,8 @@ namespace IntegratedMagic {
         setFloat("Popup", "ModeWidgetWidth", modeWidgetW);
         setU8("Popup", "OverlayAlpha", overlayAlpha);
         ini.SetValue("Popup", "Layout", kLayoutNames[static_cast<int>(popupLayout)]);
+        setFloat("Popup", "OffsetX", popupOffsetX);
+        setFloat("Popup", "OffsetY", popupOffsetY);
 
         setFloat("Icons", "SizeFactor", iconSizeFactor);
         setFloat("Icons", "OffsetFactor", iconOffsetFactor);

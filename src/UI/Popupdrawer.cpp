@@ -300,10 +300,11 @@ namespace IntegratedMagic::HUD::PopupDrawer {
         const float popupHalfX = bh.x + kGlowPad + st.modeWidgetW + 12.f;
         const float popupHalfY = bh.y + kGlowPad + st.modeWidgetW + 12.f;
         const ImVec2 popupSize = {popupHalfX * 2.f, popupHalfY * 2.f + 48.f};
-        const ImVec2 popupPos = {io.DisplaySize.x * 0.5f - popupSize.x * 0.5f,
-                                 io.DisplaySize.y * 0.5f - popupSize.y * 0.5f};
+        const ImVec2 popupPos = {io.DisplaySize.x * 0.5f - popupSize.x * 0.5f + st.popupOffsetX,
+                                 io.DisplaySize.y * 0.5f - popupSize.y * 0.5f + st.popupOffsetY};
         const ImVec2 popupEnd = {popupPos.x + popupSize.x, popupPos.y + popupSize.y};
-        const ImVec2 ringCenter = {io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f};
+        const ImVec2 ringCenter = {io.DisplaySize.x * 0.5f + st.popupOffsetX,
+                                   io.DisplaySize.y * 0.5f + st.popupOffsetY};
 
         LayoutVec2 relPos[SlotLayout::kMaxSlots]{};
         SlotLayout::Compute(st.popupLayout, n, st.popupSlotRadius, dynPopupR, st.popupSlotGap, st.gridColumns, relPos);
