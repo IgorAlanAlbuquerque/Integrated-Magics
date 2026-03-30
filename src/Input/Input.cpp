@@ -11,10 +11,41 @@
 #include "Input/ReplaySystem.h"
 #include "PCH.h"
 #include "SKSEMenuFramework.h"
+#include "State/Assign.h"
+#include "State/SpellClassify.h"
 #include "State/State.h"
+#include "UI/HoveredForm.h"
 #include "UI/HudManager.h"
 
 namespace {
+
+    void TryAssignHoveredToSlotByHotkey() {
+        auto* ui = RE::UI::GetSingleton();
+        if (!ui) return;
+        static const RE::BSFixedString magicMenu{"MagicMenu"};
+        if (!ui->IsMenuOpen(magicMenu)) return;
+
+        const auto type = IntegratedMagic::HoveredForm::GetHoveredMagicType();
+        if (type == IntegratedMagic::HoveredForm::MagicType::None) return;
+
+        const int n = ActiveSlots();
+        for (int slot = 0; slot < n; ++slot) {
+            const auto& hk = g_cache[static_cast<std::size_t>(slot)];
+            const bool comboDown =
+                Input::detail::ComboDown(hk.kb, g_kbDown) || Input::detail::ComboDown(hk.gp, g_gpDown);
+            if (!comboDown) continue;
+
+            using MT = IntegratedMagic::HoveredForm::MagicType;
+            if (type == MT::Shout || type == MT::Power) {
+                IntegratedMagic::MagicAssign::TryAssignHoveredShoutToSlot(slot);
+            } else if (type == MT::RightOnlySpell) {
+                IntegratedMagic::MagicAssign::TryAssignHoveredSpellToSlot(slot, IntegratedMagic::Slots::Hand::Right);
+            } else {
+                IntegratedMagic::MagicAssign::TryAssignHoveredSpellToSlot(slot, IntegratedMagic::Slots::Hand::Left);
+            }
+            break;
+        }
+    }
 
     float CalculateDeltaTime() {
         using clock = std::chrono::steady_clock;
@@ -155,6 +186,9 @@ void Input::ProcessAndFilter(RE::InputEvent** a_evns) {
 
     Input::detail::ProcessButtonEvents(a_evns, cap, wantCapture);
     Input::detail::UpdateHudToggleState();
+
+    if (blocked) TryAssignHoveredToSlotByHotkey();
+
     Input::detail::UpdateSlotsIfAllowed(blocked, dt);
     Input::detail::FilterMouseForPopup(a_evns);
 
