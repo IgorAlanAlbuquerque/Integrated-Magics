@@ -184,6 +184,10 @@ namespace IntegratedMagic {
         {
             const char* v = ini.GetValue("HUD", "UseTextureForSlotBg", nullptr);
             if (v) useTextureForSlotBg = (_stricmp(v, "true") == 0 || std::strcmp(v, "1") == 0);
+            {
+                const char* v2 = ini.GetValue("HUD", "ShowSpellNames", nullptr);
+                if (v2) showSpellNamesInHud = (_stricmp(v2, "true") == 0 || std::strcmp(v2, "1") == 0);
+            }
         }
 
         buttonIconType = GetButtonIconType(ini, "General", "ButtonIconType", buttonIconType);
@@ -307,6 +311,7 @@ namespace IntegratedMagic {
         setFloat("HUD", "SlotSpacing", slotSpacing);
         setInt("HUD", "GridColumns", gridColumns);
         setBool("HUD", "UseTextureForSlotBg", useTextureForSlotBg);
+        setBool("HUD", "ShowSpellNames", showSpellNamesInHud);
 
         ini.SetValue("General", "ButtonIconType", kButtonIconTypeNames[static_cast<int>(buttonIconType)]);
 

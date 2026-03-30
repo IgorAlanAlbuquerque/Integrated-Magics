@@ -694,6 +694,17 @@ namespace {
 
             ImGuiMCP::Spacing();
 
+            {
+                bool showNames = st.showSpellNamesInHud;
+                if (ImGuiMCP::Checkbox(S::Get("HUD_ShowSpellNames", "Show spell names##showspellnames").c_str(),
+                                       &showNames)) {
+                    st.showSpellNamesInHud = showNames;
+                    dirty = true;
+                }
+            }
+
+            ImGuiMCP::Spacing();
+
             ImGuiMCP::SeparatorText(S::Get("HUD_Section_Icons", "Icons").c_str());
             ImGuiMCP::Spacing();
 

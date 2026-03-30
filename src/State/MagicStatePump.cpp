@@ -466,6 +466,7 @@ namespace IntegratedMagic {
         PumpAutoStartFallback(Right, dt);
         PumpAutomaticHand(Left);
         PumpAutomaticHand(Right);
+        PumpSpellFireFinalize(dt);
 
         if (!_session.active) return;
 
@@ -507,7 +508,9 @@ namespace IntegratedMagic {
 
     void MagicState::OnSpellFired(Slots::Hand hand) {
         if (!_session.active) return;
+
         auto& hm = ModeFor(hand);
+
         if (hm.autoActive && !hm.finished && hm.chargeComplete) {
             if (hm.pressAutocast) {
                 hm.autoActive = false;
@@ -516,14 +519,53 @@ namespace IntegratedMagic {
                 hm.pressAutocast = false;
                 return;
             }
+
             if (_session.isDualCasting) {
                 FinishHand(Slots::Hand::Left);
                 FinishHand(Slots::Hand::Right);
                 _session.isDualCasting = false;
+
+                ScheduleSpellFireFinalize(Slots::Hand::Left);
+                ScheduleSpellFireFinalize(Slots::Hand::Right);
             } else {
                 FinishHand(hand);
+                ScheduleSpellFireFinalize(hand);
             }
-            TryFinalizeExit();
         }
+    }
+
+    void MagicState::ScheduleSpellFireFinalize(Slots::Hand hand) {
+        auto& hm = ModeFor(hand);
+        hm.waitingSpellFireFinalize = true;
+        hm.spellFireFinalizeSecs = 0.f;
+    }
+
+    void MagicState::PumpSpellFireFinalize(float dt) {
+        if (!_session.active) {
+            _left.waitingSpellFireFinalize = false;
+            _left.spellFireFinalizeSecs = 0.f;
+            _right.waitingSpellFireFinalize = false;
+            _right.spellFireFinalizeSecs = 0.f;
+            return;
+        }
+
+        constexpr float kSpellFireFinalizeDelay = 0.7f;
+
+        auto pumpOne = [&](Slots::Hand hand) {
+            auto& hm = ModeFor(hand);
+            if (!hm.waitingSpellFireFinalize) return;
+
+            hm.spellFireFinalizeSecs += dt > 0.f ? dt : 0.f;
+            if (hm.spellFireFinalizeSecs < kSpellFireFinalizeDelay) return;
+
+            hm.waitingSpellFireFinalize = false;
+            hm.spellFireFinalizeSecs = 0.f;
+
+            TryFinalizeExit();
+        };
+
+        using enum Slots::Hand;
+        pumpOne(Left);
+        pumpOne(Right);
     }
 }

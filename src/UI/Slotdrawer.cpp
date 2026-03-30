@@ -8,11 +8,12 @@
 
 #include "Config/Config.h"
 #include "Config/Slots.h"
-#include "HudState.h"
 #include "Input/Input.h"
 #include "PCH.h"
 #include "State/SpellClassify.h"
 #include "State/State.h"
+#include "UI/HudState.h"
+#include "UI/HudTextUtil.h"
 #include "UI/PolyFill.h"
 #include "UI/SlotAnimator.h"
 #include "UI/SlotLayout.h"
@@ -187,7 +188,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
     }
 
     void DrawSlotVisual(ImDrawList* dl, ImVec2 center, float r, bool isActive, RE::SpellItem const* rSpell,
-                        RE::SpellItem const* lSpell, RE::FormID shoutFormID) {
+                        RE::SpellItem const* lSpell, RE::FormID shoutFormID, bool forceOffset) {
         const auto rPal = SpellPalette(rSpell);
         const auto lPal = SpellPalette(lSpell);
 
@@ -231,8 +232,16 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             }
         } else {
             const float off = r * st.iconOffsetFactor;
-            if (rSpell) DrawSpellIcon(dl, rSpell, center.x + off, center.y, iconSize);
-            if (lSpell) DrawSpellIcon(dl, lSpell, center.x - off, center.y, iconSize);
+            const bool sameSpell = rSpell && lSpell && (rSpell->GetFormID() == lSpell->GetFormID());
+            const bool onlyOne = (rSpell != nullptr) != (lSpell != nullptr);
+
+            if (!forceOffset && (sameSpell || onlyOne)) {
+                const RE::SpellItem* sp = rSpell ? rSpell : lSpell;
+                DrawSpellIcon(dl, sp, center.x, center.y, iconSize);
+            } else {
+                if (rSpell) DrawSpellIcon(dl, rSpell, center.x + off, center.y, iconSize);
+                if (lSpell) DrawSpellIcon(dl, lSpell, center.x - off, center.y, iconSize);
+            }
         }
 
         if (isActive) {
@@ -535,6 +544,23 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
             const bool is2H = !shID && !rID && lSp && SpellClassify::IsTwoHandedSpell(lSp);
             DrawSlotVisual(dl, center, slotR, active, is2H ? nullptr : rSp, is2H ? nullptr : lSp, is2H ? lID : shID);
+
+            if (st.showSpellNamesInHud) {
+                const float iconReserve = (st.buttonLabelVisibility != ButtonLabelVisibility::Never)
+                                              ? (st.buttonLabelIconSize + st.buttonLabelMargin)
+                                              : 0.f;
+                const float slotTop = center.y - slotR - iconReserve;
+
+                if (shID || is2H) {
+                    const RE::FormID dispID = shID ? shID : lID;
+                    auto* f = RE::TESForm::LookupByID(dispID);
+                    const char* name = f ? f->GetName() : "";
+                    DrawWrappedLabelAbove(name, center.x - slotR, slotR * 2.f, slotTop, 4.f, true);
+                } else {
+                    if (lSp) DrawWrappedLabelAbove(lSp->GetName(), center.x - slotR, slotR, slotTop);
+                    if (rSp) DrawWrappedLabelAbove(rSp->GetName(), center.x, slotR, slotTop);
+                }
+            }
         };
 
         for (int i = 0; i < n; ++i)

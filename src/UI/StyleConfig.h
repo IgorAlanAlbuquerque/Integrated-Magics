@@ -107,6 +107,7 @@ namespace IntegratedMagic {
         int gridColumns = 2;
 
         bool useTextureForSlotBg = false;
+        bool showSpellNamesInHud = false;
 
         ButtonIconType buttonIconType = ButtonIconType::Xbox;
 

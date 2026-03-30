@@ -5,20 +5,22 @@
 #include <cmath>
 #include <numbers>
 #include <string>
+#include <vector>
 
 #include "Config/Config.h"
 #include "Config/Slots.h"
-#include "HudState.h"
 #include "PCH.h"
 #include "Persistence/SpellSettingsDB.h"
-#include "SlotDrawer.h"
 #include "State/Assign.h"
 #include "State/SpellClassify.h"
 #include "State/State.h"
-#include "Strings.h"
 #include "UI/HoveredForm.h"
+#include "UI/HudState.h"
+#include "UI/HudTextUtil.h"
 #include "UI/PolyFill.h"
+#include "UI/SlotDrawer.h"
 #include "UI/SlotLayout.h"
+#include "UI/Strings.h"
 #include "UI/StyleConfig.h"
 #include "UI/TextureManager.h"
 
@@ -342,20 +344,27 @@ namespace IntegratedMagic::HUD::PopupDrawer {
                 const RE::FormID dispShoutID = shoutID ? shoutID : (slotIs2H ? lID : 0);
 
                 SlotDrawer::DrawSlotVisual(dl, center, st.popupSlotRadius, activeSlot == i, slotIs2H ? nullptr : rSp,
-                                           slotIs2H ? nullptr : lSp, dispShoutID);
+                                           slotIs2H ? nullptr : lSp, dispShoutID, true);
                 SlotDrawer::DrawSlotHotkeyIcons(dl, center, st.popupSlotRadius, i);
 
-                if (shoutID || slotIs2H) {
-                    auto* f = RE::TESForm::LookupByID(dispShoutID);
-                    const char* name = f ? f->GetName() : "???";
-                    const char* prefix = shoutID ? Strings::Get("Popup_ShoutPrefix", "[S]").c_str() : "[2H]";
-                    ImGui::SetCursorScreenPos({center.x - st.popupSlotRadius, center.y - st.popupSlotRadius - 16.f});
-                    ImGui::TextDisabled("%s %s", prefix, name);
-                } else if (rSp || lSp) {
-                    const std::string label =
-                        std::string(lSp ? lSp->GetName() : "---") + " | " + (rSp ? rSp->GetName() : "---");
-                    ImGui::SetCursorScreenPos({center.x - st.popupSlotRadius, center.y - st.popupSlotRadius - 16.f});
-                    ImGui::TextDisabled("%s", label.c_str());
+                {
+                    const float iconReserve =
+                        (st.buttonLabelVisibility != IntegratedMagic::ButtonLabelVisibility::Never)
+                            ? (st.buttonLabelIconSize + st.buttonLabelMargin + 5.f)
+                            : 0.f;
+                    const float slotTop = center.y - st.popupSlotRadius - iconReserve;
+
+                    if (shoutID || slotIs2H) {
+                        auto* f = RE::TESForm::LookupByID(dispShoutID);
+                        const std::string name = f ? f->GetName() : "???";
+                        DrawWrappedLabelAbove(name.c_str(), center.x - st.popupSlotRadius, st.popupSlotRadius * 2.f,
+                                              slotTop, 4.f, true);
+                    } else if (rSp || lSp) {
+                        const float halfWidth = st.popupSlotRadius;
+                        if (lSp)
+                            DrawWrappedLabelAbove(lSp->GetName(), center.x - st.popupSlotRadius, halfWidth, slotTop);
+                        if (rSp) DrawWrappedLabelAbove(rSp->GetName(), center.x, halfWidth, slotTop);
+                    }
                 }
 
                 {

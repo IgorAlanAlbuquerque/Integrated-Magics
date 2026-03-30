@@ -13,6 +13,7 @@ set(headers
     src/UI/FontLoader.h
     src/UI/Hoveredform.h
     src/UI/PolyFill.h
+    src/UI/HudTextUtil.h
     src/Config/ConfigPath.h
     src/Config/Config.h
     src/Config/Slots.h
