@@ -84,7 +84,9 @@ namespace IntegratedMagic::HUD {
 
         const bool inMagicMenu = IsInMagicMenu();
         if (inMagicMenu && Input::ConsumeHudToggle()) ToggleDetailPopup();
-        if (!inMagicMenu && g_popupOpen.load()) g_popupOpen.store(false);
+        if (!inMagicMenu && g_popupOpen.load()) {
+            g_popupOpen.store(false);
+        }
 
         if (EvaluateHudVisibility()) {
             ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f);
@@ -107,13 +109,35 @@ namespace IntegratedMagic::HUD {
     void FeedMouseClick() { g_mouseClicked.store(true, std::memory_order_relaxed); }
     void FeedMouseRightClick() { g_mouseRightClicked.store(true, std::memory_order_relaxed); }
 
+    namespace {
+        void SetMagicMenuVisible(bool visible) {
+            auto* ui = RE::UI::GetSingleton();
+            if (!ui) return;
+            static const RE::BSFixedString magicMenu{"MagicMenu"};
+            auto menu = ui->GetMenu<RE::MagicMenu>();
+            if (!menu || !menu->uiMovie) return;
+            RE::GFxValue val(visible);
+            menu->uiMovie->SetVariable("_root.Menu_mc._visible", val);
+        }
+    }
+
     void ToggleDetailPopup() {
         const bool willOpen = !g_popupOpen.load();
         g_popupOpen.store(willOpen);
-        if (willOpen) g_popupJustOpened.store(true, std::memory_order_relaxed);
+        if (willOpen) {
+            g_popupJustOpened.store(true, std::memory_order_relaxed);
+            SetMagicMenuVisible(false);
+        } else {
+            SetMagicMenuVisible(true);
+        }
     }
 
-    void CloseDetailPopup() { g_popupOpen.store(false); }
+    void CloseDetailPopup() {
+        if (g_popupOpen.load()) {
+            g_popupOpen.store(false);
+            SetMagicMenuVisible(true);
+        }
+    }
     bool IsHudVisible() { return g_hudVisible.load(std::memory_order_relaxed); }
     void SetHudVisible(bool v) { g_hudVisible.store(v, std::memory_order_relaxed); }
 
