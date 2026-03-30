@@ -242,6 +242,57 @@ namespace IntegratedMagic {
         defaultGlow = GetColor(ini, "SchoolColors", "DefaultGlow", defaultGlow);
         emptyFill = GetColor(ini, "SchoolColors", "EmptyFill", emptyFill);
 
+        {
+            const char* v = ini.GetValue("Gradient", "Type", nullptr);
+            if (v) {
+                const std::string s{v};
+                if (s == "Radial" || s == "1")
+                    slotGradientType = GradientType::Radial;
+                else if (s == "Linear" || s == "2")
+                    slotGradientType = GradientType::Linear;
+                else
+                    slotGradientType = GradientType::None;
+            }
+        }
+        slotGradientStart = GetColor(ini, "Gradient", "StartColor", slotGradientStart);
+        slotGradientEnd = GetColor(ini, "Gradient", "EndColor", slotGradientEnd);
+        slotGradientAngle = GetFloat(ini, "Gradient", "Angle", slotGradientAngle);
+        slotGradientRadialOffset = GetFloat(ini, "Gradient", "RadialOffset", slotGradientRadialOffset);
+
+        slotOuterRingColor = GetColor(ini, "Colors", "SlotOuterRingColor", slotOuterRingColor);
+        slotOuterRingWidth = GetFloat(ini, "Colors", "SlotOuterRingWidth", slotOuterRingWidth);
+
+        {
+            const char* v = ini.GetValue("HUD", "CornerStyle", nullptr);
+            if (v) {
+                const std::string s{v};
+                if (s == "Square" || s == "1")
+                    slotCornerStyle = CornerStyle::Square;
+                else if (s == "Notched" || s == "2")
+                    slotCornerStyle = CornerStyle::Notched;
+                else if (s == "Chamfered" || s == "3")
+                    slotCornerStyle = CornerStyle::Chamfered;
+                else
+                    slotCornerStyle = CornerStyle::Round;
+            }
+        }
+        slotCornerSize = GetFloat(ini, "HUD", "CornerSize", slotCornerSize);
+
+        iconTintColor = GetColor(ini, "Icons", "TintColor", iconTintColor);
+        iconSaturation = GetU8(ini, "Icons", "Saturation", iconSaturation);
+        iconBrightness = GetU8(ini, "Icons", "Brightness", iconBrightness);
+
+        {
+            const char* v = ini.GetValue("TextShadow", "Enabled", nullptr);
+            if (v) textShadowEnabled = (_stricmp(v, "true") == 0 || std::strcmp(v, "1") == 0);
+        }
+        textShadowColor = GetColor(ini, "TextShadow", "Color", textShadowColor);
+        textShadowOffsetX = GetFloat(ini, "TextShadow", "OffsetX", textShadowOffsetX);
+        textShadowOffsetY = GetFloat(ini, "TextShadow", "OffsetY", textShadowOffsetY);
+
+        overlayColor = GetColor(ini, "Popup", "OverlayColor", overlayColor);
+        vignetteStrength = GetFloat(ini, "Popup", "VignetteStrength", vignetteStrength);
+
         spdlog::info("[StyleConfig] styles.ini carregado.");
     }
 
@@ -367,6 +418,32 @@ namespace IntegratedMagic {
         setColor("SchoolColors", "DefaultFill", defaultFill);
         setColor("SchoolColors", "DefaultGlow", defaultGlow);
         setColor("SchoolColors", "EmptyFill", emptyFill);
+
+        static constexpr const char* kGradientNames[] = {"None", "Radial", "Linear"};
+        ini.SetValue("Gradient", "Type", kGradientNames[static_cast<int>(slotGradientType)]);
+        setColor("Gradient", "StartColor", slotGradientStart);
+        setColor("Gradient", "EndColor", slotGradientEnd);
+        setFloat("Gradient", "Angle", slotGradientAngle);
+        setFloat("Gradient", "RadialOffset", slotGradientRadialOffset);
+
+        setColor("Colors", "SlotOuterRingColor", slotOuterRingColor);
+        setFloat("Colors", "SlotOuterRingWidth", slotOuterRingWidth);
+
+        static constexpr const char* kCornerNames[] = {"Round", "Square", "Notched", "Chamfered"};
+        ini.SetValue("HUD", "CornerStyle", kCornerNames[static_cast<int>(slotCornerStyle)]);
+        setFloat("HUD", "CornerSize", slotCornerSize);
+
+        setColor("Icons", "TintColor", iconTintColor);
+        setU8("Icons", "Saturation", iconSaturation);
+        setU8("Icons", "Brightness", iconBrightness);
+
+        setBool("TextShadow", "Enabled", textShadowEnabled);
+        setColor("TextShadow", "Color", textShadowColor);
+        setFloat("TextShadow", "OffsetX", textShadowOffsetX);
+        setFloat("TextShadow", "OffsetY", textShadowOffsetY);
+
+        setColor("Popup", "OverlayColor", overlayColor);
+        setFloat("Popup", "VignetteStrength", vignetteStrength);
 
         ini.SaveFile(kPath);
         spdlog::info("[StyleConfig] styles.ini salvo.");

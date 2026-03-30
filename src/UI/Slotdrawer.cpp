@@ -19,6 +19,7 @@
 #include "UI/SlotLayout.h"
 #include "UI/StyleConfig.h"
 #include "UI/TextureManager.h"
+#include "imgui_internal.h"
 
 namespace IntegratedMagic::HUD::SlotDrawer {
 
@@ -129,17 +130,156 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         }
     }
 
+    inline ImU32 LerpColor(ImU32 a, ImU32 b, float t) {
+        const auto l8 = [](ImU32 ca, ImU32 cb, float tt) {
+            return static_cast<ImU32>(ca + static_cast<int>((static_cast<int>(cb) - static_cast<int>(ca)) * tt));
+        };
+        return IM_COL32(l8(a & 0xFF, b & 0xFF, t), l8((a >> 8) & 0xFF, (b >> 8) & 0xFF, t),
+                        l8((a >> 16) & 0xFF, (b >> 16) & 0xFF, t), l8((a >> 24) & 0xFF, (b >> 24) & 0xFF, t));
+    }
+
+    void FillSlotShapeGradient(ImDrawList* dl, ImVec2 center, float r) {
+        const auto& st = Style();
+        const ImU32 gStart = st.slotGradientStart;
+        const ImU32 gEnd = st.slotGradientEnd;
+
+        const auto& shape = st.slotShape;
+        std::vector<ImVec2> pts;
+        if (shape.vertices.size() >= 3) {
+            pts.reserve(shape.vertices.size());
+            for (const auto& v : shape.vertices) pts.push_back({center.x + v.x * r, center.y + v.y * r});
+        } else {
+            constexpr int kSeg = 48;
+            pts.reserve(kSeg);
+            for (int i = 0; i < kSeg; ++i) {
+                const float a = 2.f * kPI * static_cast<float>(i) / kSeg;
+                pts.push_back({center.x + std::cos(a) * r, center.y + std::sin(a) * r});
+            }
+        }
+        const int n = static_cast<int>(pts.size());
+        if (n < 3) return;
+
+        ImU32 centerCol;
+        std::vector<ImU32> edgeCol(n);
+
+        if (st.slotGradientType == GradientType::Radial) {
+            const ImVec2 gc = {center.x, center.y - st.slotGradientRadialOffset * r};
+            centerCol = gStart;
+            for (int i = 0; i < n; ++i) {
+                const float dx = pts[i].x - gc.x, dy = pts[i].y - gc.y;
+                const float dist = std::sqrt(dx * dx + dy * dy);
+                const float t = std::clamp(dist / r, 0.f, 1.f);
+                edgeCol[i] = LerpColor(gStart, gEnd, t);
+            }
+
+            const ImVec2 uv = dl->_Data->TexUvWhitePixel;
+            dl->PrimReserve(n * 3, n * 3);
+            for (int i = 0; i < n; ++i) {
+                const int j = (i + 1) % n;
+                dl->PrimVtx(gc, uv, centerCol);
+                dl->PrimVtx(pts[i], uv, edgeCol[i]);
+                dl->PrimVtx(pts[j], uv, edgeCol[j]);
+            }
+        } else {
+            const float rad = st.slotGradientAngle * kPI / 180.f;
+            const float ax = std::cos(rad), ay = std::sin(rad);
+            float minP = 0.f, maxP = 0.f;
+            std::vector<float> proj(n);
+            for (int i = 0; i < n; ++i) {
+                proj[i] = (pts[i].x - center.x) * ax + (pts[i].y - center.y) * ay;
+                minP = std::min(minP, proj[i]);
+                maxP = std::max(maxP, proj[i]);
+            }
+            const float range = maxP - minP;
+            const float centerProj = 0.f;
+            const float ct = (range > 0.f) ? (centerProj - minP) / range : 0.5f;
+            centerCol = LerpColor(gStart, gEnd, std::clamp(ct, 0.f, 1.f));
+            for (int i = 0; i < n; ++i) {
+                const float t = (range > 0.f) ? (proj[i] - minP) / range : 0.5f;
+                edgeCol[i] = LerpColor(gStart, gEnd, std::clamp(t, 0.f, 1.f));
+            }
+            const ImVec2 uv = dl->_Data->TexUvWhitePixel;
+            dl->PrimReserve(n * 3, n * 3);
+            for (int i = 0; i < n; ++i) {
+                const int j = (i + 1) % n;
+                dl->PrimVtx(center, uv, centerCol);
+                dl->PrimVtx(pts[i], uv, edgeCol[i]);
+                dl->PrimVtx(pts[j], uv, edgeCol[j]);
+            }
+        }
+    }
+
+    ImU32 ComputeIconTint() {
+        const auto& st = Style();
+        float r = 1.f, g = 1.f, b = 1.f;
+        const float alpha = st.iconAlpha / 255.f;
+
+        if ((st.iconTintColor >> 24) > 0) {
+            const float ta = ((st.iconTintColor >> 24) & 0xFF) / 255.f;
+            const float tr = (st.iconTintColor & 0xFF) / 255.f;
+            const float tg = ((st.iconTintColor >> 8) & 0xFF) / 255.f;
+            const float tb = ((st.iconTintColor >> 16) & 0xFF) / 255.f;
+            r = 1.f - ta + tr * ta;
+            g = 1.f - ta + tg * ta;
+            b = 1.f - ta + tb * ta;
+        }
+
+        if (st.iconSaturation < 255) {
+            const float sat = st.iconSaturation / 255.f;
+            const float gray = r * 0.299f + g * 0.587f + b * 0.114f;
+            r = gray + (r - gray) * sat;
+            g = gray + (g - gray) * sat;
+            b = gray + (b - gray) * sat;
+        }
+
+        const float bri = st.iconBrightness / 128.f;
+        r = std::clamp(r * bri, 0.f, 1.f);
+        g = std::clamp(g * bri, 0.f, 1.f);
+        b = std::clamp(b * bri, 0.f, 1.f);
+
+        return IM_COL32(static_cast<int>(r * 255.f), static_cast<int>(g * 255.f), static_cast<int>(b * 255.f),
+                        static_cast<int>(alpha * 255.f));
+    }
+
     void PathSlotShape(ImDrawList* dl, ImVec2 center, float r) {
-        const auto& shape = StyleConfig::Get().slotShape;
+        const auto& st = Style();
+        const auto& shape = st.slotShape;
         if (shape.vertices.size() >= 3) {
             for (const auto& v : shape.vertices) dl->PathLineTo({center.x + v.x * r, center.y + v.y * r});
         } else {
-            dl->PathArcTo(center, r, 0.f, 2.f * kPI, 48);
+            switch (st.slotCornerStyle) {
+                case CornerStyle::Square:
+                    dl->PathRect({center.x - r, center.y - r}, {center.x + r, center.y + r}, 0.f);
+                    break;
+                case CornerStyle::Notched:
+                case CornerStyle::Chamfered: {
+                    const float c = std::clamp(st.slotCornerSize, 0.f, r * 0.8f);
+                    dl->PathLineTo({center.x - r + c, center.y - r});
+                    dl->PathLineTo({center.x + r - c, center.y - r});
+                    dl->PathLineTo({center.x + r, center.y - r + c});
+                    dl->PathLineTo({center.x + r, center.y + r - c});
+                    dl->PathLineTo({center.x + r - c, center.y + r});
+                    dl->PathLineTo({center.x - r + c, center.y + r});
+                    dl->PathLineTo({center.x - r, center.y + r - c});
+                    dl->PathLineTo({center.x - r, center.y - r + c});
+                    break;
+                }
+                case CornerStyle::Round:
+                default:
+                    dl->PathArcTo(center, r, 0.f, 2.f * kPI, 48);
+                    break;
+            }
         }
     }
 
     void FillSlotShape(ImDrawList* dl, ImVec2 center, float r, ImU32 col) {
-        const auto& shape = StyleConfig::Get().slotShape;
+        const auto& st = Style();
+
+        if (st.slotGradientType != GradientType::None) {
+            FillSlotShapeGradient(dl, center, r);
+            return;
+        }
+        const auto& shape = st.slotShape;
         if (shape.vertices.size() >= 3) {
             if (PolyFill::IsConvex(shape.vertices)) {
                 for (const auto& v : shape.vertices) dl->PathLineTo({center.x + v.x * r, center.y + v.y * r});
@@ -149,7 +289,8 @@ namespace IntegratedMagic::HUD::SlotDrawer {
                     dl->AddTriangleFilled({t.ax, t.ay}, {t.bx, t.by}, {t.cx, t.cy}, col);
             }
         } else {
-            dl->AddCircleFilled(center, r, col, 48);
+            PathSlotShape(dl, center, r);
+            dl->PathFillConvex(col);
         }
     }
 
@@ -189,7 +330,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         if (!img.valid()) return;
         const float half = iconSize * 0.5f;
         dl->AddImage(reinterpret_cast<ImTextureID>(img.texture), {cx - half, cy - half}, {cx + half, cy + half},
-                     {0.f, 0.f}, {1.f, 1.f}, IM_COL32(255, 255, 255, Style().iconAlpha));
+                     {0.f, 0.f}, {1.f, 1.f}, ComputeIconTint());
     }
 
     void DrawSlotVisual(ImDrawList* dl, ImVec2 center, float r, bool isActive, RE::SpellItem const* rSpell,
@@ -232,8 +373,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             if (img.valid()) {
                 const float half = iconSize * 0.6f;
                 dl->AddImage(reinterpret_cast<ImTextureID>(img.texture), {center.x - half, center.y - half},
-                             {center.x + half, center.y + half}, {0.f, 0.f}, {1.f, 1.f},
-                             IM_COL32(255, 255, 255, st.iconAlpha));
+                             {center.x + half, center.y + half}, {0.f, 0.f}, {1.f, 1.f}, ComputeIconTint());
             }
         } else {
             const float off = r * st.iconOffsetFactor;
@@ -258,6 +398,11 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             StrokeSlotShape(dl, center, r + st.slotRingWidth + 0.5f, (ring & 0x00FFFFFFu) | (70u << 24), 1.0f);
         } else {
             StrokeSlotShape(dl, center, r, st.slotRingInactive, st.slotRingWidth * 0.5f);
+        }
+
+        if ((st.slotOuterRingColor >> 24) > 0) {
+            const float outerR = r + st.slotRingWidth + 1.5f;
+            StrokeSlotShape(dl, center, outerR, st.slotOuterRingColor, st.slotOuterRingWidth);
         }
 
         if (!rSpell && !lSpell && !shoutFormID) {

@@ -558,6 +558,30 @@ namespace {
         namespace S = IntegratedMagic::Strings;
         auto& st = IntegratedMagic::StyleConfig::Get();
 
+        auto colorEdit = [&](const char* label, std::uint32_t& col) {
+            float c[4];
+            c[0] = ((col >> 0) & 0xFF) / 255.f;
+            c[1] = ((col >> 8) & 0xFF) / 255.f;
+            c[2] = ((col >> 16) & 0xFF) / 255.f;
+            c[3] = ((col >> 24) & 0xFF) / 255.f;
+            if (ImGuiMCP::ColorEdit4(
+                    label, c, ImGuiMCP::ImGuiColorEditFlags_AlphaBar | ImGuiMCP::ImGuiColorEditFlags_AlphaPreview)) {
+                col = (static_cast<std::uint32_t>(c[3] * 255.f + .5f) << 24) |
+                      (static_cast<std::uint32_t>(c[2] * 255.f + .5f) << 16) |
+                      (static_cast<std::uint32_t>(c[1] * 255.f + .5f) << 8) |
+                      static_cast<std::uint32_t>(c[0] * 255.f + .5f);
+                dirty = true;
+            }
+        };
+        auto u8Edit = [&](const char* label, std::uint8_t& val) {
+            int v = static_cast<int>(val);
+            ImGuiMCP::SetNextItemWidth(150.f);
+            if (ImGuiMCP::InputInt(label, &v, 5, 20)) {
+                val = static_cast<std::uint8_t>(std::clamp(v, 0, 255));
+                dirty = true;
+            }
+        };
+
         if (ImGuiMCP::CollapsingHeader(S::Get("HUD_Section_InGame", "In-game HUD").c_str())) {
             ImGuiMCP::SeparatorText(S::Get("HUD_Section_Layout", "Layout").c_str());
             ImGuiMCP::Spacing();
@@ -727,6 +751,57 @@ namespace {
             }
 
             ImGuiMCP::Spacing();
+            colorEdit(S::Get("HUD_Icon_TintColor", "Tint Color##icontintcolor").c_str(), st.iconTintColor);
+
+            ImGuiMCP::Spacing();
+            {
+                int sat = static_cast<int>(st.iconSaturation);
+                ImGuiMCP::SetNextItemWidth(150.f);
+                if (ImGuiMCP::InputInt(S::Get("HUD_Icon_Saturation", "Saturation##iconsat").c_str(), &sat, 5, 20)) {
+                    st.iconSaturation = static_cast<std::uint8_t>(std::clamp(sat, 0, 255));
+                    dirty = true;
+                }
+                ImGuiMCP::SameLine();
+                int bri = static_cast<int>(st.iconBrightness);
+                ImGuiMCP::SetNextItemWidth(150.f);
+                if (ImGuiMCP::InputInt(S::Get("HUD_Icon_Brightness", "Brightness##iconbri").c_str(), &bri, 5, 20)) {
+                    st.iconBrightness = static_cast<std::uint8_t>(std::clamp(bri, 0, 255));
+                    dirty = true;
+                }
+            }
+
+            ImGuiMCP::Spacing();
+            ImGuiMCP::SeparatorText(S::Get("HUD_Section_Text", "Text").c_str());
+            ImGuiMCP::Spacing();
+
+            {
+                bool tsEnabled = st.textShadowEnabled;
+                if (ImGuiMCP::Checkbox(S::Get("HUD_TextShadow_Enabled", "Text shadow##textshadowenabled").c_str(),
+                                       &tsEnabled)) {
+                    st.textShadowEnabled = tsEnabled;
+                    dirty = true;
+                }
+            }
+            if (st.textShadowEnabled) {
+                colorEdit(S::Get("HUD_TextShadow_Color", "Shadow Color##textshadowcol").c_str(), st.textShadowColor);
+                ImGuiMCP::SetNextItemWidth(100.f);
+                float tsx = st.textShadowOffsetX;
+                if (ImGuiMCP::InputFloat(S::Get("HUD_TextShadow_OffsetX", "Offset X##textshadowox").c_str(), &tsx, 0.5f,
+                                         1.f, "%.1f")) {
+                    st.textShadowOffsetX = tsx;
+                    dirty = true;
+                }
+                ImGuiMCP::SameLine();
+                ImGuiMCP::SetNextItemWidth(100.f);
+                float tsy = st.textShadowOffsetY;
+                if (ImGuiMCP::InputFloat(S::Get("HUD_TextShadow_OffsetY", "Offset Y##textshadowoy").c_str(), &tsy, 0.5f,
+                                         1.f, "%.1f")) {
+                    st.textShadowOffsetY = tsy;
+                    dirty = true;
+                }
+            }
+
+            ImGuiMCP::Spacing();
         }
 
         ImGuiMCP::Spacing();
@@ -808,6 +883,23 @@ namespace {
                     dirty = true;
                 }
             }
+
+            ImGuiMCP::Spacing();
+            ImGuiMCP::SeparatorText(S::Get("HUD_Section_Overlay", "Overlay").c_str());
+            ImGuiMCP::Spacing();
+
+            colorEdit(S::Get("HUD_Overlay_Color", "Color##overlaycolor").c_str(), st.overlayColor);
+            {
+                float vs = st.vignetteStrength;
+                ImGuiMCP::SetNextItemWidth(200.f);
+                if (ImGuiMCP::SliderFloat(S::Get("HUD_Vignette_Strength", "Vignette##vignettestrength").c_str(), &vs,
+                                          0.f, 1.f, "%.2f")) {
+                    st.vignetteStrength = vs;
+                    dirty = true;
+                }
+            }
+
+            ImGuiMCP::Spacing();
         }
 
         ImGuiMCP::Spacing();
@@ -815,6 +907,34 @@ namespace {
         if (ImGuiMCP::CollapsingHeader(S::Get("HUD_Section_SlotShape", "Slot Shape").c_str())) {
             ImGuiMCP::Spacing();
             DrawShapeEditor(dirty);
+
+            ImGuiMCP::Spacing();
+            ImGuiMCP::SeparatorText(S::Get("HUD_Section_Corner", "Corner Style").c_str());
+            ImGuiMCP::Spacing();
+
+            {
+                const std::string cornerNames =
+                    S::Get("HUD_Corner_Round", "Round") + '\0' + S::Get("HUD_Corner_Square", "Square") + '\0' +
+                    S::Get("HUD_Corner_Notched", "Notched") + '\0' + S::Get("HUD_Corner_Chamfered", "Chamfered") + '\0';
+                int csi = static_cast<int>(st.slotCornerStyle);
+                ImGuiMCP::SetNextItemWidth(160.f);
+                if (ImGuiMCP::Combo(S::Get("HUD_CornerStyle_Label", "Style##cornerstyle").c_str(), &csi,
+                                    cornerNames.c_str())) {
+                    st.slotCornerStyle = static_cast<IntegratedMagic::CornerStyle>(csi);
+                    dirty = true;
+                }
+                if (st.slotCornerStyle != IntegratedMagic::CornerStyle::Square) {
+                    ImGuiMCP::SameLine();
+                    float cs = st.slotCornerSize;
+                    ImGuiMCP::SetNextItemWidth(120.f);
+                    if (ImGuiMCP::InputFloat(S::Get("HUD_CornerSize_Label", "Size##cornersize").c_str(), &cs, 1.f, 5.f,
+                                             "%.1f")) {
+                        st.slotCornerSize = std::clamp(cs, 0.f, 32.f);
+                        dirty = true;
+                    }
+                }
+            }
+
             ImGuiMCP::Spacing();
         }
 
@@ -991,39 +1111,70 @@ namespace {
         if (ImGuiMCP::CollapsingHeader(S::Get("HUD_Section_Colors", "Colors").c_str())) {
             ImGuiMCP::Spacing();
 
-            auto colorEdit = [&](const char* label, std::uint32_t& col) {
-                float c[4];
-                c[0] = ((col >> 0) & 0xFF) / 255.f;
-                c[1] = ((col >> 8) & 0xFF) / 255.f;
-                c[2] = ((col >> 16) & 0xFF) / 255.f;
-                c[3] = ((col >> 24) & 0xFF) / 255.f;
-                if (ImGuiMCP::ColorEdit4(
-                        label, c,
-                        ImGuiMCP::ImGuiColorEditFlags_AlphaBar | ImGuiMCP::ImGuiColorEditFlags_AlphaPreview)) {
-                    col = (static_cast<std::uint32_t>(c[3] * 255.f + .5f) << 24) |
-                          (static_cast<std::uint32_t>(c[2] * 255.f + .5f) << 16) |
-                          (static_cast<std::uint32_t>(c[1] * 255.f + .5f) << 8) |
-                          static_cast<std::uint32_t>(c[0] * 255.f + .5f);
-                    dirty = true;
-                }
-            };
-            auto u8Edit = [&](const char* label, std::uint8_t& val) {
-                int v = static_cast<int>(val);
-                ImGuiMCP::SetNextItemWidth(150.f);
-                if (ImGuiMCP::InputInt(label, &v, 5, 20)) {
-                    val = static_cast<std::uint8_t>(std::clamp(v, 0, 255));
-                    dirty = true;
-                }
-            };
-
             ImGuiMCP::SeparatorText(S::Get("HUD_Colors_Slots", "Slots").c_str());
             colorEdit(S::Get("HUD_Color_BgActive", "Bg Active##slotbgactive").c_str(), st.slotBgActive);
             colorEdit(S::Get("HUD_Color_BgInactive", "Bg Inactive##slotbginactive").c_str(), st.slotBgInactive);
             colorEdit(S::Get("HUD_Color_RingInactive", "Ring Inactive##slotringinactive").c_str(), st.slotRingInactive);
             u8Edit(S::Get("HUD_Color_RingActiveAlpha", "Ring Active Alpha##slotringactivealpha").c_str(),
                    st.slotRingActiveAlpha);
+            {
+                float rw = st.slotRingWidth;
+                ImGuiMCP::SetNextItemWidth(150.f);
+                if (ImGuiMCP::InputFloat(S::Get("HUD_Color_RingWidth", "Ring Width##slotrw").c_str(), &rw, 0.5f, 1.f,
+                                         "%.1f")) {
+                    st.slotRingWidth = std::clamp(rw, 0.f, 10.f);
+                    dirty = true;
+                }
+            }
+            colorEdit(S::Get("HUD_Color_OuterRing", "Outer Ring##slotouterring").c_str(), st.slotOuterRingColor);
+            {
+                float orw = st.slotOuterRingWidth;
+                ImGuiMCP::SetNextItemWidth(150.f);
+                if (ImGuiMCP::InputFloat(S::Get("HUD_Color_OuterRingWidth", "Outer Ring Width##slotouterrw").c_str(),
+                                         &orw, 0.5f, 1.f, "%.1f")) {
+                    st.slotOuterRingWidth = std::clamp(orw, 0.f, 10.f);
+                    dirty = true;
+                }
+            }
             u8Edit(S::Get("HUD_Color_IconAlpha", "Icon Alpha##iconalpha").c_str(), st.iconAlpha);
             colorEdit(S::Get("HUD_Color_EmptySlot", "Empty Slot##emptyslotcolor").c_str(), st.emptySlotColor);
+
+            ImGuiMCP::Spacing();
+            ImGuiMCP::SeparatorText(S::Get("HUD_Colors_Gradient", "Background Gradient").c_str());
+            ImGuiMCP::Spacing();
+
+            {
+                const std::string gradNames = S::Get("HUD_Grad_None", "None") + '\0' +
+                                              S::Get("HUD_Grad_Radial", "Radial") + '\0' +
+                                              S::Get("HUD_Grad_Linear", "Linear") + '\0';
+                int gti = static_cast<int>(st.slotGradientType);
+                ImGuiMCP::SetNextItemWidth(140.f);
+                if (ImGuiMCP::Combo(S::Get("HUD_Grad_Type", "Type##gradtype").c_str(), &gti, gradNames.c_str())) {
+                    st.slotGradientType = static_cast<IntegratedMagic::GradientType>(gti);
+                    dirty = true;
+                }
+            }
+            if (st.slotGradientType != IntegratedMagic::GradientType::None) {
+                colorEdit(S::Get("HUD_Grad_Start", "Start Color##gradstart").c_str(), st.slotGradientStart);
+                colorEdit(S::Get("HUD_Grad_End", "End Color##gradend").c_str(), st.slotGradientEnd);
+                if (st.slotGradientType == IntegratedMagic::GradientType::Linear) {
+                    float ga = st.slotGradientAngle;
+                    ImGuiMCP::SetNextItemWidth(160.f);
+                    if (ImGuiMCP::SliderFloat(S::Get("HUD_Grad_Angle", "Angle##gradangle").c_str(), &ga, 0.f, 360.f,
+                                              "%.0f deg")) {
+                        st.slotGradientAngle = ga;
+                        dirty = true;
+                    }
+                } else {
+                    float gro = st.slotGradientRadialOffset;
+                    ImGuiMCP::SetNextItemWidth(160.f);
+                    if (ImGuiMCP::SliderFloat(S::Get("HUD_Grad_RadialOffset", "Center Offset##gradradial").c_str(),
+                                              &gro, -1.f, 1.f, "%.2f")) {
+                        st.slotGradientRadialOffset = gro;
+                        dirty = true;
+                    }
+                }
+            }
 
             ImGuiMCP::Spacing();
             ImGuiMCP::SeparatorText(S::Get("HUD_Colors_RingCenter", "Ring Center").c_str());

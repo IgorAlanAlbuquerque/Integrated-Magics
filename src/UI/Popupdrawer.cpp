@@ -81,8 +81,7 @@ namespace IntegratedMagic::HUD::PopupDrawer {
             const auto& shape = StyleConfig::Get().slotShape;
             if (shape.vertices.size() >= 3) {
                 if (PolyFill::IsConvex(shape.vertices)) {
-                    for (const auto& v : shape.vertices)
-                        dl->PathLineTo({center.x + v.x * r, center.y + v.y * r});
+                    for (const auto& v : shape.vertices) dl->PathLineTo({center.x + v.x * r, center.y + v.y * r});
                     dl->PathFillConvex(col);
                 } else {
                     for (const auto& t : PolyFill::Triangulate(shape.vertices, center.x, center.y, r))
@@ -157,8 +156,27 @@ namespace IntegratedMagic::HUD::PopupDrawer {
     }
 
     void DrawOverlayAndCursor(ImVec2 displaySize, ImVec2 cursorPos) {
+        const auto& st = Style();
         ImDrawList* bg = ImGui::GetBackgroundDrawList();
-        bg->AddRectFilled({0.f, 0.f}, {displaySize.x, displaySize.y}, IM_COL32(0, 0, 0, Style().overlayAlpha), 0.f, 0);
+
+        const ImU32 baseOverlay = (static_cast<ImU32>(st.overlayAlpha) << 24) | (st.overlayColor & 0x00FFFFFFu);
+        bg->AddRectFilled({0.f, 0.f}, {displaySize.x, displaySize.y}, baseOverlay, 0.f, 0);
+
+        if (st.vignetteStrength > 0.f) {
+            const ImU32 vigFull = IM_COL32(0, 0, 0, static_cast<int>(st.vignetteStrength * 220.f));
+            const ImU32 vigZero = IM_COL32(0, 0, 0, 0);
+            const float vs = std::min(displaySize.x, displaySize.y) * 0.35f;
+
+            bg->AddRectFilledMultiColor({0.f, 0.f}, {vs, displaySize.y}, vigFull, vigZero, vigZero, vigFull);
+
+            bg->AddRectFilledMultiColor({displaySize.x - vs, 0.f}, {displaySize.x, displaySize.y}, vigZero, vigFull,
+                                        vigFull, vigZero);
+
+            bg->AddRectFilledMultiColor({0.f, 0.f}, {displaySize.x, vs}, vigFull, vigFull, vigZero, vigZero);
+
+            bg->AddRectFilledMultiColor({0.f, displaySize.y - vs}, {displaySize.x, displaySize.y}, vigZero, vigZero,
+                                        vigFull, vigFull);
+        }
 
         ImDrawList* fg = ImGui::GetForegroundDrawList();
         const ImVec2 pts[3] = {{cursorPos.x, cursorPos.y},

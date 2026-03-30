@@ -49,6 +49,19 @@ namespace IntegratedMagic {
         HideOnPress = 2,
     };
 
+    enum class GradientType : std::uint8_t {
+        None = 0,
+        Radial = 1,
+        Linear = 2,
+    };
+
+    enum class CornerStyle : std::uint8_t {
+        Round = 0,
+        Square = 1,
+        Notched = 2,
+        Chamfered = 3,
+    };
+
     struct FontConfig {
         std::string path = "";
         float size = 28.f;
@@ -152,6 +165,30 @@ namespace IntegratedMagic {
         std::uint32_t defaultFill = 0xA0646464u;
         std::uint32_t defaultGlow = 0x00000000u;
         std::uint32_t emptyFill = 0x78282828u;
+
+        GradientType slotGradientType = GradientType::None;
+        std::uint32_t slotGradientStart = 0x00000000u;
+        std::uint32_t slotGradientEnd = 0x00000000u;
+        float slotGradientAngle = 0.f;
+        float slotGradientRadialOffset = 0.f;
+
+        std::uint32_t slotOuterRingColor = 0x00000000u;
+        float slotOuterRingWidth = 1.f;
+
+        CornerStyle slotCornerStyle = CornerStyle::Round;
+        float slotCornerSize = 8.f;
+
+        std::uint32_t iconTintColor = 0x00000000u;
+        std::uint8_t iconSaturation = 255;
+        std::uint8_t iconBrightness = 128;
+
+        bool textShadowEnabled = false;
+        std::uint32_t textShadowColor = 0xCC000000u;
+        float textShadowOffsetX = 1.f;
+        float textShadowOffsetY = 1.f;
+
+        std::uint32_t overlayColor = 0xFF000000u;
+        float vignetteStrength = 0.f;
 
         void Load();
         void Save();
