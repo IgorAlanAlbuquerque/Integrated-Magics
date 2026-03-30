@@ -221,7 +221,9 @@ namespace IntegratedMagic::Hooks {
                 }
 
                 g_renderInitialized.store(true);
+#ifdef DEBUG
                 spdlog::info("[Hooks] D3DInitHook: ImGui HUD context initialized");
+#endif
             }
 
             static void Install() {

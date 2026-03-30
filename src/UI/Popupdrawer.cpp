@@ -80,8 +80,14 @@ namespace IntegratedMagic::HUD::PopupDrawer {
         void FillSlotShapeHighlight(ImDrawList* dl, ImVec2 center, float r, ImU32 col) {
             const auto& shape = StyleConfig::Get().slotShape;
             if (shape.vertices.size() >= 3) {
-                for (const auto& t : PolyFill::Triangulate(shape.vertices, center.x, center.y, r))
-                    dl->AddTriangleFilled({t.ax, t.ay}, {t.bx, t.by}, {t.cx, t.cy}, col);
+                if (PolyFill::IsConvex(shape.vertices)) {
+                    for (const auto& v : shape.vertices)
+                        dl->PathLineTo({center.x + v.x * r, center.y + v.y * r});
+                    dl->PathFillConvex(col);
+                } else {
+                    for (const auto& t : PolyFill::Triangulate(shape.vertices, center.x, center.y, r))
+                        dl->AddTriangleFilled({t.ax, t.ay}, {t.bx, t.by}, {t.cx, t.cy}, col);
+                }
             } else {
                 dl->AddCircleFilled(center, r, col, 48);
             }

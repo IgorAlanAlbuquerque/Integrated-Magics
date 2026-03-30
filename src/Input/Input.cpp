@@ -63,8 +63,21 @@ namespace {
         GetWindowThreadProcessId(fg, &fgPid);
         const bool focused = (fgPid == GetCurrentProcessId());
 
+        const bool justLostFocus = (s_prevFocused && !focused);
         const bool justRegainedFocus = (!s_prevFocused && focused);
         s_prevFocused = focused;
+
+        if (justLostFocus) {
+            for (const auto& [idx, vk] : kMouseVKMap) {
+                const auto i = static_cast<std::size_t>(idx);
+                if (g_kbDown[i].load(std::memory_order_relaxed)) {
+#ifdef DEBUG
+                    spdlog::info("[Input] ClearStuckKeysOnFocusRegain: focus lost, clearing mouse button idx={}", idx);
+#endif
+                    g_kbDown[i].store(false, std::memory_order_relaxed);
+                }
+            }
+        }
 
         if (!justRegainedFocus) return;
 
@@ -243,7 +256,9 @@ bool Input::IsCaptureModeActive() { return g_captureModeActive.load(std::memory_
 void Input::InjectCapturedScancode(int scancode) {
     auto& cap = GetCaptureState();
     if (!cap.captureRequested.load(std::memory_order_relaxed)) return;
+#ifdef DEBUG
     spdlog::info("[Input] InjectCapturedScancode: scancode={}", scancode);
+#endif
     cap.capturedEncoded.store(scancode, std::memory_order_relaxed);
     cap.captureRequested.store(false, std::memory_order_relaxed);
     g_captureModeActive.store(false, std::memory_order_relaxed);
@@ -253,7 +268,9 @@ void Input::InjectCapturedGamepad(int buttonIndex) {
     auto& cap = GetCaptureState();
     if (!cap.captureRequested.load(std::memory_order_relaxed)) return;
     const int encoded = -(buttonIndex + 2);
+#ifdef DEBUG
     spdlog::info("[Input] InjectCapturedGamepad: index={} encoded={}", buttonIndex, encoded);
+#endif
     cap.capturedEncoded.store(encoded, std::memory_order_relaxed);
     cap.captureRequested.store(false, std::memory_order_relaxed);
     g_captureModeActive.store(false, std::memory_order_relaxed);

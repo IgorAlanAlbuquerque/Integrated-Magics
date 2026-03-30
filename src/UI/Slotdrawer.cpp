@@ -141,8 +141,13 @@ namespace IntegratedMagic::HUD::SlotDrawer {
     void FillSlotShape(ImDrawList* dl, ImVec2 center, float r, ImU32 col) {
         const auto& shape = StyleConfig::Get().slotShape;
         if (shape.vertices.size() >= 3) {
-            for (const auto& t : PolyFill::Triangulate(shape.vertices, center.x, center.y, r))
-                dl->AddTriangleFilled({t.ax, t.ay}, {t.bx, t.by}, {t.cx, t.cy}, col);
+            if (PolyFill::IsConvex(shape.vertices)) {
+                for (const auto& v : shape.vertices) dl->PathLineTo({center.x + v.x * r, center.y + v.y * r});
+                dl->PathFillConvex(col);
+            } else {
+                for (const auto& t : PolyFill::Triangulate(shape.vertices, center.x, center.y, r))
+                    dl->AddTriangleFilled({t.ax, t.ay}, {t.bx, t.by}, {t.cx, t.cy}, col);
+            }
         } else {
             dl->AddCircleFilled(center, r, col, 48);
         }
@@ -504,7 +509,15 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         const LayoutVec2 animHalf = [&] {
             LayoutVec2 h = SlotLayout::BoundingHalf(st.hudLayout, n, st.slotRadius * maxScale, st.ringRadius,
                                                     st.slotSpacing, st.gridColumns);
-            return LayoutVec2{h.x + kGlowPad, h.y + kGlowPad};
+            float extraY = kGlowPad;
+            if (st.showSpellNamesInHud) {
+                const bool iconsVisible = st.buttonLabelVisibility == ButtonLabelVisibility::Always ||
+                                          (st.buttonLabelVisibility == ButtonLabelVisibility::OnModifier && modHeld);
+                const float iconReserve = iconsVisible ? (st.buttonLabelIconSize + st.buttonLabelMargin) : 0.f;
+                const float textReserve = ImGui::GetTextLineHeight() * 3.f + 4.f + iconReserve;
+                extraY += textReserve;
+            }
+            return LayoutVec2{h.x + kGlowPad, h.y + extraY};
         }();
 
         const ImVec2 hudOrigin = ComputeHudCenter(io, {animHalf.x, animHalf.y});
@@ -545,10 +558,10 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             const bool is2H = !shID && !rID && lSp && SpellClassify::IsTwoHandedSpell(lSp);
             DrawSlotVisual(dl, center, slotR, active, is2H ? nullptr : rSp, is2H ? nullptr : lSp, is2H ? lID : shID);
 
-            if (st.showSpellNamesInHud) {
-                const float iconReserve = (st.buttonLabelVisibility != ButtonLabelVisibility::Never)
-                                              ? (st.buttonLabelIconSize + st.buttonLabelMargin)
-                                              : 0.f;
+            if (st.showSpellNamesInHud && !MagicState::Get().IsActive()) {
+                const bool iconsVisible = st.buttonLabelVisibility == ButtonLabelVisibility::Always ||
+                                          (st.buttonLabelVisibility == ButtonLabelVisibility::OnModifier && modHeld);
+                const float iconReserve = iconsVisible ? (st.buttonLabelIconSize + st.buttonLabelMargin) : 0.f;
                 const float slotTop = center.y - slotR - iconReserve;
 
                 if (shID || is2H) {
@@ -556,9 +569,26 @@ namespace IntegratedMagic::HUD::SlotDrawer {
                     auto* f = RE::TESForm::LookupByID(dispID);
                     const char* name = f ? f->GetName() : "";
                     DrawWrappedLabelAbove(name, center.x - slotR, slotR * 2.f, slotTop, 4.f, true);
-                } else {
-                    if (lSp) DrawWrappedLabelAbove(lSp->GetName(), center.x - slotR, slotR, slotTop);
-                    if (rSp) DrawWrappedLabelAbove(rSp->GetName(), center.x, slotR, slotTop);
+                } else if (rSp || lSp) {
+                    const bool sameSpell = rSp && lSp && (rSp->GetFormID() == lSp->GetFormID());
+                    const bool onlyOne = (rSp != nullptr) != (lSp != nullptr);
+
+                    if (sameSpell || onlyOne) {
+                        const RE::SpellItem* sp = rSp ? rSp : lSp;
+                        DrawWrappedLabelAbove(sp->GetName(), center.x - slotR, slotR * 2.f, slotTop, 4.f, true);
+                    } else {
+                        constexpr float kPipeGap = 6.f;
+                        const float pipeW = ImGui::CalcTextSize("|").x;
+                        const float halfPipe = pipeW * 0.5f;
+
+                        DrawWrappedLabelAbove(lSp->GetName(), center.x - slotR, slotR - halfPipe - kPipeGap, slotTop);
+
+                        const float pipeH = ImGui::GetTextLineHeight();
+                        ImGui::SetCursorScreenPos({center.x - halfPipe, slotTop - 4.f - pipeH});
+
+                        DrawWrappedLabelAbove(rSp->GetName(), center.x + halfPipe + kPipeGap,
+                                              slotR - halfPipe - kPipeGap, slotTop);
+                    }
                 }
             }
         };

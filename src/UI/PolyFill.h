@@ -11,9 +11,29 @@ namespace IntegratedMagic::PolyFill {
         float cx, cy;
     };
 
+    inline bool IsConvex(const std::vector<SlotShapeVertex>& verts) {
+        const int n = static_cast<int>(verts.size());
+        if (n < 3) return false;
+        int sign = 0;
+        for (int i = 0; i < n; ++i) {
+            const auto& a = verts[i];
+            const auto& b = verts[(i + 1) % n];
+            const auto& c = verts[(i + 2) % n];
+            const float cross = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+            if (cross > 0.f) {
+                if (sign < 0) return false;
+                sign = 1;
+            } else if (cross < 0.f) {
+                if (sign > 0) return false;
+                sign = -1;
+            }
+        }
+        return true;
+    }
+
     inline std::vector<Triangle> Triangulate(const std::vector<SlotShapeVertex>& verts, float centerX, float centerY,
                                              float r) {
-        const auto n = static_cast<int>(verts.size());
+        const int n = static_cast<int>(verts.size());
         if (n < 3) return {};
 
         float cx = 0.f, cy = 0.f;
@@ -33,4 +53,5 @@ namespace IntegratedMagic::PolyFill {
         }
         return tris;
     }
+
 }
