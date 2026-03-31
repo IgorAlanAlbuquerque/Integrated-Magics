@@ -199,6 +199,7 @@ namespace IntegratedMagic {
 
         std::uint32_t overlayColor = 0xFF000000u;
         float vignetteStrength = 0.f;
+        std::uint32_t vignetteColor = 0xFF000000u;
 
         GlowStyle glowStyle = GlowStyle::Ring;
         std::uint8_t glowLayers = 5;

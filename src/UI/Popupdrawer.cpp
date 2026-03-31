@@ -79,7 +79,7 @@ namespace IntegratedMagic::HUD::PopupDrawer {
 
         void FillSlotShapeHighlight(ImDrawList* dl, ImVec2 center, float r, ImU32 col) {
             const auto& shape = StyleConfig::Get().slotShape;
-            if (shape.vertices.size() >= 3) {
+            if (shape.useCustomShape && shape.vertices.size() >= 3) {
                 if (PolyFill::IsConvex(shape.vertices)) {
                     for (const auto& v : shape.vertices) dl->PathLineTo({center.x + v.x * r, center.y + v.y * r});
                     dl->PathFillConvex(col);
@@ -94,7 +94,7 @@ namespace IntegratedMagic::HUD::PopupDrawer {
 
         void FillSlotHalfHighlight(ImDrawList* dl, ImVec2 center, float r, bool rightHalf, ImU32 col) {
             const auto& shape = StyleConfig::Get().slotShape;
-            if (shape.vertices.size() >= 3) {
+            if (shape.useCustomShape && shape.vertices.size() >= 3) {
                 const float sign = rightHalf ? 1.f : -1.f;
                 std::vector<SlotShapeVertex> clipped;
                 const auto& verts = shape.vertices;
@@ -163,8 +163,9 @@ namespace IntegratedMagic::HUD::PopupDrawer {
         bg->AddRectFilled({0.f, 0.f}, {displaySize.x, displaySize.y}, baseOverlay, 0.f, 0);
 
         if (st.vignetteStrength > 0.f) {
-            const ImU32 vigFull = IM_COL32(0, 0, 0, static_cast<int>(st.vignetteStrength * 220.f));
-            const ImU32 vigZero = IM_COL32(0, 0, 0, 0);
+            const ImU32 vigRGB = st.vignetteColor & 0x00FFFFFFu;
+            const ImU32 vigFull = vigRGB | (static_cast<ImU32>(static_cast<int>(st.vignetteStrength * 220.f)) << 24);
+            const ImU32 vigZero = vigRGB | 0x00000000u;
             const float vs = std::min(displaySize.x, displaySize.y) * 0.35f;
 
             bg->AddRectFilledMultiColor({0.f, 0.f}, {vs, displaySize.y}, vigFull, vigZero, vigZero, vigFull);

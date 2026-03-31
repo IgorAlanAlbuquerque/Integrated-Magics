@@ -154,7 +154,14 @@ namespace IntegratedMagic {
             sscanf_s(val.c_str(), "%f,%f", &x, &y);
             verts.push_back({x, y});
         }
-        if (verts.empty()) shape.SetCircle();
+        {
+            const char* v = ini.GetValue("SlotShape", "UseCustomShape", nullptr);
+            if (v) shape.useCustomShape = (_stricmp(v, "true") == 0 || std::strcmp(v, "1") == 0);
+        }
+        if (verts.empty()) {
+            shape.SetCircle();
+            shape.useCustomShape = false;
+        }
 
         slotRadius = GetFloat(ini, "HUD", "SlotRadius", slotRadius);
         ringRadius = GetFloat(ini, "HUD", "RingRadius", ringRadius);
@@ -168,6 +175,7 @@ namespace IntegratedMagic {
         iconSizeFactor = GetFloat(ini, "Icons", "SizeFactor", iconSizeFactor);
         iconOffsetFactor = GetFloat(ini, "Icons", "OffsetFactor", iconOffsetFactor);
         overlayAlpha = GetU8(ini, "Popup", "OverlayAlpha", overlayAlpha);
+        vignetteColor = GetColor(ini, "Popup", "VignetteColor", vignetteColor);
 
         slotActiveScale = GetFloat(ini, "HUD", "SlotActiveScale", slotActiveScale);
         slotModifierScale = GetFloat(ini, "HUD", "SlotModifierScale", slotModifierScale);
@@ -359,6 +367,7 @@ namespace IntegratedMagic {
             ini.SetValue("SlotShape", key.c_str(), val.c_str());
         }
         ini.SetLongValue("SlotShape", "Count", static_cast<long>(verts.size()));
+        ini.SetBoolValue("SlotShape", "UseCustomShape", slotShape.useCustomShape);
 
         ini.SetValue("Font", "Path", font.path.c_str());
         setFloat("Font", "Size", font.size);
@@ -412,6 +421,7 @@ namespace IntegratedMagic {
         ini.SetValue("Popup", "Layout", kLayoutNames[static_cast<int>(popupLayout)]);
         setFloat("Popup", "OffsetX", popupOffsetX);
         setFloat("Popup", "OffsetY", popupOffsetY);
+        setColor("Popup", "VignetteColor", vignetteColor);
 
         setFloat("Icons", "SizeFactor", iconSizeFactor);
         setFloat("Icons", "OffsetFactor", iconOffsetFactor);

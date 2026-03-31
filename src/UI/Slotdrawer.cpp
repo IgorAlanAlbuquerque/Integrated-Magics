@@ -249,7 +249,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
     void PathSlotShape(ImDrawList* dl, ImVec2 center, float r) {
         const auto& st = Style();
         const auto& shape = st.slotShape;
-        if (shape.vertices.size() >= 3) {
+        if (shape.useCustomShape && shape.vertices.size() >= 3) {
             for (const auto& v : shape.vertices) dl->PathLineTo({center.x + v.x * r, center.y + v.y * r});
         } else {
             switch (st.slotCornerStyle) {
@@ -286,7 +286,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             return;
         }
         const auto& shape = st.slotShape;
-        if (shape.vertices.size() >= 3) {
+        if (shape.useCustomShape && shape.vertices.size() >= 3) {
             if (PolyFill::IsConvex(shape.vertices)) {
                 for (const auto& v : shape.vertices) dl->PathLineTo({center.x + v.x * r, center.y + v.y * r});
                 dl->PathFillConvex(col);

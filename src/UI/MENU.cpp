@@ -492,6 +492,7 @@ namespace {
             if (s_dragging == i && ImGuiMCP::IsMouseDown(0)) {
                 verts[i].x = std::clamp((mousePos.x - center.x) / kRadius, -1.f, 1.f);
                 verts[i].y = std::clamp((mousePos.y - center.y) / kRadius, -1.f, 1.f);
+                shape.useCustomShape = true;
                 dirty = true;
             }
 
@@ -515,12 +516,14 @@ namespace {
             } else {
                 verts.push_back({0.f, -1.f});
             }
+            shape.useCustomShape = true;
             dirty = true;
         }
         ImGuiMCP::SameLine();
         ImGuiMCP::BeginDisabled(verts.size() <= 3);
         if (ImGuiMCP::Button(S::Get("Shape_RemoveVertex", "- Vertex").c_str())) {
             verts.pop_back();
+            shape.useCustomShape = true;
             dirty = true;
         }
         ImGuiMCP::EndDisabled();
@@ -531,26 +534,31 @@ namespace {
 
         if (ImGuiMCP::Button(S::Get("Shape_Circle", "Circle").c_str())) {
             shape.SetCircle(16);
+            shape.useCustomShape = true;
             dirty = true;
         }
         ImGuiMCP::SameLine();
         if (ImGuiMCP::Button(S::Get("Shape_Square", "Square").c_str())) {
             shape.SetSquare();
+            shape.useCustomShape = true;
             dirty = true;
         }
         ImGuiMCP::SameLine();
         if (ImGuiMCP::Button(S::Get("Shape_Diamond", "Diamond").c_str())) {
             shape.SetDiamond();
+            shape.useCustomShape = true;
             dirty = true;
         }
         ImGuiMCP::SameLine();
         if (ImGuiMCP::Button(S::Get("Shape_Star5", "Star (5)").c_str())) {
             shape.SetStar(5, 0.45f);
+            shape.useCustomShape = true;
             dirty = true;
         }
         ImGuiMCP::SameLine();
         if (ImGuiMCP::Button(S::Get("Shape_Star6", "Star (6)").c_str())) {
             shape.SetStar(6, 0.45f);
+            shape.useCustomShape = true;
             dirty = true;
         }
     }
@@ -797,14 +805,14 @@ namespace {
             }
             if (st.textShadowEnabled) {
                 colorEdit(S::Get("HUD_TextShadow_Color", "Shadow Color##textshadowcol").c_str(), st.textShadowColor);
-                ImGuiMCP::SetNextItemWidth(100.f);
+                ImGuiMCP::SetNextItemWidth(150.f);
                 if (float tsx = st.textShadowOffsetX; ImGuiMCP::InputFloat(
                         S::Get("HUD_TextShadow_OffsetX", "Offset X##textshadowox").c_str(), &tsx, 0.5f, 1.f, "%.1f")) {
                     st.textShadowOffsetX = tsx;
                     dirty = true;
                 }
                 ImGuiMCP::SameLine();
-                ImGuiMCP::SetNextItemWidth(100.f);
+                ImGuiMCP::SetNextItemWidth(150.f);
                 float tsy = st.textShadowOffsetY;
                 if (ImGuiMCP::InputFloat(S::Get("HUD_TextShadow_OffsetY", "Offset Y##textshadowoy").c_str(), &tsy, 0.5f,
                                          1.f, "%.1f")) {
@@ -904,6 +912,9 @@ namespace {
                     dirty = true;
                 }
             }
+            if (st.vignetteStrength > 0.f) {
+                colorEdit(S::Get("HUD_Vignette_Color", "Vignette Color##vignettecolor").c_str(), st.vignetteColor);
+            }
 
             ImGuiMCP::Spacing();
         }
@@ -912,33 +923,54 @@ namespace {
 
         if (ImGuiMCP::CollapsingHeader(S::Get("HUD_Section_SlotShape", "Slot Shape").c_str())) {
             ImGuiMCP::Spacing();
-            DrawShapeEditor(dirty);
 
-            ImGuiMCP::Spacing();
-            ImGuiMCP::SeparatorText(S::Get("HUD_Section_Corner", "Corner Style").c_str());
-            ImGuiMCP::Spacing();
+            auto& shape = st.slotShape;
 
-            {
-                const std::string cornerNames =
-                    S::Get("HUD_Corner_Round", "Round") + '\0' + S::Get("HUD_Corner_Square", "Square") + '\0' +
-                    S::Get("HUD_Corner_Notched", "Notched") + '\0' + S::Get("HUD_Corner_Chamfered", "Chamfered") + '\0';
-                auto csi = static_cast<int>(std::to_underlying(st.slotCornerStyle));
-                ImGuiMCP::SetNextItemWidth(160.f);
-                if (ImGuiMCP::Combo(S::Get("HUD_CornerStyle_Label", "Style##cornerstyle").c_str(), &csi,
-                                    cornerNames.c_str())) {
-                    st.slotCornerStyle = static_cast<IntegratedMagic::CornerStyle>(csi);
-                    dirty = true;
-                }
-                if (st.slotCornerStyle != IntegratedMagic::CornerStyle::Square) {
-                    ImGuiMCP::SameLine();
-                    float cs = st.slotCornerSize;
-                    ImGuiMCP::SetNextItemWidth(150.f);
-                    if (ImGuiMCP::InputFloat(S::Get("HUD_CornerSize_Label", "Size##cornersize").c_str(), &cs, 1.f, 5.f,
-                                             "%.1f")) {
-                        st.slotCornerSize = std::clamp(cs, 0.f, 32.f);
+            if (!shape.useCustomShape) {
+                ImGuiMCP::SeparatorText(S::Get("HUD_Section_Corner", "Corner Style").c_str());
+                ImGuiMCP::Spacing();
+
+                {
+                    const std::string cornerNames = S::Get("HUD_Corner_Round", "Round") + '\0' +
+                                                    S::Get("HUD_Corner_Square", "Square") + '\0' +
+                                                    S::Get("HUD_Corner_Notched", "Notched") + '\0' +
+                                                    S::Get("HUD_Corner_Chamfered", "Chamfered") + '\0';
+                    auto csi = static_cast<int>(std::to_underlying(st.slotCornerStyle));
+                    ImGuiMCP::SetNextItemWidth(160.f);
+                    if (ImGuiMCP::Combo(S::Get("HUD_CornerStyle_Label", "Style##cornerstyle").c_str(), &csi,
+                                        cornerNames.c_str())) {
+                        st.slotCornerStyle = static_cast<IntegratedMagic::CornerStyle>(csi);
                         dirty = true;
                     }
+                    if (st.slotCornerStyle != IntegratedMagic::CornerStyle::Square) {
+                        ImGuiMCP::SameLine();
+                        float cs = st.slotCornerSize;
+                        ImGuiMCP::SetNextItemWidth(150.f);
+                        if (ImGuiMCP::InputFloat(S::Get("HUD_CornerSize_Label", "Size##cornersize").c_str(), &cs, 1.f,
+                                                 5.f, "%.1f")) {
+                            st.slotCornerSize = std::clamp(cs, 0.f, 32.f);
+                            dirty = true;
+                        }
+                    }
                 }
+
+                ImGuiMCP::Spacing();
+                if (ImGuiMCP::Button(S::Get("Shape_SwitchCustom", "Usar forma customizada...##switchcustom").c_str())) {
+                    shape.useCustomShape = true;
+                    dirty = true;
+                }
+            } else {
+                ImGuiMCP::SeparatorText(S::Get("Shape_CustomShape", "Forma Customizada").c_str());
+                ImGuiMCP::Spacing();
+
+                if (ImGuiMCP::Button(
+                        S::Get("Shape_SwitchCorner", "< Voltar para Corner Style##switchtocorner").c_str())) {
+                    shape.useCustomShape = false;
+                    dirty = true;
+                }
+                ImGuiMCP::Spacing();
+
+                DrawShapeEditor(dirty);
             }
 
             ImGuiMCP::Spacing();
