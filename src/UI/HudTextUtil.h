@@ -44,8 +44,12 @@ namespace IntegratedMagic::HUD {
                 const ImVec2 shadowPos = {x + st.textShadowOffsetX, y + st.textShadowOffsetY};
                 dl->AddText(shadowPos, st.textShadowColor, line.c_str());
             }
-            ImGui::SetCursorScreenPos({x, y});
-            ImGui::TextDisabled("%s", line.c_str());
+            if (dl) {
+                dl->AddText({x, y}, st.textColor, line.c_str());
+            } else {
+                ImGui::SetCursorScreenPos({x, y});
+                ImGui::TextDisabled("%s", line.c_str());
+            }
             y += lineHeight;
         }
     }

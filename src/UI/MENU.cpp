@@ -764,9 +764,27 @@ namespace {
                     dirty = true;
                 }
             }
+            {
+                float ts = st.iconTintStrength;
+                ImGuiMCP::SetNextItemWidth(200.f);
+                if (ImGuiMCP::SliderFloat(S::Get("HUD_Icon_TintStrength", "Tint Strength##icontintstrength").c_str(),
+                                          &ts, 0.f, 1.f, "%.2f")) {
+                    st.iconTintStrength = ts;
+                    dirty = true;
+                }
+                if (ImGuiMCP::IsItemHovered())
+                    ImGuiMCP::SetTooltip(
+                        S::Get("HUD_Icon_TintStrength_Tip",
+                               "0 = sem tint  |  1 = força máxima (controlada pelo alpha da Tint Color)")
+                            .c_str());
+            }
 
             ImGuiMCP::Spacing();
             ImGuiMCP::SeparatorText(S::Get("HUD_Section_Text", "Text").c_str());
+            ImGuiMCP::Spacing();
+
+            colorEdit(S::Get("HUD_Text_Color", "Text Color##textcolor").c_str(), st.textColor);
+
             ImGuiMCP::Spacing();
 
             {

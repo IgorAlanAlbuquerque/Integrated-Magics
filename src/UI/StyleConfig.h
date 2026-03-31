@@ -189,7 +189,9 @@ namespace IntegratedMagic {
         std::uint32_t iconTintColor = 0x00000000u;
         std::uint8_t iconSaturation = 255;
         std::uint8_t iconBrightness = 128;
+        float iconTintStrength = 1.f;
 
+        std::uint32_t textColor = 0xFFAAAAAAu;
         bool textShadowEnabled = false;
         std::uint32_t textShadowColor = 0xCC000000u;
         float textShadowOffsetX = 1.f;

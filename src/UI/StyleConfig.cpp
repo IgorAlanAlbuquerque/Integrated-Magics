@@ -283,7 +283,9 @@ namespace IntegratedMagic {
         iconTintColor = GetColor(ini, "Icons", "TintColor", iconTintColor);
         iconSaturation = GetU8(ini, "Icons", "Saturation", iconSaturation);
         iconBrightness = GetU8(ini, "Icons", "Brightness", iconBrightness);
+        iconTintStrength = GetFloat(ini, "Icons", "TintStrength", iconTintStrength);
 
+        textColor = GetColor(ini, "TextShadow", "TextColor", textColor);
         {
             const char* v = ini.GetValue("TextShadow", "Enabled", nullptr);
             if (v) textShadowEnabled = (_stricmp(v, "true") == 0 || std::strcmp(v, "1") == 0);
@@ -457,7 +459,9 @@ namespace IntegratedMagic {
         setColor("Icons", "TintColor", iconTintColor);
         setU8("Icons", "Saturation", iconSaturation);
         setU8("Icons", "Brightness", iconBrightness);
+        setFloat("Icons", "TintStrength", iconTintStrength);
 
+        setColor("TextShadow", "TextColor", textColor);
         setBool("TextShadow", "Enabled", textShadowEnabled);
         setColor("TextShadow", "Color", textShadowColor);
         setFloat("TextShadow", "OffsetX", textShadowOffsetX);

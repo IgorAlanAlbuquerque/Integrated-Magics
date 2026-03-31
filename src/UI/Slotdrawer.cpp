@@ -220,7 +220,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         const float alpha = st.iconAlpha / 255.f;
 
         if ((st.iconTintColor >> 24) > 0) {
-            const float ta = ((st.iconTintColor >> 24) & 0xFF) / 255.f;
+            const float ta = ((st.iconTintColor >> 24) & 0xFF) / 255.f * std::clamp(st.iconTintStrength, 0.f, 1.f);
             const float tr = (st.iconTintColor & 0xFF) / 255.f;
             const float tg = ((st.iconTintColor >> 8) & 0xFF) / 255.f;
             const float tb = ((st.iconTintColor >> 16) & 0xFF) / 255.f;
