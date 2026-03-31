@@ -30,7 +30,7 @@ target_include_directories(${PROJECT_NAME}
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 
 find_package(imgui CONFIG REQUIRED)
-target_link_libraries(${PROJECT_NAME} PRIVATE imgui::imgui)
+target_link_libraries(${PROJECT_NAME} PRIVATE imgui::imgui xinput.lib)
 
 target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
 

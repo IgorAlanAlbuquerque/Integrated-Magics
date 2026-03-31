@@ -8,8 +8,6 @@
 #include "Input/Input.h"
 #include "PCH.h"
 #include "PopupDrawer.h"
-#include "RE/P/PlayerCharacter.h"
-#include "RE/U/UI.h"
 #include "SlotDrawer.h"
 #include "State/State.h"
 
@@ -61,18 +59,18 @@ namespace IntegratedMagic::HUD {
     }
 
     bool EvaluateHudVisibility() {
-        using F = IntegratedMagic::HudVisibilityFlag;
+        using enum IntegratedMagic::HudVisibilityFlag;
         const auto& cfg = IntegratedMagic::GetMagicConfig();
         if (cfg.hudVisibilityFlags == 0) return false;
-        if (cfg.HudFlagSet(F::Always)) return true;
+        if (cfg.HudFlagSet(Always)) return true;
         auto* player = RE::PlayerCharacter::GetSingleton();
         if (!player) return false;
-        if (cfg.HudFlagSet(F::SlotActive) && IntegratedMagic::MagicState::Get().IsActive()) return true;
-        if (cfg.HudFlagSet(F::InCombat) && player->IsInCombat()) return true;
-        if (cfg.HudFlagSet(F::WeaponDrawn)) {
-            using WS = RE::WEAPON_STATE;
+        if (cfg.HudFlagSet(SlotActive) && IntegratedMagic::MagicState::Get().IsActive()) return true;
+        if (cfg.HudFlagSet(InCombat) && player->IsInCombat()) return true;
+        if (cfg.HudFlagSet(WeaponDrawn)) {
+            using enum RE::WEAPON_STATE;
             const auto ws = player->AsActorState()->GetWeaponState();
-            if (ws == WS::kDrawn || ws == WS::kWantToDraw || ws == WS::kDrawing) return true;
+            if (ws == kDrawn || ws == kWantToDraw || ws == kDrawing) return true;
         }
         return false;
     }
@@ -86,7 +84,9 @@ namespace IntegratedMagic::HUD {
 
         const bool inMagicMenu = IsInMagicMenu();
         if (inMagicMenu && Input::ConsumeHudToggle()) ToggleDetailPopup();
-        if (!inMagicMenu && g_popupOpen.load()) g_popupOpen.store(false);
+        if (!inMagicMenu && g_popupOpen.load()) {
+            g_popupOpen.store(false);
+        }
 
         if (EvaluateHudVisibility()) {
             ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f);
@@ -109,13 +109,35 @@ namespace IntegratedMagic::HUD {
     void FeedMouseClick() { g_mouseClicked.store(true, std::memory_order_relaxed); }
     void FeedMouseRightClick() { g_mouseRightClicked.store(true, std::memory_order_relaxed); }
 
+    namespace {
+        void SetMagicMenuVisible(bool visible) {
+            auto* ui = RE::UI::GetSingleton();
+            if (!ui) return;
+            static const RE::BSFixedString magicMenu{"MagicMenu"};
+            auto menu = ui->GetMenu<RE::MagicMenu>();
+            if (!menu || !menu->uiMovie) return;
+            RE::GFxValue val(visible);
+            menu->uiMovie->SetVariable("_root.Menu_mc._visible", val);
+        }
+    }
+
     void ToggleDetailPopup() {
         const bool willOpen = !g_popupOpen.load();
         g_popupOpen.store(willOpen);
-        if (willOpen) g_popupJustOpened.store(true, std::memory_order_relaxed);
+        if (willOpen) {
+            g_popupJustOpened.store(true, std::memory_order_relaxed);
+            SetMagicMenuVisible(false);
+        } else {
+            SetMagicMenuVisible(true);
+        }
     }
 
-    void CloseDetailPopup() { g_popupOpen.store(false); }
+    void CloseDetailPopup() {
+        if (g_popupOpen.load()) {
+            g_popupOpen.store(false);
+            SetMagicMenuVisible(true);
+        }
+    }
     bool IsHudVisible() { return g_hudVisible.load(std::memory_order_relaxed); }
     void SetHudVisible(bool v) { g_hudVisible.store(v, std::memory_order_relaxed); }
 

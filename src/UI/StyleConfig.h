@@ -49,6 +49,25 @@ namespace IntegratedMagic {
         HideOnPress = 2,
     };
 
+    enum class GradientType : std::uint8_t {
+        None = 0,
+        Radial = 1,
+        Linear = 2,
+    };
+
+    enum class CornerStyle : std::uint8_t {
+        Round = 0,
+        Square = 1,
+        Notched = 2,
+        Chamfered = 3,
+    };
+
+    enum class GlowStyle : std::uint8_t {
+        Ring = 0,
+        Fill = 1,
+        Both = 2,
+    };
+
     struct FontConfig {
         std::string path = "";
         float size = 28.f;
@@ -86,6 +105,8 @@ namespace IntegratedMagic {
         float popupSlotGap = 24.f;
         HudLayoutType popupLayout = HudLayoutType::Circular;
         float modeWidgetW = 58.f;
+        float popupOffsetX = 0.f;
+        float popupOffsetY = 0.f;
         float iconSizeFactor = 0.90f;
         float iconOffsetFactor = 0.28f;
         std::uint8_t overlayAlpha = 160;
@@ -105,6 +126,7 @@ namespace IntegratedMagic {
         int gridColumns = 2;
 
         bool useTextureForSlotBg = false;
+        bool showSpellNamesInHud = false;
 
         ButtonIconType buttonIconType = ButtonIconType::Xbox;
 
@@ -126,8 +148,10 @@ namespace IntegratedMagic {
         std::uint32_t slotBgInactive = 0xC80C0C0Cu;
 
         std::uint32_t slotRingInactive = 0x96464646u;
+        std::uint32_t slotRingActive = 0xFFD23200u;
         std::uint8_t slotRingActiveAlpha = 245;
         float slotRingWidth = 2.5f;
+        float slotRingWidthActive = 2.5f;
 
         std::uint8_t iconAlpha = 220;
 
@@ -149,6 +173,39 @@ namespace IntegratedMagic {
         std::uint32_t defaultFill = 0xA0646464u;
         std::uint32_t defaultGlow = 0x00000000u;
         std::uint32_t emptyFill = 0x78282828u;
+
+        GradientType slotGradientType = GradientType::None;
+        std::uint32_t slotGradientStart = 0x00000000u;
+        std::uint32_t slotGradientEnd = 0x00000000u;
+        float slotGradientAngle = 0.f;
+        float slotGradientRadialOffset = 0.f;
+
+        std::uint32_t slotOuterRingColor = 0x00000000u;
+        float slotOuterRingWidth = 1.f;
+
+        CornerStyle slotCornerStyle = CornerStyle::Round;
+        float slotCornerSize = 8.f;
+
+        std::uint32_t iconTintColor = 0x00000000u;
+        std::uint8_t iconSaturation = 255;
+        std::uint8_t iconBrightness = 128;
+        float iconTintStrength = 1.f;
+
+        std::uint32_t textColor = 0xFFAAAAAAu;
+        bool textShadowEnabled = false;
+        std::uint32_t textShadowColor = 0xCC000000u;
+        float textShadowOffsetX = 1.f;
+        float textShadowOffsetY = 1.f;
+
+        std::uint32_t overlayColor = 0xFF000000u;
+        float vignetteStrength = 0.f;
+        std::uint32_t vignetteColor = 0xFF000000u;
+
+        GlowStyle glowStyle = GlowStyle::Ring;
+        std::uint8_t glowLayers = 5;
+        float glowRadius = 2.5f;
+        float glowIntensity = 1.f;
+        float pulseSpeed = 4.5f;
 
         void Load();
         void Save();

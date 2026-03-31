@@ -37,6 +37,8 @@ namespace IntegratedMagic {
         bool waitingBeginCast{false};
         float beginCastWaitSecs{0.f};
         int beginCastRetries{0};
+        bool waitingSpellFireFinalize{false};
+        float spellFireFinalizeSecs{0.f};
     };
 
     struct SessionState {
@@ -251,6 +253,8 @@ namespace IntegratedMagic {
         void PumpDelayedStarts(float dt);
         void PumpAutomaticHand(Slots::Hand hand);
         void PumpAutoStartFallback(Slots::Hand hand, float dt);
+        void ScheduleSpellFireFinalize(Slots::Hand hand);
+        void PumpSpellFireFinalize(float dt);
 
         void StartShoutPress();
         void StopShoutPress();

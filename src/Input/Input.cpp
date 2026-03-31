@@ -2,19 +2,50 @@
 
 #include <chrono>
 
-#include "EventFilter.h"
-#include "ExclusivePending.h"
-#include "HotkeyCache.h"
-#include "HudToggle.h"
-#include "InputInternal.h"
-#include "InputState.h"
+#include "Input/EventFilter.h"
+#include "Input/ExclusivePending.h"
+#include "Input/HotkeyCache.h"
+#include "Input/HudToggle.h"
+#include "Input/InputInternal.h"
+#include "Input/InputState.h"
+#include "Input/ReplaySystem.h"
 #include "PCH.h"
-#include "ReplaySystem.h"
 #include "SKSEMenuFramework.h"
+#include "State/Assign.h"
+#include "State/SpellClassify.h"
 #include "State/State.h"
+#include "UI/HoveredForm.h"
 #include "UI/HudManager.h"
 
 namespace {
+
+    void TryAssignHoveredToSlotByHotkey() {
+        auto* ui = RE::UI::GetSingleton();
+        if (!ui) return;
+        static const RE::BSFixedString magicMenu{"MagicMenu"};
+        if (!ui->IsMenuOpen(magicMenu)) return;
+
+        const auto type = IntegratedMagic::HoveredForm::GetHoveredMagicType();
+        if (type == IntegratedMagic::HoveredForm::MagicType::None) return;
+
+        const int n = ActiveSlots();
+        for (int slot = 0; slot < n; ++slot) {
+            const auto& hk = g_cache[static_cast<std::size_t>(slot)];
+            const bool comboDown =
+                Input::detail::ComboDown(hk.kb, g_kbDown) || Input::detail::ComboDown(hk.gp, g_gpDown);
+            if (!comboDown) continue;
+
+            using MT = IntegratedMagic::HoveredForm::MagicType;
+            if (type == MT::Shout || type == MT::Power) {
+                IntegratedMagic::MagicAssign::TryAssignHoveredShoutToSlot(slot);
+            } else if (type == MT::RightOnlySpell) {
+                IntegratedMagic::MagicAssign::TryAssignHoveredSpellToSlot(slot, IntegratedMagic::Slots::Hand::Right);
+            } else {
+                IntegratedMagic::MagicAssign::TryAssignHoveredSpellToSlot(slot, IntegratedMagic::Slots::Hand::Left);
+            }
+            break;
+        }
+    }
 
     float CalculateDeltaTime() {
         using clock = std::chrono::steady_clock;
@@ -63,8 +94,21 @@ namespace {
         GetWindowThreadProcessId(fg, &fgPid);
         const bool focused = (fgPid == GetCurrentProcessId());
 
+        const bool justLostFocus = (s_prevFocused && !focused);
         const bool justRegainedFocus = (!s_prevFocused && focused);
         s_prevFocused = focused;
+
+        if (justLostFocus) {
+            for (const auto& [idx, vk] : kMouseVKMap) {
+                const auto i = static_cast<std::size_t>(idx);
+                if (g_kbDown[i].load(std::memory_order_relaxed)) {
+#ifdef DEBUG
+                    spdlog::info("[Input] ClearStuckKeysOnFocusRegain: focus lost, clearing mouse button idx={}", idx);
+#endif
+                    g_kbDown[i].store(false, std::memory_order_relaxed);
+                }
+            }
+        }
 
         if (!justRegainedFocus) return;
 
@@ -112,7 +156,6 @@ void Input::ProcessAndFilter(RE::InputEvent** a_evns) {
     }
 
     Input::detail::DrainOneDeferredReplayEvent();
-    *a_evns = IntegratedMagic::detail::FlushSyntheticInput(*a_evns);
 
     ClearStuckKeysOnFocusRegain();
 
@@ -143,6 +186,9 @@ void Input::ProcessAndFilter(RE::InputEvent** a_evns) {
 
     Input::detail::ProcessButtonEvents(a_evns, cap, wantCapture);
     Input::detail::UpdateHudToggleState();
+
+    if (blocked) TryAssignHoveredToSlotByHotkey();
+
     Input::detail::UpdateSlotsIfAllowed(blocked, dt);
     Input::detail::FilterMouseForPopup(a_evns);
 
@@ -238,3 +284,28 @@ bool Input::IsModifierHeld() {
 }
 
 void Input::SetCaptureModeActive(bool active) { g_captureModeActive.store(active, std::memory_order_relaxed); }
+
+bool Input::IsCaptureModeActive() { return g_captureModeActive.load(std::memory_order_relaxed); }
+
+void Input::InjectCapturedScancode(int scancode) {
+    auto& cap = GetCaptureState();
+    if (!cap.captureRequested.load(std::memory_order_relaxed)) return;
+#ifdef DEBUG
+    spdlog::info("[Input] InjectCapturedScancode: scancode={}", scancode);
+#endif
+    cap.capturedEncoded.store(scancode, std::memory_order_relaxed);
+    cap.captureRequested.store(false, std::memory_order_relaxed);
+    g_captureModeActive.store(false, std::memory_order_relaxed);
+}
+
+void Input::InjectCapturedGamepad(int buttonIndex) {
+    auto& cap = GetCaptureState();
+    if (!cap.captureRequested.load(std::memory_order_relaxed)) return;
+    const int encoded = -(buttonIndex + 2);
+#ifdef DEBUG
+    spdlog::info("[Input] InjectCapturedGamepad: index={} encoded={}", buttonIndex, encoded);
+#endif
+    cap.capturedEncoded.store(encoded, std::memory_order_relaxed);
+    cap.captureRequested.store(false, std::memory_order_relaxed);
+    g_captureModeActive.store(false, std::memory_order_relaxed);
+}

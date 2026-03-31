@@ -1,7 +1,7 @@
 #pragma once
 
-#include "InputState.h"
-#include "RE/I/InputEvent.h"
+#include "Input/InputState.h"
+#include "PCH.h"
 
 namespace Input::detail {
 

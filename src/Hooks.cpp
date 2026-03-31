@@ -5,11 +5,13 @@
 #include <imgui.h>
 #include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
+#include <xinput.h>
 
 #include <utility>
 
 #include "HookUtil.hpp"
 #include "Input/Input.h"
+#include "Input/Inputstate.h"
 #include "PCH.h"
 #include "State/AnimListener.h"
 #include "State/State.h"
@@ -29,8 +31,11 @@ namespace IntegratedMagic::Hooks {
                 if (!a_events) return;
 
                 Input::ProcessAndFilter(const_cast<RE::InputEvent**>(a_events));
+
+                RE::InputEvent* head = IntegratedMagic::detail::FlushSyntheticInput(*a_events);
+
                 if (func == 0) return;
-                RE::InputEvent* const arr[2]{*a_events, nullptr};
+                RE::InputEvent* const arr[2]{head, nullptr};
                 reinterpret_cast<Fn*>(func)(a_dispatcher, arr);
             }
 
@@ -74,16 +79,68 @@ namespace IntegratedMagic::Hooks {
             static LRESULT thunk(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
                 if (g_renderInitialized.load()) {
                     ImGui::SetCurrentContext(g_imguiContext);
-                    if (uMsg == WM_KILLFOCUS) {
-                        auto& io = ImGui::GetIO();
-                        io.ClearInputCharacters();
-                        io.ClearInputKeys();
+
+                    if (Input::IsCaptureModeActive()) {
+                        if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) {
+                            const UINT sc = (lParam >> 16) & 0x7F;
+                            if (sc > 0 && sc < static_cast<UINT>(kMouseButtonBase))
+                                Input::InjectCapturedScancode(static_cast<int>(sc));
+                        } else if (uMsg == WM_LBUTTONDOWN) {
+                            Input::InjectCapturedScancode(kMouseButtonBase + 0);
+                        } else if (uMsg == WM_RBUTTONDOWN) {
+                            Input::InjectCapturedScancode(kMouseButtonBase + 1);
+                        } else if (uMsg == WM_MBUTTONDOWN) {
+                            Input::InjectCapturedScancode(kMouseButtonBase + 2);
+                        }
                     }
-                    ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam);
+
+                    if (!Input::IsCaptureModeActive()) {
+                        if (uMsg == WM_KILLFOCUS) {
+                            auto& io = ImGui::GetIO();
+                            io.ClearInputCharacters();
+                            io.ClearInputKeys();
+                        }
+                        const bool popupOpen = IntegratedMagic::HUD::IsDetailPopupOpen();
+                        const bool isMouseMsg =
+                            (uMsg == WM_LBUTTONDOWN || uMsg == WM_LBUTTONUP || uMsg == WM_RBUTTONDOWN ||
+                             uMsg == WM_RBUTTONUP || uMsg == WM_MBUTTONDOWN || uMsg == WM_MBUTTONUP ||
+                             uMsg == WM_MOUSEMOVE || uMsg == WM_MOUSEWHEEL);
+
+                        if (!isMouseMsg || popupOpen) {
+                            ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam);
+                        }
+                    }
                 }
                 return func(hWnd, uMsg, wParam, lParam);
             }
         };
+
+        static int PollGamepadCapture() {
+            static constexpr std::pair<WORD, int> kMap[] = {
+                {XINPUT_GAMEPAD_DPAD_UP, 0},
+                {XINPUT_GAMEPAD_DPAD_DOWN, 1},
+                {XINPUT_GAMEPAD_DPAD_LEFT, 2},
+                {XINPUT_GAMEPAD_DPAD_RIGHT, 3},
+                {XINPUT_GAMEPAD_START, 4},
+                {XINPUT_GAMEPAD_BACK, 5},
+                {XINPUT_GAMEPAD_LEFT_THUMB, 6},
+                {XINPUT_GAMEPAD_RIGHT_THUMB, 7},
+                {XINPUT_GAMEPAD_LEFT_SHOULDER, 8},
+                {XINPUT_GAMEPAD_RIGHT_SHOULDER, 9},
+                {XINPUT_GAMEPAD_A, 10},
+                {XINPUT_GAMEPAD_B, 11},
+                {XINPUT_GAMEPAD_X, 12},
+                {XINPUT_GAMEPAD_Y, 13},
+            };
+            XINPUT_STATE state{};
+            if (XInputGetState(0, &state) != ERROR_SUCCESS) return -1;
+            for (const auto& [mask, idx] : kMap)
+                if (state.Gamepad.wButtons & mask) return idx;
+
+            if (state.Gamepad.bLeftTrigger > 64) return 14;
+            if (state.Gamepad.bRightTrigger > 64) return 15;
+            return -1;
+        }
 
         struct D3DInitHook {
             using FuncType = void (*)();
@@ -164,7 +221,9 @@ namespace IntegratedMagic::Hooks {
                 }
 
                 g_renderInitialized.store(true);
+#ifdef DEBUG
                 spdlog::info("[Hooks] D3DInitHook: ImGui HUD context initialized");
+#endif
             }
 
             static void Install() {
@@ -220,6 +279,19 @@ namespace IntegratedMagic::Hooks {
                 }
 
                 if (s_bbWidth > 0.f) ImGui::GetIO().DisplaySize = {s_bbWidth, s_bbHeight};
+
+                if (Input::IsCaptureModeActive()) {
+                    static bool s_prevMouse[5]{};
+                    constexpr int kMouseVKs[5] = {VK_LBUTTON, VK_RBUTTON, VK_MBUTTON, VK_XBUTTON1, VK_XBUTTON2};
+                    for (int i = 0; i < 5; ++i) {
+                        const bool down = (GetAsyncKeyState(kMouseVKs[i]) & 0x8000) != 0;
+                        if (down && !s_prevMouse[i]) Input::InjectCapturedScancode(kMouseButtonBase + i);
+                        s_prevMouse[i] = down;
+                    }
+
+                    const int gpIdx = PollGamepadCapture();
+                    if (gpIdx >= 0) Input::InjectCapturedGamepad(gpIdx);
+                }
 
                 ImGui::NewFrame();
                 IntegratedMagic::HUD::DrawHudFrame();

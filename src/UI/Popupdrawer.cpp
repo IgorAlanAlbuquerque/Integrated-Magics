@@ -5,20 +5,22 @@
 #include <cmath>
 #include <numbers>
 #include <string>
+#include <vector>
 
 #include "Config/Config.h"
 #include "Config/Slots.h"
-#include "HudState.h"
 #include "PCH.h"
 #include "Persistence/SpellSettingsDB.h"
-#include "SlotDrawer.h"
 #include "State/Assign.h"
 #include "State/SpellClassify.h"
 #include "State/State.h"
-#include "Strings.h"
 #include "UI/HoveredForm.h"
+#include "UI/HudState.h"
+#include "UI/HudTextUtil.h"
 #include "UI/PolyFill.h"
+#include "UI/SlotDrawer.h"
 #include "UI/SlotLayout.h"
+#include "UI/Strings.h"
 #include "UI/StyleConfig.h"
 #include "UI/TextureManager.h"
 
@@ -77,9 +79,14 @@ namespace IntegratedMagic::HUD::PopupDrawer {
 
         void FillSlotShapeHighlight(ImDrawList* dl, ImVec2 center, float r, ImU32 col) {
             const auto& shape = StyleConfig::Get().slotShape;
-            if (shape.vertices.size() >= 3) {
-                for (const auto& t : PolyFill::Triangulate(shape.vertices, center.x, center.y, r))
-                    dl->AddTriangleFilled({t.ax, t.ay}, {t.bx, t.by}, {t.cx, t.cy}, col);
+            if (shape.useCustomShape && shape.vertices.size() >= 3) {
+                if (PolyFill::IsConvex(shape.vertices)) {
+                    for (const auto& v : shape.vertices) dl->PathLineTo({center.x + v.x * r, center.y + v.y * r});
+                    dl->PathFillConvex(col);
+                } else {
+                    for (const auto& t : PolyFill::Triangulate(shape.vertices, center.x, center.y, r))
+                        dl->AddTriangleFilled({t.ax, t.ay}, {t.bx, t.by}, {t.cx, t.cy}, col);
+                }
             } else {
                 dl->AddCircleFilled(center, r, col, 48);
             }
@@ -87,7 +94,7 @@ namespace IntegratedMagic::HUD::PopupDrawer {
 
         void FillSlotHalfHighlight(ImDrawList* dl, ImVec2 center, float r, bool rightHalf, ImU32 col) {
             const auto& shape = StyleConfig::Get().slotShape;
-            if (shape.vertices.size() >= 3) {
+            if (shape.useCustomShape && shape.vertices.size() >= 3) {
                 const float sign = rightHalf ? 1.f : -1.f;
                 std::vector<SlotShapeVertex> clipped;
                 const auto& verts = shape.vertices;
@@ -149,8 +156,28 @@ namespace IntegratedMagic::HUD::PopupDrawer {
     }
 
     void DrawOverlayAndCursor(ImVec2 displaySize, ImVec2 cursorPos) {
+        const auto& st = Style();
         ImDrawList* bg = ImGui::GetBackgroundDrawList();
-        bg->AddRectFilled({0.f, 0.f}, {displaySize.x, displaySize.y}, IM_COL32(0, 0, 0, Style().overlayAlpha), 0.f, 0);
+
+        const ImU32 baseOverlay = (static_cast<ImU32>(st.overlayAlpha) << 24) | (st.overlayColor & 0x00FFFFFFu);
+        bg->AddRectFilled({0.f, 0.f}, {displaySize.x, displaySize.y}, baseOverlay, 0.f, 0);
+
+        if (st.vignetteStrength > 0.f) {
+            const ImU32 vigRGB = st.vignetteColor & 0x00FFFFFFu;
+            const ImU32 vigFull = vigRGB | (static_cast<ImU32>(static_cast<int>(st.vignetteStrength * 220.f)) << 24);
+            const ImU32 vigZero = vigRGB | 0x00000000u;
+            const float vs = std::min(displaySize.x, displaySize.y) * 0.35f;
+
+            bg->AddRectFilledMultiColor({0.f, 0.f}, {vs, displaySize.y}, vigFull, vigZero, vigZero, vigFull);
+
+            bg->AddRectFilledMultiColor({displaySize.x - vs, 0.f}, {displaySize.x, displaySize.y}, vigZero, vigFull,
+                                        vigFull, vigZero);
+
+            bg->AddRectFilledMultiColor({0.f, 0.f}, {displaySize.x, vs}, vigFull, vigFull, vigZero, vigZero);
+
+            bg->AddRectFilledMultiColor({0.f, displaySize.y - vs}, {displaySize.x, displaySize.y}, vigZero, vigZero,
+                                        vigFull, vigFull);
+        }
 
         ImDrawList* fg = ImGui::GetForegroundDrawList();
         const ImVec2 pts[3] = {{cursorPos.x, cursorPos.y},
@@ -300,10 +327,11 @@ namespace IntegratedMagic::HUD::PopupDrawer {
         const float popupHalfX = bh.x + kGlowPad + st.modeWidgetW + 12.f;
         const float popupHalfY = bh.y + kGlowPad + st.modeWidgetW + 12.f;
         const ImVec2 popupSize = {popupHalfX * 2.f, popupHalfY * 2.f + 48.f};
-        const ImVec2 popupPos = {io.DisplaySize.x * 0.5f - popupSize.x * 0.5f,
-                                 io.DisplaySize.y * 0.5f - popupSize.y * 0.5f};
+        const ImVec2 popupPos = {io.DisplaySize.x * 0.5f - popupSize.x * 0.5f + st.popupOffsetX,
+                                 io.DisplaySize.y * 0.5f - popupSize.y * 0.5f + st.popupOffsetY};
         const ImVec2 popupEnd = {popupPos.x + popupSize.x, popupPos.y + popupSize.y};
-        const ImVec2 ringCenter = {io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f};
+        const ImVec2 ringCenter = {io.DisplaySize.x * 0.5f + st.popupOffsetX,
+                                   io.DisplaySize.y * 0.5f + st.popupOffsetY};
 
         LayoutVec2 relPos[SlotLayout::kMaxSlots]{};
         SlotLayout::Compute(st.popupLayout, n, st.popupSlotRadius, dynPopupR, st.popupSlotGap, st.gridColumns, relPos);
@@ -341,20 +369,27 @@ namespace IntegratedMagic::HUD::PopupDrawer {
                 const RE::FormID dispShoutID = shoutID ? shoutID : (slotIs2H ? lID : 0);
 
                 SlotDrawer::DrawSlotVisual(dl, center, st.popupSlotRadius, activeSlot == i, slotIs2H ? nullptr : rSp,
-                                           slotIs2H ? nullptr : lSp, dispShoutID);
+                                           slotIs2H ? nullptr : lSp, dispShoutID, true);
                 SlotDrawer::DrawSlotHotkeyIcons(dl, center, st.popupSlotRadius, i);
 
-                if (shoutID || slotIs2H) {
-                    auto* f = RE::TESForm::LookupByID(dispShoutID);
-                    const char* name = f ? f->GetName() : "???";
-                    const char* prefix = shoutID ? Strings::Get("Popup_ShoutPrefix", "[S]").c_str() : "[2H]";
-                    ImGui::SetCursorScreenPos({center.x - st.popupSlotRadius, center.y - st.popupSlotRadius - 16.f});
-                    ImGui::TextDisabled("%s %s", prefix, name);
-                } else if (rSp || lSp) {
-                    const std::string label =
-                        std::string(lSp ? lSp->GetName() : "---") + " | " + (rSp ? rSp->GetName() : "---");
-                    ImGui::SetCursorScreenPos({center.x - st.popupSlotRadius, center.y - st.popupSlotRadius - 16.f});
-                    ImGui::TextDisabled("%s", label.c_str());
+                {
+                    const float iconReserve =
+                        (st.buttonLabelVisibility != IntegratedMagic::ButtonLabelVisibility::Never)
+                            ? (st.buttonLabelIconSize + st.buttonLabelMargin + 5.f)
+                            : 0.f;
+                    const float slotTop = center.y - st.popupSlotRadius - iconReserve;
+
+                    if (shoutID || slotIs2H) {
+                        auto* f = RE::TESForm::LookupByID(dispShoutID);
+                        const std::string name = f ? f->GetName() : "???";
+                        DrawWrappedLabelAbove(name.c_str(), center.x - st.popupSlotRadius, st.popupSlotRadius * 2.f,
+                                              slotTop, 4.f, true);
+                    } else if (rSp || lSp) {
+                        const float halfWidth = st.popupSlotRadius;
+                        if (lSp)
+                            DrawWrappedLabelAbove(lSp->GetName(), center.x - st.popupSlotRadius, halfWidth, slotTop);
+                        if (rSp) DrawWrappedLabelAbove(rSp->GetName(), center.x, halfWidth, slotTop);
+                    }
                 }
 
                 {

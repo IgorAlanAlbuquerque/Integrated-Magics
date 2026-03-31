@@ -1,7 +1,6 @@
 #include "SlotDrawer.h"
 
 #include <imgui.h>
-#include "UI/PolyFill.h"
 
 #include <chrono>
 #include <cmath>
@@ -9,16 +8,18 @@
 
 #include "Config/Config.h"
 #include "Config/Slots.h"
-#include "HudState.h"
 #include "Input/Input.h"
 #include "PCH.h"
-#include "RE/P/PlayerCharacter.h"
 #include "State/SpellClassify.h"
 #include "State/State.h"
+#include "UI/HudState.h"
+#include "UI/HudTextUtil.h"
+#include "UI/PolyFill.h"
 #include "UI/SlotAnimator.h"
 #include "UI/SlotLayout.h"
 #include "UI/StyleConfig.h"
 #include "UI/TextureManager.h"
+#include "imgui_internal.h"
 
 namespace IntegratedMagic::HUD::SlotDrawer {
 
@@ -129,22 +130,173 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         }
     }
 
-    void PathSlotShape(ImDrawList* dl, ImVec2 center, float r) {
-        const auto& shape = StyleConfig::Get().slotShape;
+    inline ImU32 LerpColor(ImU32 a, ImU32 b, float t) {
+        const auto l8 = [](ImU32 ca, ImU32 cb, float tt) {
+            return ca + static_cast<int>((static_cast<int>(cb) - static_cast<int>(ca)) * tt);
+        };
+        return IM_COL32(l8(a & 0xFF, b & 0xFF, t), l8((a >> 8) & 0xFF, (b >> 8) & 0xFF, t),
+                        l8((a >> 16) & 0xFF, (b >> 16) & 0xFF, t), l8((a >> 24) & 0xFF, (b >> 24) & 0xFF, t));
+    }
+
+    void FillSlotShapeGradient(ImDrawList* dl, ImVec2 center, float r) {
+        const auto& st = Style();
+        const ImU32 gStart = st.slotGradientStart;
+        const ImU32 gEnd = st.slotGradientEnd;
+
+        const auto& shape = st.slotShape;
+        std::vector<ImVec2> pts;
         if (shape.vertices.size() >= 3) {
+            pts.reserve(shape.vertices.size());
+            for (const auto& v : shape.vertices) pts.push_back({center.x + v.x * r, center.y + v.y * r});
+        } else {
+            constexpr int kSeg = 48;
+            pts.reserve(kSeg);
+            for (int i = 0; i < kSeg; ++i) {
+                const float a = 2.f * kPI * static_cast<float>(i) / kSeg;
+                pts.push_back({center.x + std::cos(a) * r, center.y + std::sin(a) * r});
+            }
+        }
+        const auto n = static_cast<int>(pts.size());
+        if (n < 3) return;
+
+        ImU32 centerCol;
+        std::vector<ImU32> edgeCol(n);
+
+        if (st.slotGradientType == GradientType::Radial) {
+            const ImVec2 gc = {center.x, center.y - st.slotGradientRadialOffset * r};
+            centerCol = gStart;
+            for (int i = 0; i < n; ++i) {
+                const float dx = pts[i].x - gc.x;
+                const float dy = pts[i].y - gc.y;
+                const float dist = std::sqrt(dx * dx + dy * dy);
+                const float t = std::clamp(dist / r, 0.f, 1.f);
+                edgeCol[i] = LerpColor(gStart, gEnd, t);
+            }
+
+            const ImVec2 uv = dl->_Data->TexUvWhitePixel;
+            dl->PrimReserve(n * 3, n * 3);
+            for (int i = 0; i < n; ++i) {
+                const int j = (i + 1) % n;
+                dl->PrimVtx(gc, uv, centerCol);
+                dl->PrimVtx(pts[i], uv, edgeCol[i]);
+                dl->PrimVtx(pts[j], uv, edgeCol[j]);
+            }
+        } else {
+            const float rad = st.slotGradientAngle * kPI / 180.f;
+            const float ax = std::cos(rad);
+            const float ay = std::sin(rad);
+            float minP = 0.f;
+            float maxP = 0.f;
+            std::vector<float> proj(n);
+            for (int i = 0; i < n; ++i) {
+                proj[i] = (pts[i].x - center.x) * ax + (pts[i].y - center.y) * ay;
+                minP = std::min(minP, proj[i]);
+                maxP = std::max(maxP, proj[i]);
+            }
+            const float range = maxP - minP;
+            const float centerProj = 0.f;
+            const float ct = (range > 0.f) ? (centerProj - minP) / range : 0.5f;
+            centerCol = LerpColor(gStart, gEnd, std::clamp(ct, 0.f, 1.f));
+            for (int i = 0; i < n; ++i) {
+                const float t = (range > 0.f) ? (proj[i] - minP) / range : 0.5f;
+                edgeCol[i] = LerpColor(gStart, gEnd, std::clamp(t, 0.f, 1.f));
+            }
+            const ImVec2 uv = dl->_Data->TexUvWhitePixel;
+            dl->PrimReserve(n * 3, n * 3);
+            for (int i = 0; i < n; ++i) {
+                const int j = (i + 1) % n;
+                dl->PrimVtx(center, uv, centerCol);
+                dl->PrimVtx(pts[i], uv, edgeCol[i]);
+                dl->PrimVtx(pts[j], uv, edgeCol[j]);
+            }
+        }
+    }
+
+    ImU32 ComputeIconTint() {
+        const auto& st = Style();
+        float r = 1.f;
+        float g = 1.f;
+        float b = 1.f;
+        const float alpha = st.iconAlpha / 255.f;
+
+        if ((st.iconTintColor >> 24) > 0) {
+            const float ta = ((st.iconTintColor >> 24) & 0xFF) / 255.f * std::clamp(st.iconTintStrength, 0.f, 1.f);
+            const float tr = (st.iconTintColor & 0xFF) / 255.f;
+            const float tg = ((st.iconTintColor >> 8) & 0xFF) / 255.f;
+            const float tb = ((st.iconTintColor >> 16) & 0xFF) / 255.f;
+            r = 1.f - ta + tr * ta;
+            g = 1.f - ta + tg * ta;
+            b = 1.f - ta + tb * ta;
+        }
+
+        if (st.iconSaturation < 255) {
+            const float sat = st.iconSaturation / 255.f;
+            const float gray = r * 0.299f + g * 0.587f + b * 0.114f;
+            r = std::lerp(gray, r, sat);
+            g = std::lerp(gray, g, sat);
+            b = std::lerp(gray, b, sat);
+        }
+
+        const float bri = st.iconBrightness / 128.f;
+        r = std::clamp(r * bri, 0.f, 1.f);
+        g = std::clamp(g * bri, 0.f, 1.f);
+        b = std::clamp(b * bri, 0.f, 1.f);
+
+        return IM_COL32(static_cast<int>(r * 255.f), static_cast<int>(g * 255.f), static_cast<int>(b * 255.f),
+                        static_cast<int>(alpha * 255.f));
+    }
+
+    void PathSlotShape(ImDrawList* dl, ImVec2 center, float r) {
+        const auto& st = Style();
+        const auto& shape = st.slotShape;
+        if (shape.useCustomShape && shape.vertices.size() >= 3) {
             for (const auto& v : shape.vertices) dl->PathLineTo({center.x + v.x * r, center.y + v.y * r});
         } else {
-            dl->PathArcTo(center, r, 0.f, 2.f * kPI, 48);
+            switch (st.slotCornerStyle) {
+                using enum IntegratedMagic::CornerStyle;
+                case Square:
+                    dl->PathRect({center.x - r, center.y - r}, {center.x + r, center.y + r}, 0.f);
+                    break;
+                case Notched:
+                case Chamfered: {
+                    const float c = std::clamp(st.slotCornerSize, 0.f, r * 0.8f);
+                    dl->PathLineTo({center.x - r + c, center.y - r});
+                    dl->PathLineTo({center.x + r - c, center.y - r});
+                    dl->PathLineTo({center.x + r, center.y - r + c});
+                    dl->PathLineTo({center.x + r, center.y + r - c});
+                    dl->PathLineTo({center.x + r - c, center.y + r});
+                    dl->PathLineTo({center.x - r + c, center.y + r});
+                    dl->PathLineTo({center.x - r, center.y + r - c});
+                    dl->PathLineTo({center.x - r, center.y - r + c});
+                    break;
+                }
+                case Round:
+                default:
+                    dl->PathArcTo(center, r, 0.f, 2.f * kPI, 48);
+                    break;
+            }
         }
     }
 
     void FillSlotShape(ImDrawList* dl, ImVec2 center, float r, ImU32 col) {
-        const auto& shape = StyleConfig::Get().slotShape;
-        if (shape.vertices.size() >= 3) {
-            for (const auto& t : PolyFill::Triangulate(shape.vertices, center.x, center.y, r))
-                dl->AddTriangleFilled({t.ax, t.ay}, {t.bx, t.by}, {t.cx, t.cy}, col);
+        const auto& st = Style();
+
+        if (st.slotGradientType != GradientType::None) {
+            FillSlotShapeGradient(dl, center, r);
+            return;
+        }
+        const auto& shape = st.slotShape;
+        if (shape.useCustomShape && shape.vertices.size() >= 3) {
+            if (PolyFill::IsConvex(shape.vertices)) {
+                for (const auto& v : shape.vertices) dl->PathLineTo({center.x + v.x * r, center.y + v.y * r});
+                dl->PathFillConvex(col);
+            } else {
+                for (const auto& t : PolyFill::Triangulate(shape.vertices, center.x, center.y, r))
+                    dl->AddTriangleFilled({t.ax, t.ay}, {t.bx, t.by}, {t.cx, t.cy}, col);
+            }
         } else {
-            dl->AddCircleFilled(center, r, col, 48);
+            PathSlotShape(dl, center, r);
+            dl->PathFillConvex(col);
         }
     }
 
@@ -154,18 +306,35 @@ namespace IntegratedMagic::HUD::SlotDrawer {
     }
 
     void DrawGlowShape(ImDrawList* dl, ImVec2 c, float r, ImU32 glowCol) {
-        const auto& shape = StyleConfig::Get().slotShape;
+        const auto& st = Style();
         const ImU32 base = glowCol & 0x00FFFFFFu;
-        const auto baseA = static_cast<int>((glowCol >> 24) & 0xFF);
-        if (shape.useCustomShape && shape.vertices.size() >= 3) {
-            for (int i = 5; i >= 1; --i) {
-                const ImU32 layer = base | (static_cast<ImU32>(baseA / (i + 1)) << 24);
-                StrokeSlotShape(dl, c, r + static_cast<float>(i) * 2.5f, layer, 1.2f);
+        const auto baseA = static_cast<int>(((glowCol >> 24) & 0xFF) * std::clamp(st.glowIntensity, 0.f, 2.f));
+        if (baseA == 0) return;
+
+        const int n = std::clamp(static_cast<int>(st.glowLayers), 1, 5);
+        const float step = std::max(0.5f, st.glowRadius);
+        const bool custom = st.slotShape.useCustomShape && st.slotShape.vertices.size() >= 3;
+
+        if (st.glowStyle == GlowStyle::Fill || st.glowStyle == GlowStyle::Both) {
+            const ImU32 fillCol = base | (static_cast<ImU32>(baseA / 4) << 24);
+            const float fillR = r + step * static_cast<float>(n);
+            if (custom) {
+                for (const auto& t : PolyFill::Triangulate(st.slotShape.vertices, c.x, c.y, fillR))
+                    dl->AddTriangleFilled({t.ax, t.ay}, {t.bx, t.by}, {t.cx, t.cy}, fillCol);
+            } else {
+                PathSlotShape(dl, c, fillR);
+                dl->PathFillConvex(fillCol);
             }
-        } else {
-            for (int i = 5; i >= 1; --i) {
+        }
+
+        if (st.glowStyle == GlowStyle::Ring || st.glowStyle == GlowStyle::Both) {
+            for (int i = n; i >= 1; --i) {
                 const ImU32 layer = base | (static_cast<ImU32>(baseA / (i + 1)) << 24);
-                dl->AddCircle(c, r + static_cast<float>(i) * 2.5f, layer, 48, 1.2f);
+                const float layerR = r + static_cast<float>(i) * step;
+                if (custom)
+                    StrokeSlotShape(dl, c, layerR, layer, 1.2f);
+                else
+                    dl->AddCircle(c, layerR, layer, 48, 1.2f);
             }
         }
     }
@@ -184,11 +353,11 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         if (!img.valid()) return;
         const float half = iconSize * 0.5f;
         dl->AddImage(reinterpret_cast<ImTextureID>(img.texture), {cx - half, cy - half}, {cx + half, cy + half},
-                     {0.f, 0.f}, {1.f, 1.f}, IM_COL32(255, 255, 255, Style().iconAlpha));
+                     {0.f, 0.f}, {1.f, 1.f}, ComputeIconTint());
     }
 
     void DrawSlotVisual(ImDrawList* dl, ImVec2 center, float r, bool isActive, RE::SpellItem const* rSpell,
-                        RE::SpellItem const* lSpell, RE::FormID shoutFormID) {
+                        RE::SpellItem const* lSpell, RE::FormID shoutFormID, bool forceOffset) {
         const auto rPal = SpellPalette(rSpell);
         const auto lPal = SpellPalette(lSpell);
 
@@ -227,24 +396,41 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             if (img.valid()) {
                 const float half = iconSize * 0.6f;
                 dl->AddImage(reinterpret_cast<ImTextureID>(img.texture), {center.x - half, center.y - half},
-                             {center.x + half, center.y + half}, {0.f, 0.f}, {1.f, 1.f},
-                             IM_COL32(255, 255, 255, st.iconAlpha));
+                             {center.x + half, center.y + half}, {0.f, 0.f}, {1.f, 1.f}, ComputeIconTint());
             }
         } else {
             const float off = r * st.iconOffsetFactor;
-            if (rSpell) DrawSpellIcon(dl, rSpell, center.x + off, center.y, iconSize);
-            if (lSpell) DrawSpellIcon(dl, lSpell, center.x - off, center.y, iconSize);
+            const bool sameSpell = rSpell && lSpell && (rSpell->GetFormID() == lSpell->GetFormID());
+            const bool onlyOne = (rSpell != nullptr) != (lSpell != nullptr);
+
+            if (!forceOffset && (sameSpell || onlyOne)) {
+                const RE::SpellItem* sp = rSpell ? rSpell : lSpell;
+                DrawSpellIcon(dl, sp, center.x, center.y, iconSize);
+            } else {
+                if (rSpell) DrawSpellIcon(dl, rSpell, center.x + off, center.y, iconSize);
+                if (lSpell) DrawSpellIcon(dl, lSpell, center.x - off, center.y, iconSize);
+            }
         }
 
         if (isActive) {
             const double t = ImGui::GetTime();
-            const double pulse = 0.65 + 0.35 * std::sin(t * 4.5);
-            const ImU32 ring =
-                IM_COL32(255, static_cast<int>(210 * pulse), static_cast<int>(50 * pulse), st.slotRingActiveAlpha);
-            StrokeSlotShape(dl, center, r, ring, st.slotRingWidth);
-            StrokeSlotShape(dl, center, r + st.slotRingWidth + 0.5f, (ring & 0x00FFFFFFu) | (70u << 24), 1.0f);
+            const double pulse = 0.65 + 0.35 * std::sin(t * static_cast<double>(st.pulseSpeed));
+            const ImU32 baseRGB = st.slotRingActive & 0x00FFFFFFu;
+            const auto pulseAlpha = static_cast<int>(st.slotRingActiveAlpha * pulse);
+            const ImU32 ring = baseRGB | (static_cast<ImU32>(pulseAlpha) << 24);
+
+            StrokeSlotShape(dl, center, r, ring, st.slotRingWidthActive);
+
+            const ImU32 halo = baseRGB | (static_cast<ImU32>(static_cast<int>(pulseAlpha * 0.28f)) << 24);
+            StrokeSlotShape(dl, center, r + st.slotRingWidthActive + 0.5f, halo, 1.0f);
         } else {
-            StrokeSlotShape(dl, center, r, st.slotRingInactive, st.slotRingWidth * 0.5f);
+            StrokeSlotShape(dl, center, r, st.slotRingInactive, st.slotRingWidth);
+        }
+
+        if ((st.slotOuterRingColor >> 24) > 0) {
+            const float activeW = isActive ? st.slotRingWidthActive : st.slotRingWidth;
+            const float outerR = r + activeW + 1.5f;
+            StrokeSlotShape(dl, center, outerR, st.slotOuterRingColor, st.slotOuterRingWidth);
         }
 
         if (!rSpell && !lSpell && !shoutFormID) {
@@ -395,7 +581,8 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         const float margin = st.buttonLabelMargin;
         const float totalW = validCount * iconSize + (validCount - 1) * spacing;
 
-        float startX = 0.f, startY = 0.f;
+        float startX = 0.f;
+        float startY = 0.f;
         switch (st.buttonLabelCorner) {
             case ButtonLabelCorner::Top:
                 startX = center.x - totalW * 0.5f;
@@ -414,9 +601,9 @@ namespace IntegratedMagic::HUD::SlotDrawer {
                 startY = center.y - iconSize * 0.5f;
                 break;
             case ButtonLabelCorner::TowardCenter: {
-                const float dx = hudOrigin.x - center.x, dy = hudOrigin.y - center.y;
-                const float len = std::sqrt(dx * dx + dy * dy);
-                if (len > 0.5f) {
+                const float dx = hudOrigin.x - center.x;
+                const float dy = hudOrigin.y - center.y;
+                if (const float len = std::sqrt(dx * dx + dy * dy); len > 0.5f) {
                     const float ax = center.x + (dx / len) * (slotR + margin + iconSize * 0.5f);
                     const float ay = center.y + (dy / len) * (slotR + margin + iconSize * 0.5f);
                     startX = ax - totalW * 0.5f;
@@ -428,9 +615,9 @@ namespace IntegratedMagic::HUD::SlotDrawer {
                 break;
             }
             case ButtonLabelCorner::AwayFromCenter: {
-                const float dx = center.x - hudOrigin.x, dy = center.y - hudOrigin.y;
-                const float len = std::sqrt(dx * dx + dy * dy);
-                if (len > 0.5f) {
+                const float dx = center.x - hudOrigin.x;
+                const float dy = center.y - hudOrigin.y;
+                if (const float len = std::sqrt(dx * dx + dy * dy); len > 0.5f) {
                     const float ax = center.x + (dx / len) * (slotR + margin + iconSize * 0.5f);
                     const float ay = center.y + (dy / len) * (slotR + margin + iconSize * 0.5f);
                     startX = ax - totalW * 0.5f;
@@ -455,7 +642,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
 
     void DrawSmallHUD(const ImGuiIO& io) {
         const auto& st = Style();
-        const int n = static_cast<int>(Slots::GetSlotCount());
+        const auto n = static_cast<int>(Slots::GetSlotCount());
         const int activeSlot = MagicState::Get().ActiveSlot();
         const bool modHeld = !MagicState::Get().IsActive() && Input::IsModifierHeld();
 
@@ -492,19 +679,21 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             for (int i = n; i < SlotLayout::kMaxSlots; ++i) s_labelAlpha[i] = 0.f;
         }
 
-        const LayoutVec2 fixedHalf = [&] {
-            LayoutVec2 h =
-                SlotLayout::BoundingHalf(st.hudLayout, n, st.slotRadius, st.ringRadius, st.slotSpacing, st.gridColumns);
-            return LayoutVec2{h.x + kGlowPad, h.y + kGlowPad};
-        }();
-
         float maxScale = SlotAnimator::MaxPossibleScale();
         for (int i = 0; i < n; ++i) maxScale = std::max(maxScale, SlotAnimator::GetScale(i));
 
         const LayoutVec2 animHalf = [&] {
             LayoutVec2 h = SlotLayout::BoundingHalf(st.hudLayout, n, st.slotRadius * maxScale, st.ringRadius,
                                                     st.slotSpacing, st.gridColumns);
-            return LayoutVec2{h.x + kGlowPad, h.y + kGlowPad};
+            float extraY = kGlowPad;
+            if (st.showSpellNamesInHud) {
+                const bool iconsVisible = st.buttonLabelVisibility == ButtonLabelVisibility::Always ||
+                                          (st.buttonLabelVisibility == ButtonLabelVisibility::OnModifier && modHeld);
+                const float iconReserve = iconsVisible ? (st.buttonLabelIconSize + st.buttonLabelMargin) : 0.f;
+                const float textReserve = ImGui::GetTextLineHeight() * 3.f + 4.f + iconReserve;
+                extraY += textReserve;
+            }
+            return LayoutVec2{h.x + kGlowPad, h.y + extraY};
         }();
 
         const ImVec2 hudOrigin = ComputeHudCenter(io, {animHalf.x, animHalf.y});
@@ -514,7 +703,8 @@ namespace IntegratedMagic::HUD::SlotDrawer {
 
         auto ScaledCenter = [&](int idx) -> ImVec2 {
             const float scale = SlotAnimator::GetScale(idx);
-            const float rx = relPos[idx].x, ry = relPos[idx].y;
+            const float rx = relPos[idx].x;
+            const float ry = relPos[idx].y;
             const float len = std::sqrt(rx * rx + ry * ry);
             const float push = (scale - 1.f) * st.slotRadius;
             if (len > 0.5f) return {hudOrigin.x + rx + (rx / len) * push, hudOrigin.y + ry + (ry / len) * push};
@@ -544,6 +734,40 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
             const bool is2H = !shID && !rID && lSp && SpellClassify::IsTwoHandedSpell(lSp);
             DrawSlotVisual(dl, center, slotR, active, is2H ? nullptr : rSp, is2H ? nullptr : lSp, is2H ? lID : shID);
+
+            if (st.showSpellNamesInHud && !MagicState::Get().IsActive()) {
+                const bool iconsVisible = st.buttonLabelVisibility == ButtonLabelVisibility::Always ||
+                                          (st.buttonLabelVisibility == ButtonLabelVisibility::OnModifier && modHeld);
+                const float iconReserve = iconsVisible ? (st.buttonLabelIconSize + st.buttonLabelMargin) : 0.f;
+                const float slotTop = center.y - slotR - iconReserve;
+
+                if (shID || is2H) {
+                    const RE::FormID dispID = shID ? shID : lID;
+                    auto const* f = RE::TESForm::LookupByID(dispID);
+                    const char* name = f ? f->GetName() : "";
+                    DrawWrappedLabelAbove(name, center.x - slotR, slotR * 2.f, slotTop, 4.f, true);
+                } else if (rSp || lSp) {
+                    const bool sameSpell = rSp && lSp && (rSp->GetFormID() == lSp->GetFormID());
+                    const bool onlyOne = (rSp != nullptr) != (lSp != nullptr);
+
+                    if (sameSpell || onlyOne) {
+                        const RE::SpellItem* sp = rSp ? rSp : lSp;
+                        DrawWrappedLabelAbove(sp->GetName(), center.x - slotR, slotR * 2.f, slotTop, 4.f, true);
+                    } else {
+                        constexpr float kPipeGap = 6.f;
+                        const float pipeW = ImGui::CalcTextSize("|").x;
+                        const float halfPipe = pipeW * 0.5f;
+
+                        DrawWrappedLabelAbove(lSp->GetName(), center.x - slotR, slotR - halfPipe - kPipeGap, slotTop);
+
+                        const float pipeH = ImGui::GetTextLineHeight();
+                        ImGui::SetCursorScreenPos({center.x - halfPipe, slotTop - 4.f - pipeH});
+
+                        DrawWrappedLabelAbove(rSp->GetName(), center.x + halfPipe + kPipeGap,
+                                              slotR - halfPipe - kPipeGap, slotTop);
+                    }
+                }
+            }
         };
 
         for (int i = 0; i < n; ++i)
