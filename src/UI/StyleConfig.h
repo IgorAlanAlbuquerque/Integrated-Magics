@@ -62,6 +62,12 @@ namespace IntegratedMagic {
         Chamfered = 3,
     };
 
+    enum class GlowStyle : std::uint8_t {
+        Ring = 0,
+        Fill = 1,
+        Both = 2,
+    };
+
     struct FontConfig {
         std::string path = "";
         float size = 28.f;
@@ -142,8 +148,10 @@ namespace IntegratedMagic {
         std::uint32_t slotBgInactive = 0xC80C0C0Cu;
 
         std::uint32_t slotRingInactive = 0x96464646u;
+        std::uint32_t slotRingActive = 0xFFD23200u;
         std::uint8_t slotRingActiveAlpha = 245;
         float slotRingWidth = 2.5f;
+        float slotRingWidthActive = 2.5f;
 
         std::uint8_t iconAlpha = 220;
 
@@ -189,6 +197,12 @@ namespace IntegratedMagic {
 
         std::uint32_t overlayColor = 0xFF000000u;
         float vignetteStrength = 0.f;
+
+        GlowStyle glowStyle = GlowStyle::Ring;
+        std::uint8_t glowLayers = 5;
+        float glowRadius = 2.5f;
+        float glowIntensity = 1.f;
+        float pulseSpeed = 4.5f;
 
         void Load();
         void Save();

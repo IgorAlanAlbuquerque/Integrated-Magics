@@ -220,8 +220,10 @@ namespace IntegratedMagic {
         slotBgActive = GetColor(ini, "Colors", "SlotBgActive", slotBgActive);
         slotBgInactive = GetColor(ini, "Colors", "SlotBgInactive", slotBgInactive);
         slotRingInactive = GetColor(ini, "Colors", "SlotRingInactive", slotRingInactive);
+        slotRingActive = GetColor(ini, "Colors", "SlotRingActive", slotRingActive);
         slotRingActiveAlpha = GetU8(ini, "Colors", "SlotRingActiveAlpha", slotRingActiveAlpha);
         slotRingWidth = GetFloat(ini, "Colors", "SlotRingWidth", slotRingWidth);
+        slotRingWidthActive = GetFloat(ini, "Colors", "SlotRingWidthActive", slotRingWidthActive);
         iconAlpha = GetU8(ini, "Colors", "IconAlpha", iconAlpha);
         emptySlotColor = GetColor(ini, "Colors", "EmptySlotColor", emptySlotColor);
 
@@ -292,6 +294,23 @@ namespace IntegratedMagic {
 
         overlayColor = GetColor(ini, "Popup", "OverlayColor", overlayColor);
         vignetteStrength = GetFloat(ini, "Popup", "VignetteStrength", vignetteStrength);
+
+        {
+            const char* v = ini.GetValue("Glow", "Style", nullptr);
+            if (v) {
+                const std::string s{v};
+                if (s == "Fill" || s == "1")
+                    glowStyle = GlowStyle::Fill;
+                else if (s == "Both" || s == "2")
+                    glowStyle = GlowStyle::Both;
+                else
+                    glowStyle = GlowStyle::Ring;
+            }
+        }
+        glowLayers = GetU8(ini, "Glow", "Layers", glowLayers);
+        glowRadius = GetFloat(ini, "Glow", "Radius", glowRadius);
+        glowIntensity = GetFloat(ini, "Glow", "Intensity", glowIntensity);
+        pulseSpeed = GetFloat(ini, "Glow", "PulseSpeed", pulseSpeed);
 
         spdlog::info("[StyleConfig] styles.ini carregado.");
     }
@@ -398,8 +417,10 @@ namespace IntegratedMagic {
         setColor("Colors", "SlotBgActive", slotBgActive);
         setColor("Colors", "SlotBgInactive", slotBgInactive);
         setColor("Colors", "SlotRingInactive", slotRingInactive);
+        setColor("Colors", "SlotRingActive", slotRingActive);
         setU8("Colors", "SlotRingActiveAlpha", slotRingActiveAlpha);
         setFloat("Colors", "SlotRingWidth", slotRingWidth);
+        setFloat("Colors", "SlotRingWidthActive", slotRingWidthActive);
         setU8("Colors", "IconAlpha", iconAlpha);
         setColor("Colors", "EmptySlotColor", emptySlotColor);
         setColor("Colors", "RingCenterFill", ringCenterFill);
@@ -444,6 +465,13 @@ namespace IntegratedMagic {
 
         setColor("Popup", "OverlayColor", overlayColor);
         setFloat("Popup", "VignetteStrength", vignetteStrength);
+
+        static constexpr const char* kGlowStyleNames[] = {"Ring", "Fill", "Both"};
+        ini.SetValue("Glow", "Style", kGlowStyleNames[static_cast<int>(glowStyle)]);
+        setU8("Glow", "Layers", glowLayers);
+        setFloat("Glow", "Radius", glowRadius);
+        setFloat("Glow", "Intensity", glowIntensity);
+        setFloat("Glow", "PulseSpeed", pulseSpeed);
 
         ini.SaveFile(kPath);
         spdlog::info("[StyleConfig] styles.ini salvo.");

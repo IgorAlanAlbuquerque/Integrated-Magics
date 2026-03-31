@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <format>
 #include <string>
+#include <utility>
 
 #include "Config/Config.h"
 #include "Config/SpellType.h"
@@ -11,9 +12,9 @@
 #include "PCH.h"
 #include "Persistence/SpellSettingsDB.h"
 #include "SKSEMenuFramework.h"
-#include "Strings.h"
 #include "UI/HudManager.h"
 #include "UI/PolyFill.h"
+#include "UI/Strings.h"
 #include "UI/StyleConfig.h"
 
 namespace {
@@ -301,7 +302,7 @@ namespace {
                 IntegratedMagic::Strings::Get("Item_ButtonIcon_Keyboard", "Keyboard") + '\0' +
                 IntegratedMagic::Strings::Get("Item_ButtonIcon_PlayStation", "PlayStation") + '\0' +
                 IntegratedMagic::Strings::Get("Item_ButtonIcon_Xbox", "Xbox") + '\0';
-            int iconTypeIdx = static_cast<int>(st.buttonIconType);
+            auto iconTypeIdx = static_cast<int>(std::to_underlying(st.buttonIconType));
             ImGuiMCP::SetNextItemWidth(180.0f);
             if (ImGuiMCP::Combo(
                     IntegratedMagic::Strings::Get("Item_ButtonIconType", "Button icons##buttonicons").c_str(),
@@ -332,7 +333,7 @@ namespace {
                                            IntegratedMagic::Strings::Get("Mode_Automatic", "Automatic") + '\0';
 
         for (const auto& e : kTypeEntries) {
-            auto& d = cfg.spellTypeDefaults[static_cast<int>(e.type)];
+            auto& d = cfg.spellTypeDefaults[static_cast<int>(std::to_underlying(e.type))];
             const std::string label = IntegratedMagic::Strings::Get(e.labelKey, e.labelFallback);
 
             ImGuiMCP::PushID(e.labelKey);
@@ -340,7 +341,7 @@ namespace {
             ImGuiMCP::Text("%s", label.c_str());
             ImGuiMCP::SameLine(180.f);
 
-            int modeIdx = static_cast<int>(d.mode);
+            auto modeIdx = static_cast<int>(std::to_underlying(d.mode));
             ImGuiMCP::SetNextItemWidth(120.f);
             if (ImGuiMCP::Combo(IntegratedMagic::Strings::Get("Item_Mode", "Mode##mode").c_str(), &modeIdx,
                                 modeComboItems.c_str())) {
@@ -574,7 +575,7 @@ namespace {
             }
         };
         auto u8Edit = [&](const char* label, std::uint8_t& val) {
-            int v = static_cast<int>(val);
+            auto v = static_cast<int>(val);
             ImGuiMCP::SetNextItemWidth(150.f);
             if (ImGuiMCP::InputInt(label, &v, 5, 20)) {
                 val = static_cast<std::uint8_t>(std::clamp(v, 0, 255));
@@ -591,7 +592,7 @@ namespace {
                 const std::string layoutNames =
                     S::Get("HUD_Layout_Circular", "Circular") + '\0' + S::Get("HUD_Layout_Horizontal", "Horizontal") +
                     '\0' + S::Get("HUD_Layout_Vertical", "Vertical") + '\0' + S::Get("HUD_Layout_Grid", "Grid") + '\0';
-                int layoutIdx = static_cast<int>(st.hudLayout);
+                auto layoutIdx = static_cast<int>(std::to_underlying(st.hudLayout));
                 ImGuiMCP::SetNextItemWidth(150.f);
                 if (ImGuiMCP::Combo(S::Get("HUD_Layout_Label", "Layout##hudlayout").c_str(), &layoutIdx,
                                     layoutNames.c_str())) {
@@ -638,14 +639,14 @@ namespace {
             ImGuiMCP::SameLine(0.f, 16.f);
             ImGuiMCP::BeginGroup();
             ImGuiMCP::SetNextItemWidth(150.f);
-            float ox = st.hudOffsetX;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_OffsetX_Label", "X##hudox").c_str(), &ox, 1.f, 5.f, "%.0f")) {
+            if (float ox = st.hudOffsetX;
+                ImGuiMCP::InputFloat(S::Get("HUD_OffsetX_Label", "X##hudox").c_str(), &ox, 1.f, 5.f, "%.0f")) {
                 st.hudOffsetX = ox;
                 dirty = true;
             }
             ImGuiMCP::SetNextItemWidth(150.f);
-            float oy = st.hudOffsetY;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_OffsetY_Label", "Y##hudoy").c_str(), &oy, 1.f, 5.f, "%.0f")) {
+            if (float oy = st.hudOffsetY;
+                ImGuiMCP::InputFloat(S::Get("HUD_OffsetY_Label", "Y##hudoy").c_str(), &oy, 1.f, 5.f, "%.0f")) {
                 st.hudOffsetY = oy;
                 dirty = true;
             }
@@ -658,41 +659,37 @@ namespace {
 
             {
                 ImGuiMCP::SetNextItemWidth(150.f);
-                float sr = st.slotRadius;
-                if (ImGuiMCP::InputFloat(S::Get("HUD_SlotRadius_Label", "Radius##slotradius").c_str(), &sr, 1.f, 5.f,
-                                         "%.1f")) {
+                if (float sr = st.slotRadius; ImGuiMCP::InputFloat(
+                        S::Get("HUD_SlotRadius_Label", "Radius##slotradius").c_str(), &sr, 1.f, 5.f, "%.1f")) {
                     st.slotRadius = sr;
                     dirty = true;
                 }
                 ImGuiMCP::SameLine();
                 ImGuiMCP::SetNextItemWidth(150.f);
-                float rw = st.slotRingWidth;
-                if (ImGuiMCP::InputFloat(S::Get("HUD_RingWidth_Label", "Ring Width##ringwidth").c_str(), &rw, 0.5f, 1.f,
-                                         "%.1f")) {
+                if (float rw = st.slotRingWidth; ImGuiMCP::InputFloat(
+                        S::Get("HUD_RingWidth_Label", "Ring Width##ringwidth").c_str(), &rw, 0.5f, 1.f, "%.1f")) {
                     st.slotRingWidth = std::max(0.f, rw);
                     dirty = true;
                 }
                 ImGuiMCP::Spacing();
 
                 ImGuiMCP::SetNextItemWidth(150.f);
-                float as = st.slotActiveScale;
-                if (ImGuiMCP::InputFloat(S::Get("HUD_ActiveScale_Label", "Active##activescale").c_str(), &as, 0.05f,
-                                         0.1f, "%.2f")) {
+                if (float as = st.slotActiveScale; ImGuiMCP::InputFloat(
+                        S::Get("HUD_ActiveScale_Label", "Active##activescale").c_str(), &as, 0.05f, 0.1f, "%.2f")) {
                     st.slotActiveScale = as;
                     dirty = true;
                 }
                 ImGuiMCP::SameLine();
                 ImGuiMCP::SetNextItemWidth(150.f);
-                float ms = st.slotModifierScale;
-                if (ImGuiMCP::InputFloat(S::Get("HUD_ModifierScale_Label", "Modifier##modscale").c_str(), &ms, 0.05f,
-                                         0.1f, "%.2f")) {
+                if (float ms = st.slotModifierScale; ImGuiMCP::InputFloat(
+                        S::Get("HUD_ModifierScale_Label", "Modifier##modscale").c_str(), &ms, 0.05f, 0.1f, "%.2f")) {
                     st.slotModifierScale = ms;
                     dirty = true;
                 }
                 ImGuiMCP::SameLine();
                 ImGuiMCP::SetNextItemWidth(150.f);
-                float ns = st.slotNeighborScale;
-                if (ImGuiMCP::InputFloat(S::Get("HUD_NeighborScale_Label", "Neighbor##neighborscale").c_str(), &ns,
+                if (float ns = st.slotNeighborScale;
+                    ImGuiMCP::InputFloat(S::Get("HUD_NeighborScale_Label", "Neighbor##neighborscale").c_str(), &ns,
                                          0.05f, 0.1f, "%.2f")) {
                     st.slotNeighborScale = ns;
                     dirty = true;
@@ -700,9 +697,8 @@ namespace {
                 ImGuiMCP::Spacing();
 
                 ImGuiMCP::SetNextItemWidth(150.f);
-                float et = st.slotExpandTime;
-                if (ImGuiMCP::InputFloat(S::Get("HUD_ExpandTime_Label", "Expand##expandtime").c_str(), &et, 0.01f,
-                                         0.05f, "%.2f")) {
+                if (float et = st.slotExpandTime; ImGuiMCP::InputFloat(
+                        S::Get("HUD_ExpandTime_Label", "Expand##expandtime").c_str(), &et, 0.01f, 0.05f, "%.2f")) {
                     st.slotExpandTime = std::max(0.f, et);
                     dirty = true;
                 }
@@ -734,9 +730,8 @@ namespace {
 
             {
                 ImGuiMCP::SetNextItemWidth(150.f);
-                float isf = st.iconSizeFactor;
-                if (ImGuiMCP::InputFloat(S::Get("HUD_IconSize_Label", "Size##iconsizefactor").c_str(), &isf, 0.05f,
-                                         0.1f, "%.2f")) {
+                if (float isf = st.iconSizeFactor; ImGuiMCP::InputFloat(
+                        S::Get("HUD_IconSize_Label", "Size##iconsizefactor").c_str(), &isf, 0.05f, 0.1f, "%.2f")) {
                     st.iconSizeFactor = std::clamp(isf, 0.1f, 2.f);
                     dirty = true;
                 }
@@ -755,14 +750,14 @@ namespace {
 
             ImGuiMCP::Spacing();
             {
-                int sat = static_cast<int>(st.iconSaturation);
+                auto sat = static_cast<int>(st.iconSaturation);
                 ImGuiMCP::SetNextItemWidth(150.f);
                 if (ImGuiMCP::InputInt(S::Get("HUD_Icon_Saturation", "Saturation##iconsat").c_str(), &sat, 5, 20)) {
                     st.iconSaturation = static_cast<std::uint8_t>(std::clamp(sat, 0, 255));
                     dirty = true;
                 }
                 ImGuiMCP::SameLine();
-                int bri = static_cast<int>(st.iconBrightness);
+                auto bri = static_cast<int>(st.iconBrightness);
                 ImGuiMCP::SetNextItemWidth(150.f);
                 if (ImGuiMCP::InputInt(S::Get("HUD_Icon_Brightness", "Brightness##iconbri").c_str(), &bri, 5, 20)) {
                     st.iconBrightness = static_cast<std::uint8_t>(std::clamp(bri, 0, 255));
@@ -785,9 +780,8 @@ namespace {
             if (st.textShadowEnabled) {
                 colorEdit(S::Get("HUD_TextShadow_Color", "Shadow Color##textshadowcol").c_str(), st.textShadowColor);
                 ImGuiMCP::SetNextItemWidth(100.f);
-                float tsx = st.textShadowOffsetX;
-                if (ImGuiMCP::InputFloat(S::Get("HUD_TextShadow_OffsetX", "Offset X##textshadowox").c_str(), &tsx, 0.5f,
-                                         1.f, "%.1f")) {
+                if (float tsx = st.textShadowOffsetX; ImGuiMCP::InputFloat(
+                        S::Get("HUD_TextShadow_OffsetX", "Offset X##textshadowox").c_str(), &tsx, 0.5f, 1.f, "%.1f")) {
                     st.textShadowOffsetX = tsx;
                     dirty = true;
                 }
@@ -813,7 +807,7 @@ namespace {
                 const std::string popupLayoutNames =
                     S::Get("HUD_Layout_Circular", "Circular") + '\0' + S::Get("HUD_Layout_Horizontal", "Horizontal") +
                     '\0' + S::Get("HUD_Layout_Vertical", "Vertical") + '\0' + S::Get("HUD_Layout_Grid", "Grid") + '\0';
-                int popupLayoutIdx = static_cast<int>(st.popupLayout);
+                auto popupLayoutIdx = static_cast<int>(std::to_underlying(st.popupLayout));
                 ImGuiMCP::SetNextItemWidth(180.f);
                 if (ImGuiMCP::Combo(S::Get("HUD_PopupLayout_Label", "Layout##popuplayout").c_str(), &popupLayoutIdx,
                                     popupLayoutNames.c_str())) {
@@ -825,42 +819,37 @@ namespace {
 
             {
                 ImGuiMCP::SetNextItemWidth(150.f);
-                float psr = st.popupSlotRadius;
-                if (ImGuiMCP::InputFloat(S::Get("HUD_PopupSlotR_Label", "Slot R##popupslotradius").c_str(), &psr, 1.f,
-                                         5.f, "%.0f")) {
+                if (float psr = st.popupSlotRadius; ImGuiMCP::InputFloat(
+                        S::Get("HUD_PopupSlotR_Label", "Slot R##popupslotradius").c_str(), &psr, 1.f, 5.f, "%.0f")) {
                     st.popupSlotRadius = std::max(1.f, psr);
                     dirty = true;
                 }
                 ImGuiMCP::SameLine();
                 ImGuiMCP::SetNextItemWidth(150.f);
-                float prr = st.popupRingRadius;
-                if (ImGuiMCP::InputFloat(S::Get("HUD_PopupRingR_Label", "Ring R##popupringradius").c_str(), &prr, 1.f,
-                                         5.f, "%.0f")) {
+                if (float prr = st.popupRingRadius; ImGuiMCP::InputFloat(
+                        S::Get("HUD_PopupRingR_Label", "Ring R##popupringradius").c_str(), &prr, 1.f, 5.f, "%.0f")) {
                     st.popupRingRadius = std::max(1.f, prr);
                     dirty = true;
                 }
                 ImGuiMCP::SameLine();
                 ImGuiMCP::SetNextItemWidth(150.f);
-                float psg = st.popupSlotGap;
-                if (ImGuiMCP::InputFloat(S::Get("HUD_PopupGap_Label", "Gap##popupslotgap").c_str(), &psg, 1.f, 5.f,
-                                         "%.0f")) {
+                if (float psg = st.popupSlotGap; ImGuiMCP::InputFloat(
+                        S::Get("HUD_PopupGap_Label", "Gap##popupslotgap").c_str(), &psg, 1.f, 5.f, "%.0f")) {
                     st.popupSlotGap = psg;
                     dirty = true;
                 }
                 ImGuiMCP::Spacing();
 
                 ImGuiMCP::SetNextItemWidth(150.f);
-                float mww = st.modeWidgetW;
-                if (ImGuiMCP::InputFloat(S::Get("HUD_ModeWidgetW_Label", "Widget W##modewidgetw").c_str(), &mww, 1.f,
-                                         5.f, "%.0f")) {
+                if (float mww = st.modeWidgetW; ImGuiMCP::InputFloat(
+                        S::Get("HUD_ModeWidgetW_Label", "Widget W##modewidgetw").c_str(), &mww, 1.f, 5.f, "%.0f")) {
                     st.modeWidgetW = std::max(1.f, mww);
                     dirty = true;
                 }
                 ImGuiMCP::SameLine();
                 ImGuiMCP::SetNextItemWidth(150.f);
-                int oa = static_cast<int>(st.overlayAlpha);
-                if (ImGuiMCP::InputInt(S::Get("HUD_OverlayAlpha_Label", "Overlay Alpha##overlayalpha").c_str(), &oa, 5,
-                                       20)) {
+                if (auto oa = static_cast<int>(st.overlayAlpha); ImGuiMCP::InputInt(
+                        S::Get("HUD_OverlayAlpha_Label", "Overlay Alpha##overlayalpha").c_str(), &oa, 5, 20)) {
                     st.overlayAlpha = static_cast<std::uint8_t>(std::clamp(oa, 0, 255));
                     dirty = true;
                 }
@@ -868,9 +857,8 @@ namespace {
                 ImGuiMCP::Spacing();
 
                 ImGuiMCP::SetNextItemWidth(150.f);
-                float pox = st.popupOffsetX;
-                if (ImGuiMCP::InputFloat(S::Get("HUD_PopupOffsetX_Label", "Offset X##popupox").c_str(), &pox, 1.f, 5.f,
-                                         "%.0f")) {
+                if (float pox = st.popupOffsetX; ImGuiMCP::InputFloat(
+                        S::Get("HUD_PopupOffsetX_Label", "Offset X##popupox").c_str(), &pox, 1.f, 5.f, "%.0f")) {
                     st.popupOffsetX = pox;
                     dirty = true;
                 }
@@ -916,7 +904,7 @@ namespace {
                 const std::string cornerNames =
                     S::Get("HUD_Corner_Round", "Round") + '\0' + S::Get("HUD_Corner_Square", "Square") + '\0' +
                     S::Get("HUD_Corner_Notched", "Notched") + '\0' + S::Get("HUD_Corner_Chamfered", "Chamfered") + '\0';
-                int csi = static_cast<int>(st.slotCornerStyle);
+                auto csi = static_cast<int>(std::to_underlying(st.slotCornerStyle));
                 ImGuiMCP::SetNextItemWidth(160.f);
                 if (ImGuiMCP::Combo(S::Get("HUD_CornerStyle_Label", "Style##cornerstyle").c_str(), &csi,
                                     cornerNames.c_str())) {
@@ -926,7 +914,7 @@ namespace {
                 if (st.slotCornerStyle != IntegratedMagic::CornerStyle::Square) {
                     ImGuiMCP::SameLine();
                     float cs = st.slotCornerSize;
-                    ImGuiMCP::SetNextItemWidth(120.f);
+                    ImGuiMCP::SetNextItemWidth(150.f);
                     if (ImGuiMCP::InputFloat(S::Get("HUD_CornerSize_Label", "Size##cornersize").c_str(), &cs, 1.f, 5.f,
                                              "%.1f")) {
                         st.slotCornerSize = std::clamp(cs, 0.f, 32.f);
@@ -946,7 +934,7 @@ namespace {
             const std::string modVisNames = S::Get("Item_ModVis_Never", "Never") + '\0' +
                                             S::Get("Item_ModVis_Always", "Always") + '\0' +
                                             S::Get("Item_ModVis_HideOnPress", "Hide on press") + '\0';
-            int modVisIdx = static_cast<int>(st.modifierWidgetVisibility);
+            auto modVisIdx = static_cast<int>(std::to_underlying(st.modifierWidgetVisibility));
             ImGuiMCP::SetNextItemWidth(180.f);
             if (ImGuiMCP::Combo(S::Get("Item_ModifierVisibility", "Visibility##modvis").c_str(), &modVisIdx,
                                 modVisNames.c_str())) {
@@ -956,17 +944,15 @@ namespace {
             ImGuiMCP::Spacing();
 
             ImGuiMCP::SetNextItemWidth(150.f);
-            float mr = st.modifierWidgetRadius;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_ModWidget_Radius", "Radius##modwidgetradius").c_str(), &mr, 1.f, 5.f,
-                                     "%.1f")) {
+            if (float mr = st.modifierWidgetRadius; ImGuiMCP::InputFloat(
+                    S::Get("HUD_ModWidget_Radius", "Radius##modwidgetradius").c_str(), &mr, 1.f, 5.f, "%.1f")) {
                 st.modifierWidgetRadius = std::max(1.f, mr);
                 dirty = true;
             }
             ImGuiMCP::SameLine();
             ImGuiMCP::SetNextItemWidth(150.f);
-            float mox = st.modifierWidgetOffsetX;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_ModWidget_OffsetX", "X##modwidgetox").c_str(), &mox, 1.f, 5.f,
-                                     "%.0f")) {
+            if (float mox = st.modifierWidgetOffsetX; ImGuiMCP::InputFloat(
+                    S::Get("HUD_ModWidget_OffsetX", "X##modwidgetox").c_str(), &mox, 1.f, 5.f, "%.0f")) {
                 st.modifierWidgetOffsetX = mox;
                 dirty = true;
             }
@@ -988,7 +974,7 @@ namespace {
             const std::string lblVisNames = S::Get("HUD_BtnLbl_Never", "Never") + '\0' +
                                             S::Get("HUD_BtnLbl_Always", "Always") + '\0' +
                                             S::Get("HUD_BtnLbl_OnModifier", "On modifier") + '\0';
-            int lblVisIdx = static_cast<int>(st.buttonLabelVisibility);
+            auto lblVisIdx = static_cast<int>(std::to_underlying(st.buttonLabelVisibility));
             ImGuiMCP::SetNextItemWidth(180.f);
             if (ImGuiMCP::Combo(S::Get("HUD_BtnLbl_Visibility", "Visibility##btnlblvis").c_str(), &lblVisIdx,
                                 lblVisNames.c_str())) {
@@ -1060,39 +1046,36 @@ namespace {
             ImGuiMCP::Spacing();
 
             ImGuiMCP::SetNextItemWidth(150.f);
-            float iconSz = st.buttonLabelIconSize;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_BtnLbl_IconSize", "Icon size##btnlblsz").c_str(), &iconSz, 1.f, 5.f,
-                                     "%.0f")) {
+            if (float iconSz = st.buttonLabelIconSize; ImGuiMCP::InputFloat(
+                    S::Get("HUD_BtnLbl_IconSize", "Icon size##btnlblsz").c_str(), &iconSz, 1.f, 5.f, "%.0f")) {
                 st.buttonLabelIconSize = std::max(4.f, iconSz);
                 dirty = true;
             }
             ImGuiMCP::SameLine();
             ImGuiMCP::SetNextItemWidth(150.f);
-            float iconSpc = st.buttonLabelIconSpacing;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_BtnLbl_IconSpacing", "Spacing##btnlblspc").c_str(), &iconSpc, 1.f, 5.f,
-                                     "%.0f")) {
+            if (float iconSpc = st.buttonLabelIconSpacing; ImGuiMCP::InputFloat(
+                    S::Get("HUD_BtnLbl_IconSpacing", "Spacing##btnlblspc").c_str(), &iconSpc, 1.f, 5.f, "%.0f")) {
                 st.buttonLabelIconSpacing = iconSpc;
                 dirty = true;
             }
             ImGuiMCP::SameLine();
             ImGuiMCP::SetNextItemWidth(150.f);
-            float margin = st.buttonLabelMargin;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_BtnLbl_Margin", "Margin##btnlblmar").c_str(), &margin, 1.f, 5.f,
-                                     "%.0f")) {
+            if (float margin = st.buttonLabelMargin; ImGuiMCP::InputFloat(
+                    S::Get("HUD_BtnLbl_Margin", "Margin##btnlblmar").c_str(), &margin, 1.f, 5.f, "%.0f")) {
                 st.buttonLabelMargin = margin;
                 dirty = true;
             }
 
             ImGuiMCP::SetNextItemWidth(150.f);
-            float ox2 = st.buttonLabelOffsetX;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_BtnLbl_OffsetX", "X##btnlblox").c_str(), &ox2, 1.f, 5.f, "%.0f")) {
+            if (float ox2 = st.buttonLabelOffsetX;
+                ImGuiMCP::InputFloat(S::Get("HUD_BtnLbl_OffsetX", "X##btnlblox").c_str(), &ox2, 1.f, 5.f, "%.0f")) {
                 st.buttonLabelOffsetX = ox2;
                 dirty = true;
             }
             ImGuiMCP::SameLine();
             ImGuiMCP::SetNextItemWidth(150.f);
-            float oy2 = st.buttonLabelOffsetY;
-            if (ImGuiMCP::InputFloat(S::Get("HUD_BtnLbl_OffsetY", "Y##btnlbloy").c_str(), &oy2, 1.f, 5.f, "%.0f")) {
+            if (float oy2 = st.buttonLabelOffsetY;
+                ImGuiMCP::InputFloat(S::Get("HUD_BtnLbl_OffsetY", "Y##btnlbloy").c_str(), &oy2, 1.f, 5.f, "%.0f")) {
                 st.buttonLabelOffsetY = oy2;
                 dirty = true;
             }
@@ -1115,14 +1098,22 @@ namespace {
             colorEdit(S::Get("HUD_Color_BgActive", "Bg Active##slotbgactive").c_str(), st.slotBgActive);
             colorEdit(S::Get("HUD_Color_BgInactive", "Bg Inactive##slotbginactive").c_str(), st.slotBgInactive);
             colorEdit(S::Get("HUD_Color_RingInactive", "Ring Inactive##slotringinactive").c_str(), st.slotRingInactive);
+            colorEdit(S::Get("HUD_Color_RingActive", "Ring Active##slotringactive").c_str(), st.slotRingActive);
             u8Edit(S::Get("HUD_Color_RingActiveAlpha", "Ring Active Alpha##slotringactivealpha").c_str(),
                    st.slotRingActiveAlpha);
             {
-                float rw = st.slotRingWidth;
                 ImGuiMCP::SetNextItemWidth(150.f);
-                if (ImGuiMCP::InputFloat(S::Get("HUD_Color_RingWidth", "Ring Width##slotrw").c_str(), &rw, 0.5f, 1.f,
-                                         "%.1f")) {
+                if (float rw = st.slotRingWidth; ImGuiMCP::InputFloat(
+                        S::Get("HUD_Color_RingWidth", "Ring Width##slotrw").c_str(), &rw, 0.5f, 1.f, "%.1f")) {
                     st.slotRingWidth = std::clamp(rw, 0.f, 10.f);
+                    dirty = true;
+                }
+                ImGuiMCP::SameLine();
+                ImGuiMCP::SetNextItemWidth(150.f);
+                float rwa = st.slotRingWidthActive;
+                if (ImGuiMCP::InputFloat(S::Get("HUD_Color_RingWidthActive", "Active Width##slotringwa").c_str(), &rwa,
+                                         0.5f, 1.f, "%.1f")) {
+                    st.slotRingWidthActive = std::clamp(rwa, 0.f, 10.f);
                     dirty = true;
                 }
             }
@@ -1147,7 +1138,7 @@ namespace {
                 const std::string gradNames = S::Get("HUD_Grad_None", "None") + '\0' +
                                               S::Get("HUD_Grad_Radial", "Radial") + '\0' +
                                               S::Get("HUD_Grad_Linear", "Linear") + '\0';
-                int gti = static_cast<int>(st.slotGradientType);
+                auto gti = static_cast<int>(std::to_underlying(st.slotGradientType));
                 ImGuiMCP::SetNextItemWidth(140.f);
                 if (ImGuiMCP::Combo(S::Get("HUD_Grad_Type", "Type##gradtype").c_str(), &gti, gradNames.c_str())) {
                     st.slotGradientType = static_cast<IntegratedMagic::GradientType>(gti);
@@ -1180,6 +1171,60 @@ namespace {
             ImGuiMCP::SeparatorText(S::Get("HUD_Colors_RingCenter", "Ring Center").c_str());
             colorEdit(S::Get("HUD_Color_RingCenterFill", "Fill##ringcenterfill").c_str(), st.ringCenterFill);
             colorEdit(S::Get("HUD_Color_RingCenterBorder", "Border##ringcenterborder").c_str(), st.ringCenterBorder);
+
+            ImGuiMCP::Spacing();
+            ImGuiMCP::SeparatorText(S::Get("HUD_Colors_Glow", "Glow").c_str());
+            ImGuiMCP::Spacing();
+
+            {
+                const std::string glowStyleNames = S::Get("HUD_Glow_Ring", "Ring") + '\0' +
+                                                   S::Get("HUD_Glow_Fill", "Fill") + '\0' +
+                                                   S::Get("HUD_Glow_Both", "Both") + '\0';
+                auto gsi = static_cast<int>(std::to_underlying(st.glowStyle));
+                ImGuiMCP::SetNextItemWidth(150.f);
+                if (ImGuiMCP::Combo(S::Get("HUD_Glow_Style", "Style##glowstyle").c_str(), &gsi,
+                                    glowStyleNames.c_str())) {
+                    st.glowStyle = static_cast<IntegratedMagic::GlowStyle>(gsi);
+                    dirty = true;
+                }
+            }
+
+            {
+                auto gl = static_cast<int>(st.glowLayers);
+                ImGuiMCP::SetNextItemWidth(150.f);
+                if (ImGuiMCP::InputInt(S::Get("HUD_Glow_Layers", "Layers##glowlayers").c_str(), &gl, 1, 1)) {
+                    st.glowLayers = static_cast<std::uint8_t>(std::clamp(gl, 1, 5));
+                    dirty = true;
+                }
+                ImGuiMCP::SameLine();
+                float gr = st.glowRadius;
+                ImGuiMCP::SetNextItemWidth(150.f);
+                if (ImGuiMCP::InputFloat(S::Get("HUD_Glow_Radius", "Radius##glowradius").c_str(), &gr, 0.5f, 1.f,
+                                         "%.1f")) {
+                    st.glowRadius = std::clamp(gr, 0.5f, 20.f);
+                    dirty = true;
+                }
+            }
+
+            {
+                float gi = st.glowIntensity;
+                ImGuiMCP::SetNextItemWidth(180.f);
+                if (ImGuiMCP::SliderFloat(S::Get("HUD_Glow_Intensity", "Intensity##glowintensity").c_str(), &gi, 0.f,
+                                          2.f, "%.2f")) {
+                    st.glowIntensity = gi;
+                    dirty = true;
+                }
+            }
+
+            {
+                float ps = st.pulseSpeed;
+                ImGuiMCP::SetNextItemWidth(180.f);
+                if (ImGuiMCP::SliderFloat(S::Get("HUD_Glow_PulseSpeed", "Pulse Speed##pulsespeed").c_str(), &ps, 0.f,
+                                          20.f, "%.1f")) {
+                    st.pulseSpeed = ps;
+                    dirty = true;
+                }
+            }
 
             ImGuiMCP::Spacing();
             ImGuiMCP::SeparatorText(S::Get("HUD_Colors_Schools", "School Colors").c_str());
