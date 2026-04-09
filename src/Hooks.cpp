@@ -11,12 +11,13 @@
 
 #include "HookUtil.hpp"
 #include "Input/Input.h"
-#include "Input/Inputstate.h"
+#include "Input/InputState.h"
 #include "PCH.h"
 #include "State/AnimListener.h"
 #include "State/State.h"
 #include "UI/FontLoader.h"
 #include "UI/HudManager.h"
+#include "UI/HudState.h"
 #include "UI/TextureManager.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -115,7 +116,7 @@ namespace IntegratedMagic::Hooks {
             }
         };
 
-        static int PollGamepadCapture() {
+        int PollGamepadCapture() {
             static constexpr std::pair<WORD, int> kMap[] = {
                 {XINPUT_GAMEPAD_DPAD_UP, 0},
                 {XINPUT_GAMEPAD_DPAD_DOWN, 1},
@@ -164,9 +165,28 @@ namespace IntegratedMagic::Hooks {
                     return;
                 }
 
-                HWND hwnd = FindWindowA("Skyrim Special Edition", nullptr);
+                struct FindData {
+                    DWORD pid;
+                    HWND result;
+                };
+                FindData fd{GetCurrentProcessId(), nullptr};
+
+                EnumWindows(
+                    [](HWND hWnd, LPARAM lParam) -> BOOL {
+                        auto* fd = reinterpret_cast<FindData*>(lParam);
+                        DWORD pid = 0;
+                        GetWindowThreadProcessId(hWnd, &pid);
+                        if (pid == fd->pid && IsWindowVisible(hWnd)) {
+                            fd->result = hWnd;
+                            return FALSE;
+                        }
+                        return TRUE;
+                    },
+                    reinterpret_cast<LPARAM>(&fd));
+
+                HWND hwnd = fd.result;
                 if (!hwnd) {
-                    spdlog::error("[Hooks] D3DInitHook: FindWindowA failed");
+                    spdlog::error("[Hooks] D3DInitHook: could not find game window");
                     return;
                 }
 
@@ -182,8 +202,8 @@ namespace IntegratedMagic::Hooks {
                 IntegratedMagic::TextureManager::Init();
 
                 const auto& fc = IntegratedMagic::StyleConfig::Get().font;
-                const char* fontPath = fc.path.empty() ? nullptr : fc.path.c_str();
-                if (fontPath && std::filesystem::exists(fontPath)) {
+                if (const char* fontPath = fc.path.empty() ? nullptr : fc.path.c_str();
+                    fontPath && std::filesystem::exists(fontPath)) {
                     io.Fonts->AddFontFromFileTTF(fontPath, fc.size, nullptr, FontLoader::GetGlyphRangesDefault());
 
                     ImFontConfig mergeCfg;
@@ -251,34 +271,31 @@ namespace IntegratedMagic::Hooks {
                 ImGui_ImplDX11_NewFrame();
                 ImGui_ImplWin32_NewFrame();
 
-                if (s_bbWidth <= 0.f) {
-                    ID3D11RenderTargetView* rtv = nullptr;
-                    g_deviceContext->OMGetRenderTargets(1, &rtv, nullptr);
-                    if (rtv) {
-                        ID3D11Resource* res = nullptr;
-                        rtv->GetResource(&res);
-                        if (res) {
-                            ID3D11Texture2D* tex = nullptr;
-                            if (SUCCEEDED(
-                                    res->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&tex)))) {
-                                D3D11_TEXTURE2D_DESC desc{};
-                                tex->GetDesc(&desc);
-                                s_bbWidth = static_cast<float>(desc.Width);
-                                s_bbHeight = static_cast<float>(desc.Height);
-#ifdef DEBUG
-                                spdlog::info("[Hooks] backbuffer: {}x{}  hwnd: {}x{}", desc.Width, desc.Height,
-                                             static_cast<int>(ImGui::GetIO().DisplaySize.x),
-                                             static_cast<int>(ImGui::GetIO().DisplaySize.y));
-#endif
-                                tex->Release();
-                            }
-                            res->Release();
+                ID3D11RenderTargetView* rtv = nullptr;
+                g_deviceContext->OMGetRenderTargets(1, &rtv, nullptr);
+                if (rtv) {
+                    ID3D11Resource* res = nullptr;
+                    rtv->GetResource(&res);
+                    if (res) {
+                        ID3D11Texture2D* tex = nullptr;
+                        if (SUCCEEDED(res->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&tex)))) {
+                            D3D11_TEXTURE2D_DESC desc{};
+                            tex->GetDesc(&desc);
+                            IntegratedMagic::HUD::g_backbufferW.store(static_cast<float>(desc.Width),
+                                                                      std::memory_order_relaxed);
+                            IntegratedMagic::HUD::g_backbufferH.store(static_cast<float>(desc.Height),
+                                                                      std::memory_order_relaxed);
+                            tex->Release();
                         }
-                        rtv->Release();
+                        res->Release();
                     }
+                    rtv->Release();
                 }
-
-                if (s_bbWidth > 0.f) ImGui::GetIO().DisplaySize = {s_bbWidth, s_bbHeight};
+#ifdef DEBUG
+                else {
+                    spdlog::warn("[HUD] No RTV bound");
+                }
+#endif
 
                 if (Input::IsCaptureModeActive()) {
                     static bool s_prevMouse[5]{};

@@ -11,7 +11,8 @@
 inline constexpr int kMaxSlots = static_cast<int>(IntegratedMagic::MagicConfig::kMaxSlots);
 inline constexpr int kMaxCode = 400;
 inline constexpr int kMouseButtonBase = 256;
-inline constexpr float kExclusiveConfirmDelaySec = 0.10f;
+inline constexpr float kFilterReplayDelaySec = 0.04f;
+inline constexpr float kPressBothAtSameTimeWindowSec = 0.2f;
 
 inline constexpr int kDIK_W = 0x11;
 inline constexpr int kDIK_A = 0x1E;
@@ -27,7 +28,6 @@ enum class ClearReason { Success, Timeout, Cancelled };
 
 struct ReplayState {
     bool armed{false};
-    bool skipNextSimWindowOpen{false};
     RE::INPUT_DEVICE dev{RE::INPUT_DEVICE::kKeyboard};
     std::uint32_t rawIdCode{0};
     RE::BSFixedString userEvent{};
@@ -90,6 +90,11 @@ extern std::atomic_bool g_captureModeActive;
 
 extern std::array<bool, kMaxSlots> g_slotIsKbMultiKey;
 extern std::array<bool, kMaxSlots> g_slotIsGpMultiKey;
+
+extern std::array<bool, kMaxSlots> g_filterWindowActive;
+extern std::array<float, kMaxSlots> g_filterWindowTimer;
+
+extern std::array<bool, kMaxSlots> g_slotDeactivatedThisPress;
 
 [[nodiscard]] inline int ActiveSlots() {
     int n = g_slotCount.load(std::memory_order_relaxed);

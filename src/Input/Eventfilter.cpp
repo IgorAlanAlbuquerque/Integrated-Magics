@@ -181,6 +181,25 @@ namespace Input::detail {
                     return false;
                 }
 
+                if (g_slotDeactivatedThisPress[s]) {
+                    if (value < 0.5f) {
+                        g_slotDeactivatedThisPress[s] = false;
+#ifdef DEBUG
+                        spdlog::info(
+                            "[Input] ShouldFilterAndSave: slot={} code={} FILTERED (deactivatedThisPress key-up, "
+                            "cleared)",
+                            slot, effectiveKbCode);
+#endif
+                    }
+#ifdef DEBUG
+                    else {
+                        spdlog::info("[Input] ShouldFilterAndSave: slot={} code={} FILTERED (deactivatedThisPress)",
+                                     slot, effectiveKbCode);
+                    }
+#endif
+                    return true;
+                }
+
                 if (g_slotIsMultiKey[s] && !HasExclusivePending(s)) {
                     const bool simPatch = IntegratedMagic::GetMagicConfig().pressBothAtSamePatch && g_slotIsMultiKey[s];
                     const bool replayInProgress = g_replay[s].armed || HasDeferredReplayForSlot(s);
@@ -209,18 +228,20 @@ namespace Input::detail {
                         slot, effectiveKbCode);
 #endif
                     g_exclusivePendingSrc[s] = inGp ? PendingSrc::Gp : PendingSrc::Kb;
-                    g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;
+                    g_exclusivePendingTimer[s] = kPressBothAtSameTimeWindowSec;
+                    g_filterWindowActive[s] = true;
+                    g_filterWindowTimer[s] = kFilterReplayDelaySec;
                 }
 
                 if (HasExclusivePending(s)) {
+                    if (g_filterWindowActive[s] || HasDeferredReplayForSlot(s)) {
 #ifdef DEBUG
-                    spdlog::info(
-                        "[Input] ShouldFilterAndSave: slot={} code={} RETAINED (exclusive pending, value={:.2f}, "
-                        "heldSecs={:.3f})",
-                        slot, effectiveKbCode, value, heldSecs);
+                        spdlog::info("[Input] ShouldFilterAndSave: slot={} code={} RETAINED", slot, effectiveKbCode);
 #endif
-                    g_retainedEvents[s].emplace_back(RetainedEvent{dev, rawIdCode, userEvent, value, heldSecs});
-                    return true;
+                        g_retainedEvents[s].emplace_back(RetainedEvent{dev, rawIdCode, userEvent, value, heldSecs});
+                        return true;
+                    }
+                    return false;
                 }
             }
             return false;
@@ -253,13 +274,19 @@ namespace Input::detail {
         static const RE::BSFixedString console{"Console"};
         static const RE::BSFixedString mcm{"Mod Configuration Menu"};
         static const RE::BSFixedString tweenMenu{"Tween Menu"};
+        static const RE::BSFixedString dialogueMenu{"Dialogue Menu"};
+        static const RE::BSFixedString dialogueTopicMenu{"Dialogue Topic Menu"};
+        static const RE::BSFixedString bestiary{"BestiaryMenu"};
+        static const RE::BSFixedString ostim{"OstimSceneMenu"};
 
         return ui->IsMenuOpen(inventoryMenu) || ui->IsMenuOpen(magicMenu) || ui->IsMenuOpen(statsMenu) ||
                ui->IsMenuOpen(mapMenu) || ui->IsMenuOpen(journalMenu) || ui->IsMenuOpen(favoritesMenu) ||
                ui->IsMenuOpen(containerMenu) || ui->IsMenuOpen(barterMenu) || ui->IsMenuOpen(trainingMenu) ||
                ui->IsMenuOpen(craftingMenu) || ui->IsMenuOpen(giftMenu) || ui->IsMenuOpen(lockpickingMenu) ||
                ui->IsMenuOpen(sleepWaitMenu) || ui->IsMenuOpen(loadingMenu) || ui->IsMenuOpen(mainMenu) ||
-               ui->IsMenuOpen(console) || ui->IsMenuOpen(mcm) || ui->IsMenuOpen(tweenMenu);
+               ui->IsMenuOpen(console) || ui->IsMenuOpen(mcm) || ui->IsMenuOpen(tweenMenu) ||
+               ui->IsMenuOpen(dialogueMenu) || ui->IsMenuOpen(dialogueTopicMenu) || ui->IsMenuOpen(bestiary) ||
+               ui->IsMenuOpen(ostim);
     }
 
     void ProcessButtonEvents(RE::InputEvent** a_evns, CaptureState& cap, bool& wantCapture) {

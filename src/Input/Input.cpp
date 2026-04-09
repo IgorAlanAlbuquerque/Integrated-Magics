@@ -1,5 +1,7 @@
 #include "Input.h"
 
+#include <xinput.h>
+
 #include <chrono>
 
 #include "Input/EventFilter.h"
@@ -86,61 +88,97 @@ namespace {
         {kMouseButtonBase + 3, VK_XBUTTON1}, {kMouseButtonBase + 4, VK_XBUTTON2},
     };
 
-    void ClearStuckKeysOnFocusRegain() {
-        static bool s_prevFocused = true;
+    void ReconcilePhysicalKeyState() {
+        static std::uint64_t s_nextRunMs = 0;
 
-        const HWND fg = GetForegroundWindow();
-        DWORD fgPid = 0;
-        GetWindowThreadProcessId(fg, &fgPid);
-        const bool focused = (fgPid == GetCurrentProcessId());
+        const auto now = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
+                .count());
+        if (now < s_nextRunMs) return;
+        s_nextRunMs = now + 150;
 
-        const bool justLostFocus = (s_prevFocused && !focused);
-        const bool justRegainedFocus = (!s_prevFocused && focused);
-        s_prevFocused = focused;
-
-        if (justLostFocus) {
-            for (const auto& [idx, vk] : kMouseVKMap) {
-                const auto i = static_cast<std::size_t>(idx);
-                if (g_kbDown[i].load(std::memory_order_relaxed)) {
-#ifdef DEBUG
-                    spdlog::info("[Input] ClearStuckKeysOnFocusRegain: focus lost, clearing mouse button idx={}", idx);
-#endif
-                    g_kbDown[i].store(false, std::memory_order_relaxed);
-                }
-            }
+        if (IntegratedMagic::MagicState::Get().IsActive()) return;
+        const int n = ActiveSlots();
+        for (int i = 0; i < n; ++i) {
+            if (Input::detail::HasExclusivePending(static_cast<std::size_t>(i))) return;
         }
 
-        if (!justRegainedFocus) return;
-
-#ifdef DEBUG
-        spdlog::info("[Input] ClearStuckKeysOnFocusRegain: focus regained, checking for stuck keys");
-#endif
-
+        bool clearedAny = false;
         for (int code = 0; code < kMouseButtonBase; ++code) {
             const auto idx = static_cast<std::size_t>(code);
             if (!g_kbDown[idx].load(std::memory_order_relaxed)) continue;
             const UINT vk = MapVirtualKeyA(static_cast<UINT>(code), MAPVK_VSC_TO_VK);
-            if (vk == 0) continue;
-            if (!(GetAsyncKeyState(static_cast<int>(vk)) & 0x8000)) {
-#ifdef DEBUG
-                spdlog::info("[Input] ClearStuckKeysOnFocusRegain: cleared keyboard scancode={}", code);
-#endif
+            if (vk == 0 || !(GetAsyncKeyState(static_cast<int>(vk)) & 0x8000)) {
                 g_kbDown[idx].store(false, std::memory_order_relaxed);
+                clearedAny = true;
             }
         }
 
-        for (auto [idx, vk] : kMouseVKMap) {
+        for (const auto& [idx, vk] : kMouseVKMap) {
             const auto i = static_cast<std::size_t>(idx);
             if (!g_kbDown[i].load(std::memory_order_relaxed)) continue;
             if (!(GetAsyncKeyState(vk) & 0x8000)) {
-#ifdef DEBUG
-                spdlog::info("[Input] ClearStuckKeysOnFocusRegain: cleared mouse button idx={}", idx);
-#endif
                 g_kbDown[i].store(false, std::memory_order_relaxed);
+                clearedAny = true;
             }
         }
-    }
 
+        XINPUT_STATE xstate{};
+        const bool gamepadConnected = (XInputGetState(0, &xstate) == ERROR_SUCCESS);
+
+        static constexpr std::pair<WORD, int> kGpMap[] = {
+            {XINPUT_GAMEPAD_DPAD_UP, 0},
+            {XINPUT_GAMEPAD_DPAD_DOWN, 1},
+            {XINPUT_GAMEPAD_DPAD_LEFT, 2},
+            {XINPUT_GAMEPAD_DPAD_RIGHT, 3},
+            {XINPUT_GAMEPAD_START, 4},
+            {XINPUT_GAMEPAD_BACK, 5},
+            {XINPUT_GAMEPAD_LEFT_THUMB, 6},
+            {XINPUT_GAMEPAD_RIGHT_THUMB, 7},
+            {XINPUT_GAMEPAD_LEFT_SHOULDER, 8},
+            {XINPUT_GAMEPAD_RIGHT_SHOULDER, 9},
+            {XINPUT_GAMEPAD_A, 10},
+            {XINPUT_GAMEPAD_B, 11},
+            {XINPUT_GAMEPAD_X, 12},
+            {XINPUT_GAMEPAD_Y, 13},
+        };
+
+        for (const auto& [mask, gpIdx] : kGpMap) {
+            const auto i = static_cast<std::size_t>(gpIdx);
+            if (!g_gpDown[i].load(std::memory_order_relaxed)) continue;
+            const bool physDown = gamepadConnected && (xstate.Gamepad.wButtons & mask);
+            if (!physDown) {
+                g_gpDown[i].store(false, std::memory_order_relaxed);
+                clearedAny = true;
+            }
+        }
+
+        {
+            const auto iLT = static_cast<std::size_t>(14);
+            if (g_gpDown[iLT].load(std::memory_order_relaxed)) {
+                const bool physDown = gamepadConnected && (xstate.Gamepad.bLeftTrigger > 64);
+                if (!physDown) {
+                    g_gpDown[iLT].store(false, std::memory_order_relaxed);
+                    clearedAny = true;
+                }
+            }
+            const auto iRT = static_cast<std::size_t>(15);
+            if (g_gpDown[iRT].load(std::memory_order_relaxed)) {
+                const bool physDown = gamepadConnected && (xstate.Gamepad.bRightTrigger > 64);
+                if (!physDown) {
+                    g_gpDown[iRT].store(false, std::memory_order_relaxed);
+                    clearedAny = true;
+                }
+            }
+        }
+
+        if (clearedAny) {
+#ifdef DEBUG
+            spdlog::info("[Input] ReconcilePhysicalKeyState: cleared stuck keys, resetting exclusive state");
+#endif
+            Input::detail::ClearEdgeStateOnly();
+        }
+    }
 }
 
 std::optional<int> Input::ConsumePressedSlot() { return ConsumeBit(g_pressedMask); }
@@ -155,9 +193,12 @@ void Input::ProcessAndFilter(RE::InputEvent** a_evns) {
         s_cacheInitialized = true;
     }
 
-    Input::detail::DrainOneDeferredReplayEvent();
+    for (int i = 0; i < ActiveSlots(); ++i) {
+        const auto s = static_cast<std::size_t>(i);
+        if (g_replay[s].armed && !Input::detail::HasDeferredReplayForSlot(s)) Input::detail::ResetReplayState(s);
+    }
 
-    ClearStuckKeysOnFocusRegain();
+    ReconcilePhysicalKeyState();
 
     static bool prevBlocked = false;
     auto& cap = GetCaptureState();
@@ -190,6 +231,7 @@ void Input::ProcessAndFilter(RE::InputEvent** a_evns) {
     if (blocked) TryAssignHoveredToSlotByHotkey();
 
     Input::detail::UpdateSlotsIfAllowed(blocked, dt);
+    Input::detail::DrainOneDeferredReplayEvent();
     Input::detail::FilterMouseForPopup(a_evns);
 
     if (!blocked) Input::detail::FilterEvents(a_evns);
@@ -209,11 +251,6 @@ void Input::ProcessAndFilter(RE::InputEvent** a_evns) {
             }
             cur = next;
         }
-    }
-
-    for (int i = 0; i < ActiveSlots(); ++i) {
-        const auto s = static_cast<std::size_t>(i);
-        if (g_replay[s].armed && !Input::detail::HasDeferredReplayForSlot(s)) Input::detail::ResetReplayState(s);
     }
 
     Input::detail::DispatchIfAllowed(blocked, dt);

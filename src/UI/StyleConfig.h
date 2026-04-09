@@ -127,6 +127,10 @@ namespace IntegratedMagic {
 
         bool useTextureForSlotBg = false;
         bool showSpellNamesInHud = false;
+        bool showSpellNamesInHud = false;
+        ButtonLabelCorner spellNamePosition = ButtonLabelCorner::Bottom;
+        float spellNameOffsetX = 0.f;
+        float spellNameOffsetY = 0.f;
 
         ButtonIconType buttonIconType = ButtonIconType::Xbox;
 

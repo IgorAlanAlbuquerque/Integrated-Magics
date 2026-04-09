@@ -3,6 +3,7 @@
 #include "Action.h"
 #include "Config/Config.h"
 #include "Config/Slots.h"
+#include "Input/InputState.h"
 #include "InventoryUtil.h"
 #include "PCH.h"
 #include "Persistence/SpellSettingsDB.h"
@@ -278,6 +279,11 @@ namespace IntegratedMagic {
             const bool pressL = needL && _left.mode == Press && _left.pressActive;
             const bool pressR = needR && _right.mode == Press && _right.pressActive;
             if (!pressL && !pressR) return;
+#ifdef DEBUG
+            spdlog::info("[State] OnSlotPressed: active slot pressed again, toggling press -> pressL={} pressR={}",
+                         pressL, pressR);
+#endif
+            g_slotDeactivatedThisPress[static_cast<std::size_t>(slot)] = true;
             if (pressL && pressR) {
                 FinishHand(Left);
                 FinishHand(Right);

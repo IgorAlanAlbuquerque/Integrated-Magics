@@ -682,21 +682,22 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         float maxScale = SlotAnimator::MaxPossibleScale();
         for (int i = 0; i < n; ++i) maxScale = std::max(maxScale, SlotAnimator::GetScale(i));
 
-        const LayoutVec2 animHalf = [&] {
-            LayoutVec2 h = SlotLayout::BoundingHalf(st.hudLayout, n, st.slotRadius * maxScale, st.ringRadius,
-                                                    st.slotSpacing, st.gridColumns);
-            float extraY = kGlowPad;
-            if (st.showSpellNamesInHud) {
-                const bool iconsVisible = st.buttonLabelVisibility == ButtonLabelVisibility::Always ||
-                                          (st.buttonLabelVisibility == ButtonLabelVisibility::OnModifier && modHeld);
-                const float iconReserve = iconsVisible ? (st.buttonLabelIconSize + st.buttonLabelMargin) : 0.f;
-                const float textReserve = ImGui::GetTextLineHeight() * 3.f + 4.f + iconReserve;
-                extraY += textReserve;
-            }
-            return LayoutVec2{h.x + kGlowPad, h.y + extraY};
-        }();
+        float extraY = kGlowPad;
+        if (st.showSpellNamesInHud) {
+            const bool iconsVisible = st.buttonLabelVisibility == ButtonLabelVisibility::Always ||
+                                      (st.buttonLabelVisibility == ButtonLabelVisibility::OnModifier && modHeld);
+            const float iconReserve = iconsVisible ? (st.buttonLabelIconSize + st.buttonLabelMargin) : 0.f;
+            extraY += ImGui::GetTextLineHeight() * 3.f + 4.f + iconReserve;
+        }
 
-        const ImVec2 hudOrigin = ComputeHudCenter(io, {animHalf.x, animHalf.y});
+        const float scalePad = (SlotAnimator::MaxPossibleScale() - 1.f) * st.slotRadius + kGlowPad;
+        const LayoutVec2 baseHalf =
+            SlotLayout::BoundingHalf(st.hudLayout, n, st.slotRadius, st.ringRadius, st.slotSpacing, st.gridColumns);
+        const LayoutVec2 stableHalf = {baseHalf.x + scalePad, baseHalf.y + scalePad + extraY - kGlowPad};
+
+        ImGuiIO fakeIo = io;
+        fakeIo.DisplaySize = IntegratedMagic::HUD::GetDisplaySize();
+        const ImVec2 hudOrigin = ComputeHudCenter(fakeIo, {stableHalf.x, stableHalf.y});
 
         LayoutVec2 relPos[SlotLayout::kMaxSlots]{};
         SlotLayout::Compute(st.hudLayout, n, st.slotRadius, st.ringRadius, st.slotSpacing, st.gridColumns, relPos);
@@ -706,13 +707,13 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             const float rx = relPos[idx].x;
             const float ry = relPos[idx].y;
             const float len = std::sqrt(rx * rx + ry * ry);
-            const float push = (scale - 1.f) * st.slotRadius;
-            if (len > 0.5f) return {hudOrigin.x + rx + (rx / len) * push, hudOrigin.y + ry + (ry / len) * push};
-            return {hudOrigin.x + rx, hudOrigin.y + ry};
+            if (len <= 0.5f) return {hudOrigin.x + rx, hudOrigin.y + ry};
+            const float scaledLen = len + (scale - 1.f) * st.slotRadius;
+            return {hudOrigin.x + (rx / len) * scaledLen, hudOrigin.y + (ry / len) * scaledLen};
         };
 
-        ImGui::SetNextWindowPos({hudOrigin.x - animHalf.x, hudOrigin.y - animHalf.y}, ImGuiCond_Always);
-        ImGui::SetNextWindowSize({animHalf.x * 2.f, animHalf.y * 2.f}, ImGuiCond_Always);
+        ImGui::SetNextWindowPos({hudOrigin.x - stableHalf.x, hudOrigin.y - stableHalf.y}, ImGuiCond_Always);
+        ImGui::SetNextWindowSize({stableHalf.x * 2.f, stableHalf.y * 2.f}, ImGuiCond_Always);
         ImGui::SetNextWindowBgAlpha(0.f);
         ImGui::Begin(kHudWindowID, nullptr,
                      ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar |
@@ -757,12 +758,9 @@ namespace IntegratedMagic::HUD::SlotDrawer {
                         constexpr float kPipeGap = 6.f;
                         const float pipeW = ImGui::CalcTextSize("|").x;
                         const float halfPipe = pipeW * 0.5f;
-
                         DrawWrappedLabelAbove(lSp->GetName(), center.x - slotR, slotR - halfPipe - kPipeGap, slotTop);
-
                         const float pipeH = ImGui::GetTextLineHeight();
                         ImGui::SetCursorScreenPos({center.x - halfPipe, slotTop - 4.f - pipeH});
-
                         DrawWrappedLabelAbove(rSp->GetName(), center.x + halfPipe + kPipeGap,
                                               slotR - halfPipe - kPipeGap, slotTop);
                     }

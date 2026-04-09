@@ -1,11 +1,12 @@
-#include <utility>
-
 #include "ExclusivePending.h"
 
+#include <utility>
+
 #include "Config/Config.h"
-#include "HotkeyCache.h"
+#include "Input/HotkeyCache.h"
+#include "Input/ReplaySystem.h"
 #include "PCH.h"
-#include "ReplaySystem.h"
+#include "State/State.h"
 
 namespace Input::detail {
 
@@ -46,20 +47,12 @@ namespace Input::detail {
                     g_simWindowActive[s] = false;
                     g_simWindowRemaining[s] = 0.f;
                 } else if (anyComboNow && !prevAnyDown) {
-                    if (g_replay[s].skipNextSimWindowOpen) {
-                        g_replay[s].skipNextSimWindowOpen = false;
+                    g_simWindowActive[s] = true;
+                    g_simWindowRemaining[s] = kPressBothAtSameTimeWindowSec;
 #ifdef DEBUG
-                        spdlog::info("[Input] ComputeAcceptedExclusive: slot={} sim-window SKIPPED (re-enqueued DOWN)",
-                                     slot);
+                    spdlog::info("[Input] ComputeAcceptedExclusive: slot={} sim-window OPENED ({:.2f}s)", slot,
+                                 kPressBothAtSameTimeWindowSec);
 #endif
-                    } else {
-                        g_simWindowActive[s] = true;
-                        g_simWindowRemaining[s] = kExclusiveConfirmDelaySec;
-#ifdef DEBUG
-                        spdlog::info("[Input] ComputeAcceptedExclusive: slot={} sim-window OPENED ({:.2f}s)", slot,
-                                     kExclusiveConfirmDelaySec);
-#endif
-                    }
                 } else if (g_simWindowActive[s]) {
                     g_simWindowRemaining[s] -= dt;
                     if (g_simWindowRemaining[s] <= 0.f) {
@@ -72,7 +65,9 @@ namespace Input::detail {
             }
 
             if (prevAccepted) {
+                const bool wasDeactivated = g_slotDeactivatedThisPress[s];
                 DiscardExclusivePending(s);
+                if (wasDeactivated) return false;
                 return rawNow;
             }
 
@@ -110,12 +105,12 @@ namespace Input::detail {
                             return false;
                         }
                         g_slotFullComboSeen[s] = true;
-                        g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;
+                        g_exclusivePendingTimer[s] = kFilterReplayDelaySec;
 #ifdef DEBUG
                         spdlog::info(
                             "[Input] ComputeAcceptedExclusive: slot={} multi-key full combo seen, timer reset to "
                             "{:.3f}s",
-                            slot, kExclusiveConfirmDelaySec);
+                            slot, kFilterReplayDelaySec);
 #endif
                     }
 
@@ -134,15 +129,17 @@ namespace Input::detail {
                         if (const bool anyHeld = (src == PendingSrc::Gp) ? AnyComboKeyDown(hk.gp, g_gpDown)
                                                                          : AnyComboKeyDown(hk.kb, g_kbDown);
                             anyHeld) {
-                            g_exclusivePendingTimer[s] -= dt;
-                            if (g_exclusivePendingTimer[s] <= 0.0f) {
+                            if (simPatch) {
+                                g_exclusivePendingTimer[s] -= dt;
+                                if (g_exclusivePendingTimer[s] <= 0.0f) {
 #ifdef DEBUG
-                                spdlog::info(
-                                    "[Input] ComputeAcceptedExclusive: slot={} multi-key partial hold TIMEOUT -> "
-                                    "Cancelled",
-                                    slot);
+                                    spdlog::info(
+                                        "[Input] ComputeAcceptedExclusive: slot={} multi-key partial hold TIMEOUT -> "
+                                        "Cancelled",
+                                        slot);
 #endif
-                                ClearExclusivePending(s, ClearReason::Cancelled);
+                                    ClearExclusivePending(s, ClearReason::Cancelled);
+                                }
                             }
                             return false;
                         }
@@ -170,10 +167,20 @@ namespace Input::detail {
 
                 } else {
                     if (!stillDown) {
+                        const bool wasDeactivated = g_slotDeactivatedThisPress[s];
+                        DiscardExclusivePending(s);
+                        if (wasDeactivated) {
+#ifdef DEBUG
+                            spdlog::info(
+                                "[Input] ComputeAcceptedExclusive: slot={} single-key released -> IGNORED "
+                                "(deactivatedThisPress)",
+                                slot);
+#endif
+                            return false;
+                        }
 #ifdef DEBUG
                         spdlog::info("[Input] ComputeAcceptedExclusive: slot={} single-key released -> ACCEPTED", slot);
 #endif
-                        DiscardExclusivePending(s);
                         return true;
                     }
                     g_exclusivePendingTimer[s] -= dt;
@@ -214,7 +221,7 @@ namespace Input::detail {
                         slot, kbIsMulti);
 #endif
                     g_exclusivePendingSrc[s] = PendingSrc::Kb;
-                    g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;
+                    g_exclusivePendingTimer[s] = kFilterReplayDelaySec;
                     if (kbIsMulti) g_slotFullComboSeen[s] = true;
                     return false;
                 }
@@ -242,7 +249,7 @@ namespace Input::detail {
                         slot, gpIsMulti);
 #endif
                     g_exclusivePendingSrc[s] = PendingSrc::Gp;
-                    g_exclusivePendingTimer[s] = kExclusiveConfirmDelaySec;
+                    g_exclusivePendingTimer[s] = kFilterReplayDelaySec;
                     if (gpIsMulti) g_slotFullComboSeen[s] = true;
                     return false;
                 }
@@ -253,12 +260,14 @@ namespace Input::detail {
     }
 
     void DiscardExclusivePending(std::size_t s) {
-        if (g_exclusivePendingSrc[s] != PendingSrc::None || !g_retainedEvents[s].empty()) {
 #ifdef DEBUG
+        if (g_exclusivePendingSrc[s] != PendingSrc::None || !g_retainedEvents[s].empty()) {
             spdlog::info("[Input] DiscardExclusivePending: slot={} (had pending src={} retained={})", s,
                          static_cast<int>(std::to_underlying(g_exclusivePendingSrc[s])), g_retainedEvents[s].size());
-#endif
         }
+#endif
+        g_filterWindowActive[s] = false;
+        g_filterWindowTimer[s] = 0.f;
         g_retainedEvents[s].clear();
         ClearDeferredReplayEventsForSlot(s);
         g_exclusivePendingSrc[s] = PendingSrc::None;
@@ -276,18 +285,25 @@ namespace Input::detail {
                      g_retainedEvents[s].size());
 #endif
         if (reason != ClearReason::Success) {
-            g_simWindowActive[s] = false;
-            g_simWindowRemaining[s] = 0.f;
             ClearDeferredReplayEventsForSlot(s);
             ResetReplayState(s);
-            for (auto const& ev : g_retainedEvents[s]) {
+            if (g_filterWindowActive[s]) {
+                g_filterWindowActive[s] = false;
+                g_filterWindowTimer[s] = 0.f;
+                for (auto const& ev : g_retainedEvents[s]) {
 #ifdef DEBUG
-                spdlog::info("[Input] ClearExclusivePending: slot={} queue replay dev={} value={:.2f} heldSecs={:.3f}",
-                             s, static_cast<int>(ev.dev), ev.value, ev.heldSecs);
+                    spdlog::info(
+                        "[Input] ClearExclusivePending: slot={} queue replay dev={} value={:.2f} heldSecs={:.3f}", s,
+                        static_cast<int>(ev.dev), ev.value, ev.heldSecs);
 #endif
-                QueueDeferredReplayEvent(s, ev);
+                    QueueDeferredReplayEvent(s, ev);
+                }
             }
+            g_simWindowActive[s] = false;
+            g_simWindowRemaining[s] = 0.f;
         } else {
+            g_filterWindowActive[s] = false;
+            g_filterWindowTimer[s] = 0.f;
             ClearDeferredReplayEventsForSlot(s);
             ResetReplayState(s);
         }
@@ -298,6 +314,10 @@ namespace Input::detail {
     }
 
     void ClearEdgeStateOnly() {
+#ifdef DEBUG
+        spdlog::info(
+            "[Input] ClearEdgeStateOnly: clearing edge state without discarding pending or resetting replay state");
+#endif
         const int n = ActiveSlots();
         for (int slot = 0; slot < n; ++slot) {
             const auto s = static_cast<std::size_t>(slot);
@@ -309,6 +329,8 @@ namespace Input::detail {
             g_prevAnyKeyDown[s] = false;
             g_simWindowActive[s] = false;
             g_simWindowRemaining[s] = 0.f;
+            g_filterWindowActive[s] = false;
+            g_filterWindowTimer[s] = 0.f;
             DiscardExclusivePending(s);
         }
         g_pressedMask.store(0uLL, std::memory_order_relaxed);
@@ -334,6 +356,9 @@ namespace Input::detail {
     }
 
     void ResetExclusiveState() {
+#ifdef DEBUG
+        spdlog::info("[Input] ResetExclusiveState: resetting all exclusive pending and edge state");
+#endif
         const int n = ActiveSlots();
         for (int slot = 0; slot < n; ++slot) {
             const auto s = static_cast<std::size_t>(slot);
@@ -345,12 +370,16 @@ namespace Input::detail {
             DiscardExclusivePending(s);
             g_slotDown[s].store(false, std::memory_order_relaxed);
             g_slotWasAccepted[s] = false;
+            g_filterWindowActive[s] = false;
+            g_filterWindowTimer[s] = 0.f;
+            g_slotDeactivatedThisPress[s] = false;
         }
         g_pressedMask.store(0uLL, std::memory_order_relaxed);
         g_releasedMask.store(0uLL, std::memory_order_relaxed);
     }
 
     void RecomputeSlotEdges(float dt) {
+        TickFilterWindows(dt);
         auto const& cfg = IntegratedMagic::GetMagicConfig();
         const int n = ActiveSlots();
         for (int slot = 0; slot < n; ++slot) {
@@ -383,8 +412,28 @@ namespace Input::detail {
 
             if (accNow)
                 g_slotWasAccepted[s] = true;
-            else if (!rawNow)
-                g_slotWasAccepted[s] = false;
+            else if (!rawNow) {
+                const auto& ms = IntegratedMagic::MagicState::Get();
+                if (!ms.IsActive() || ms.ActiveSlot() != slot) g_slotWasAccepted[s] = false;
+            }
+        }
+    }
+
+    void TickFilterWindows(float dt) {
+        const int n = ActiveSlots();
+        for (int slot = 0; slot < n; ++slot) {
+            const auto s = static_cast<std::size_t>(slot);
+            if (!g_filterWindowActive[s]) continue;
+            g_filterWindowTimer[s] -= dt;
+            if (g_filterWindowTimer[s] > 0.f) continue;
+
+            g_filterWindowActive[s] = false;
+            for (auto const& ev : g_retainedEvents[s]) QueueDeferredReplayEvent(s, ev);
+            g_retainedEvents[s].clear();
+#ifdef DEBUG
+            spdlog::info("[Input] TickFilterWindows: slot={} filter expired, flushed {} events to replay", slot,
+                         g_deferredEvents.size());
+#endif
         }
     }
 }

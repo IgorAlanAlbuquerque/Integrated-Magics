@@ -198,6 +198,10 @@ namespace IntegratedMagic {
             }
         }
 
+        spellNamePosition = GetButtonLabelCorner(ini, "HUD", "SpellNamePosition", spellNamePosition);
+        spellNameOffsetX = GetFloat(ini, "HUD", "SpellNameOffsetX", spellNameOffsetX);
+        spellNameOffsetY = GetFloat(ini, "HUD", "SpellNameOffsetY", spellNameOffsetY);
+
         buttonIconType = GetButtonIconType(ini, "General", "ButtonIconType", buttonIconType);
 
         {
@@ -393,6 +397,9 @@ namespace IntegratedMagic {
         setInt("HUD", "GridColumns", gridColumns);
         setBool("HUD", "UseTextureForSlotBg", useTextureForSlotBg);
         setBool("HUD", "ShowSpellNames", showSpellNamesInHud);
+        ini.SetValue("HUD", "SpellNamePosition", kButtonLabelCornerNames[static_cast<int>(spellNamePosition)]);
+        setFloat("HUD", "SpellNameOffsetX", spellNameOffsetX);
+        setFloat("HUD", "SpellNameOffsetY", spellNameOffsetY);
 
         ini.SetValue("General", "ButtonIconType", kButtonIconTypeNames[static_cast<int>(buttonIconType)]);
 

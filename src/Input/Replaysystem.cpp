@@ -45,7 +45,6 @@ namespace Input::detail {
         rp.rawIdCode = item.ev.rawIdCode;
         rp.userEvent = item.ev.userEvent;
         rp.valueAboveHalf = item.ev.value > 0.5f;
-        rp.skipNextSimWindowOpen = rp.valueAboveHalf;
 
 #ifdef DEBUG
         spdlog::info("[Input] Replay: slot={} dequeue dev={} value={:.2f} heldSecs={:.3f}", item.slot,

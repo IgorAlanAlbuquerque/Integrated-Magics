@@ -11,7 +11,7 @@ set(headers
     src/UI/SlotAnimator.h
     src/UI/SlotLayout.h
     src/UI/FontLoader.h
-    src/UI/Hoveredform.h
+    src/UI/HoveredForm.h
     src/UI/PolyFill.h
     src/UI/HudTextUtil.h
     src/Config/ConfigPath.h
@@ -22,13 +22,13 @@ set(headers
     src/Persistence/SpellSettingsDB.h
     src/Persistence/SaveSpellDB.h
     src/Input/Input.h
-    src/Input/Eventfilter.h
-    src/Input/Exclusivepending.h
-    src/Input/Hotkeycache.h
-    src/Input/Hudtoggle.h
-    src/Input/Inputinternal.h
-    src/Input/Inputstate.h
-    src/Input/Replaysystem.h
+    src/Input/EventFilter.h
+    src/Input/ExclusivePending.h
+    src/Input/HotkeyCache.h
+    src/Input/HudToggle.h
+    src/Input/InputInternal.h
+    src/Input/InputState.h
+    src/Input/ReplaySystem.h
     src/State/State.h
     src/State/Action.h
     src/State/AnimListener.h
@@ -36,6 +36,6 @@ set(headers
     src/State/InventoryUtil.h
     src/State/SyntheticInput.h
     src/State/Assign.h
-    src/State/Spellclassify.h
-    src/State/Equipsink.h
+    src/State/SpellClassify.h
+    src/State/EquipSink.h
 )

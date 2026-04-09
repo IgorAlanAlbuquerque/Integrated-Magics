@@ -731,6 +731,37 @@ namespace {
                 }
             }
 
+            if (st.showSpellNamesInHud) {
+                ImGuiMCP::Spacing();
+
+                static const char* kCornerNames[] = {"Top",  "Right",         "Bottom",
+                                                     "Left", "Toward Center", "Away from Center"};
+                int posIdx = static_cast<int>(st.spellNamePosition);
+                ImGuiMCP::SetNextItemWidth(180.f);
+                if (ImGuiMCP::Combo(S::Get("HUD_SpellNamePos", "Position##spellnamepos").c_str(), &posIdx, kCornerNames,
+                                    6)) {
+                    st.spellNamePosition = static_cast<ButtonLabelCorner>(posIdx);
+                    dirty = true;
+                }
+
+                ImGuiMCP::Spacing();
+                ImGuiMCP::SetNextItemWidth(120.f);
+                float snox = st.spellNameOffsetX;
+                if (ImGuiMCP::InputFloat(S::Get("HUD_SpellNameOffsetX", "Offset X##spellnameoffx").c_str(), &snox, 1.f,
+                                         5.f, "%.1f")) {
+                    st.spellNameOffsetX = snox;
+                    dirty = true;
+                }
+                ImGuiMCP::SameLine();
+                ImGuiMCP::SetNextItemWidth(120.f);
+                float snoy = st.spellNameOffsetY;
+                if (ImGuiMCP::InputFloat(S::Get("HUD_SpellNameOffsetY", "Offset Y##spellnameoffy").c_str(), &snoy, 1.f,
+                                         5.f, "%.1f")) {
+                    st.spellNameOffsetY = snoy;
+                    dirty = true;
+                }
+            }
+
             ImGuiMCP::Spacing();
 
             ImGuiMCP::SeparatorText(S::Get("HUD_Section_Icons", "Icons").c_str());

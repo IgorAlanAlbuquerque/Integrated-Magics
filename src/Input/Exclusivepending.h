@@ -34,4 +34,5 @@ namespace Input::detail {
 
     void RecomputeSlotEdges(float dt);
 
+    void TickFilterWindows(float dt);
 }

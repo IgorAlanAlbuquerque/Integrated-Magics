@@ -34,6 +34,11 @@ std::atomic_bool g_captureModeActive{false};
 std::array<bool, kMaxSlots> g_slotIsKbMultiKey{};
 std::array<bool, kMaxSlots> g_slotIsGpMultiKey{};
 
+std::array<bool, kMaxSlots> g_filterWindowActive{};
+std::array<float, kMaxSlots> g_filterWindowTimer{};
+
+std::array<bool, kMaxSlots> g_slotDeactivatedThisPress{};
+
 CaptureState& GetCaptureState() {
     static CaptureState st{};
     return st;

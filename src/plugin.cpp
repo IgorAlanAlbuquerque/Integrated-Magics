@@ -109,6 +109,9 @@ namespace {
         switch (message->type) {
             case SKSE::MessagingInterface::kPreLoadGame: {
                 g_pendingEssPath = GetSaveKeyFromMsg(message);
+#ifdef DEBUG
+                spdlog::info("[SaveLoad] kPreLoadGame: raw key='{}'", g_pendingEssPath);
+#endif
                 break;
             }
             case SKSE::MessagingInterface::kDataLoaded: {
@@ -123,27 +126,61 @@ namespace {
                 break;
             }
             case SKSE::MessagingInterface::kPostLoadGame: {
-                if (const bool ok = ReadPostLoadOk(message); ok && !g_pendingEssPath.empty()) {
+                const bool ok = ReadPostLoadOk(message);
+#ifdef DEBUG
+                spdlog::info("[SaveLoad] kPostLoadGame: ok={} pendingEssPath='{}'", ok, g_pendingEssPath);
+#endif
+                if (ok && !g_pendingEssPath.empty()) {
                     EnsureSaveSpellDBLoaded();
                     g_currentEssPath = g_pendingEssPath;
                     IntegratedMagic::SaveSpellSlots slots{};
-                    if (IntegratedMagic::SaveSpellDB::Get().TryGet(g_currentEssPath, slots)) {
+                    const bool found = IntegratedMagic::SaveSpellDB::Get().TryGet(g_currentEssPath, slots);
+#ifdef DEBUG
+                    spdlog::info("[SaveLoad] TryGet key='{}' found={}", g_currentEssPath, found);
+#endif
+                    if (found) {
+#ifdef DEBUG
+                        spdlog::info("[SaveLoad] slots size: left={} right={} shout={}", slots.left.size(),
+                                     slots.right.size(), slots.shout.size());
+                        for (std::size_t i = 0; i < slots.left.size(); ++i)
+                            spdlog::info("[SaveLoad]   slot[{}] left={:#010x} right={:#010x} shout={:#010x}", i,
+                                         slots.left[i], slots.right[i], i < slots.shout.size() ? slots.shout[i] : 0u);
+#endif
                         ApplySlotsToConfig(slots);
                     } else {
+#ifdef DEBUG
+                        spdlog::info("[SaveLoad] key not found in DB, clearing slots");
+#endif
                         ApplySlotsToConfig(IntegratedMagic::SaveSpellSlots{});
                     }
                 }
+#ifdef DEBUG
+                else {
+                    spdlog::info("[SaveLoad] kPostLoadGame: skipped (ok={} pendingEmpty={})", ok,
+                                 g_pendingEssPath.empty());
+                }
+#endif
                 g_pendingEssPath.clear();
                 break;
             }
             case SKSE::MessagingInterface::kSaveGame: {
                 std::string key = GetSaveKeyFromMsg(message);
-                if (key.empty()) {
-                    key = g_currentEssPath;
-                }
+#ifdef DEBUG
+                spdlog::info("[SaveLoad] kSaveGame: raw key='{}'", key);
+#endif
+                if (key.empty()) key = g_currentEssPath;
+#ifdef DEBUG
+                spdlog::info("[SaveLoad] kSaveGame: final key='{}'", key);
+#endif
+
                 if (!key.empty()) {
                     EnsureSaveSpellDBLoaded();
-                    IntegratedMagic::SaveSpellDB::Get().Upsert(key, ReadSlotsFromConfig());
+                    const auto slots = ReadSlotsFromConfig();
+#ifdef DEBUG
+                    spdlog::info("[SaveLoad] saving slots size: left={} right={} shout={}", slots.left.size(),
+                                 slots.right.size(), slots.shout.size());
+#endif
+                    IntegratedMagic::SaveSpellDB::Get().Upsert(key, slots);
                     IntegratedMagic::SaveSpellDB::Get().SaveToDisk();
                 }
                 break;

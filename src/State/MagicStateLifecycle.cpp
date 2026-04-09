@@ -159,7 +159,7 @@ namespace IntegratedMagic {
 #ifdef DEBUG
             spdlog::info("[State] RestoreSnapshot: restoring Right hand");
 #endif
-            ClearHandSpellIfNoSnapshot(player, rightSnapSpell, _session.modeSpellRight, Right);
+            if (!snap.rightObj.base) ClearHandSpellIfNoSnapshot(player, rightSnapSpell, _session.modeSpellRight, Right);
             RestoreOneHand(player, mgr, idx, false, snap.rightObj, rightSlot);
             EquipSpellIfPresent(player, rightSnapSpell, Right);
         }
@@ -167,7 +167,7 @@ namespace IntegratedMagic {
 #ifdef DEBUG
             spdlog::info("[State] RestoreSnapshot: restoring Left hand");
 #endif
-            ClearHandSpellIfNoSnapshot(player, leftSnapSpell, _session.modeSpellLeft, Left);
+            if (!snap.leftObj.base) ClearHandSpellIfNoSnapshot(player, leftSnapSpell, _session.modeSpellLeft, Left);
             RestoreOneHand(player, mgr, idx, true, snap.leftObj, leftSlot);
             EquipSpellIfPresent(player, leftSnapSpell, Left);
             if (!_restore.dirtyRight && snap.rightObj.base)

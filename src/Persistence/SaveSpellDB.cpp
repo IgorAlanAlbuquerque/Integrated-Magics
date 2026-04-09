@@ -94,7 +94,7 @@ namespace IntegratedMagic {
     }
 
     SaveSpellDB& SaveSpellDB::Get() {
-        static SaveSpellDB g;
+        static SaveSpellDB g;  // NOSONAR
         return g;
     }
 
@@ -114,18 +114,26 @@ namespace IntegratedMagic {
         std::scoped_lock lk(_mtx);
         _bySave.clear();
         const auto path = JsonPath();
+#ifdef DEBUG
+        spdlog::info("[SaveSpellDB] LoadFromDisk: path='{}'", path.string());
+#endif
+
         std::ifstream in(path);
         if (!in.good()) {
+            spdlog::warn("[SaveSpellDB] LoadFromDisk: file not found or not readable");
             return;
         }
         nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
         if (j.is_discarded()) {
+            spdlog::error("[SaveSpellDB] LoadFromDisk: JSON parse failed");
             return;
         }
         auto savesIt = j.find("saves");
         if (savesIt == j.end() || !savesIt->is_object()) {
+            spdlog::error("[SaveSpellDB] LoadFromDisk: 'saves' key missing or not object");
             return;
         }
+
         bool migratedAny = false;
         for (auto it = savesIt->begin(); it != savesIt->end(); ++it) {
             try {
@@ -136,21 +144,32 @@ namespace IntegratedMagic {
                 if (v.is_object()) {
                     slots = _parseV3ObjectToLR(v);
                     if (slots.Size() == 0) {
+                        spdlog::warn("[SaveSpellDB] LoadFromDisk: key='{}' parsed to empty slots, skipping", key);
                         continue;
                     }
                 } else if (v.is_array()) {
                     slots = _migrateV2ArrayToLR(v);
                     migratedAny = true;
+#ifdef DEBUG
+                    spdlog::info("[SaveSpellDB] LoadFromDisk: key='{}' migrated from v2", key);
+#endif
                 } else {
+                    spdlog::warn("[SaveSpellDB] LoadFromDisk: key='{}' unexpected value type, skipping", key);
                     continue;
                 }
+#ifdef DEBUG
+                spdlog::info("[SaveSpellDB] LoadFromDisk: loaded key='{}' slots={}", key, slots.Size());
+#endif
                 _bySave.insert_or_assign(key, std::move(slots));
             } catch (const nlohmann::json::exception& e) {
-                spdlog::error("[IMAGIC][SaveSpellDB] JSON exception for key='{}': {}", it.key(), e.what());
+                spdlog::error("[SaveSpellDB] LoadFromDisk: JSON exception key='{}': {}", it.key(), e.what());
             } catch (const std::exception& e) {
-                spdlog::error("[IMAGIC][SaveSpellDB] Std exception while reading entry: {}", e.what());
+                spdlog::error("[SaveSpellDB] LoadFromDisk: exception key='{}': {}", it.key(), e.what());
             }
         }
+#ifdef DEBUG
+        spdlog::info("[SaveSpellDB] LoadFromDisk: total keys loaded={}", _bySave.size());
+#endif
         if (migratedAny) {
             try {
                 const auto outJson = _buildJsonV3_NoLock(_bySave);
@@ -164,8 +183,14 @@ namespace IntegratedMagic {
     void SaveSpellDB::SaveToDisk() {
         std::scoped_lock lk(_mtx);
         const auto path = JsonPath();
+#ifdef DEBUG
+        spdlog::info("[SaveSpellDB] SaveToDisk: path='{}' entries={}", path.string(), _bySave.size());
+#endif
         const auto j = _buildJsonV3_NoLock(_bySave);
         _writeJsonToDisk(path, j);
+#ifdef DEBUG
+        spdlog::info("[SaveSpellDB] SaveToDisk: done");
+#endif
     }
 
     bool SaveSpellDB::TryGet(std::string_view saveKey, SaveSpellSlots& out) const {
@@ -181,6 +206,9 @@ namespace IntegratedMagic {
     void SaveSpellDB::Upsert(std::string_view saveKey, const SaveSpellSlots& slots) {
         std::scoped_lock lk(_mtx);
         auto key = NormalizeKeyCopy(saveKey);
+#ifdef DEBUG
+        spdlog::info("[SaveSpellDB] Upsert: key='{}' slots={}", key, slots.Size());
+#endif
         _bySave.insert_or_assign(std::move(key), slots);
     }
 
@@ -193,8 +221,14 @@ namespace IntegratedMagic {
         std::scoped_lock lk(_mtx);
         auto it = _bySave.find(normalizedKey);
         if (it == _bySave.end()) {
+#ifdef DEBUG
+            spdlog::info("[SaveSpellDB] TryGet: key='{}' NOT FOUND (total keys={})", normalizedKey, _bySave.size());
+#endif
             return false;
         }
+#ifdef DEBUG
+        spdlog::info("[SaveSpellDB] TryGet: key='{}' FOUND slots={}", normalizedKey, it->second.Size());
+#endif
         out = it->second;
         return true;
     }

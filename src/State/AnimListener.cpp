@@ -14,9 +14,6 @@ void AnimListener::HandleAnimEvent(const RE::BSAnimationGraphEvent* ev,
     using Hand = IntegratedMagic::Slots::Hand;
     auto& state = IntegratedMagic::MagicState::Get();
     const std::string_view tag{ev->tag.c_str(), ev->tag.size()};
-#ifdef DEBUG
-    spdlog::info("[AnimListener] Event received: tag='{}' | state.active={}", ev->tag.c_str(), state.IsActive());
-#endif
 
     if (tag == "EnableBumper"sv) {
 #ifdef DEBUG
