@@ -176,11 +176,14 @@ namespace IntegratedMagic::Hooks {
                         auto* fd = reinterpret_cast<FindData*>(lParam);
                         DWORD pid = 0;
                         GetWindowThreadProcessId(hWnd, &pid);
-                        if (pid == fd->pid && IsWindowVisible(hWnd)) {
-                            fd->result = hWnd;
-                            return FALSE;
-                        }
-                        return TRUE;
+                        if (pid != fd->pid || !IsWindowVisible(hWnd)) return TRUE;
+
+                        char className[256]{};
+                        GetClassNameA(hWnd, className, sizeof(className));
+                        if (strcmp(className, "Skyrim Special Edition") != 0) return TRUE;
+
+                        fd->result = hWnd;
+                        return FALSE;
                     },
                     reinterpret_cast<LPARAM>(&fd));
 

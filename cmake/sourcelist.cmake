@@ -30,6 +30,7 @@ set(sources
     src/State/MagicStateSlot.cpp
     src/State/Assign.cpp
     src/State/EquipSink.cpp
+    src/State/SlotCostUtil.cpp
     src/Detours/detours.cpp
     src/Detours/disasm.cpp
     src/Detours/disolx64.cpp

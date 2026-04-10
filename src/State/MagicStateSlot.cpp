@@ -8,6 +8,7 @@
 #include "PCH.h"
 #include "Persistence/SpellSettingsDB.h"
 #include "State.h"
+#include "State/SlotCostUtil.h"
 #include "State/SpellClassify.h"
 
 namespace IntegratedMagic {
@@ -302,40 +303,13 @@ namespace IntegratedMagic {
             PrepareForOverwriteToSlot(slot);
         }
 
+        if (const auto afford = ComputeSlotAffordability(slot); afford.hasSpells && !afford.canCast) {
+            ExitAllNow();
+            return;
+        }
+
         SlotEntry e{};
         if (!PrepareSlotEntry(slot, e)) return;
-
-        if (e.hasRight && !HasEnoughMagickaForSpell(e.player, e.rightSpell)) {
-            e.hasRight = false;
-            DisableHand(Right);
-        }
-        if (e.hasLeft) {
-            float available = GetPlayerMagicka(e.player);
-            if (e.hasRight) {
-                const float rightCost = GetSpellMagickaCost(e.player, e.rightSpell);
-                if (e.rightID == e.leftID) {
-                    const float mult = GetDualCastCostMultiplier(e.player, e.rightSpell);
-                    const float totalCost = (mult > 2.f) ? rightCost * mult : rightCost * 2.f;
-                    if (totalCost > 0.f && (available + 1e-2f) < totalCost) {
-                        e.hasLeft = false;
-                        DisableHand(Left);
-                    }
-                } else {
-                    available -= rightCost;
-                    const float leftCost = GetSpellMagickaCost(e.player, e.leftSpell);
-                    if (leftCost > 0.f && (available + 1e-2f) < leftCost) {
-                        e.hasLeft = false;
-                        DisableHand(Left);
-                    }
-                }
-            } else {
-                const float leftCost = GetSpellMagickaCost(e.player, e.leftSpell);
-                if (leftCost > 0.f && (GetPlayerMagicka(e.player) + 1e-2f) < leftCost) {
-                    e.hasLeft = false;
-                    DisableHand(Left);
-                }
-            }
-        }
 
         _session.isDualCasting = false;
         if (e.hasRight && e.hasLeft && e.rightSettings.mode == Automatic && e.leftSettings.mode == Automatic &&

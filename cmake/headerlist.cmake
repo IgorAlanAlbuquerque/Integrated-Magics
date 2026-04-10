@@ -38,4 +38,5 @@ set(headers
     src/State/Assign.h
     src/State/SpellClassify.h
     src/State/EquipSink.h
+    src/State/SlotCostUtil.h
 )
