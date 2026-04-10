@@ -10,47 +10,55 @@
 
 namespace IntegratedMagic::HUD {
 
-    inline void DrawWrappedLabelAbove(const char* text, float columnLeftX, float maxWidth, float slotTopY,
-                                      float margin = 4.f, bool centered = false) {
+    inline void DrawSpellLabel(const char* text, ImVec2 slotCenter, float slotRadius, ImVec2 dirTowardCenter,
+                               ButtonLabelCorner position, float padding) {
         if (!text || text[0] == '\0') return;
         const auto& st = StyleConfig::Get();
-        const float lineHeight = ImGui::GetTextLineHeight();
-        std::vector<std::string> lines;
-        std::string current;
-        std::istringstream stream(text);
-        std::string word;
-        while (stream >> word) {
-            const std::string candidate = current.empty() ? word : current + " " + word;
-            if (ImGui::CalcTextSize(candidate.c_str()).x <= maxWidth)
-                current = candidate;
-            else {
-                if (!current.empty()) lines.push_back(current);
-                current = word;
-            }
-        }
-        if (!current.empty()) lines.push_back(current);
-        float y = slotTopY - margin - static_cast<float>(lines.size()) * lineHeight;
-
         ImDrawList* dl = ImGui::GetWindowDrawList();
+        if (!dl) return;
 
-        for (const auto& line : lines) {
-            float x = columnLeftX;
-            if (centered) {
-                const float lineW = ImGui::CalcTextSize(line.c_str()).x;
-                x = columnLeftX + (maxWidth - lineW) * 0.5f;
-            }
-
-            if (st.textShadowEnabled && dl) {
-                const ImVec2 shadowPos = {x + st.textShadowOffsetX, y + st.textShadowOffsetY};
-                dl->AddText(shadowPos, st.textShadowColor, line.c_str());
-            }
-            if (dl) {
-                dl->AddText({x, y}, st.textColor, line.c_str());
-            } else {
-                ImGui::SetCursorScreenPos({x, y});
-                ImGui::TextDisabled("%s", line.c_str());
-            }
-            y += lineHeight;
+        ImVec2 dir{0.f, 1.f};
+        switch (position) {
+            case ButtonLabelCorner::Top:
+                dir = {0.f, -1.f};
+                break;
+            case ButtonLabelCorner::Bottom:
+                dir = {0.f, 1.f};
+                break;
+            case ButtonLabelCorner::Left:
+                dir = {-1.f, 0.f};
+                break;
+            case ButtonLabelCorner::Right:
+                dir = {1.f, 0.f};
+                break;
+            case ButtonLabelCorner::TowardCenter:
+                dir = dirTowardCenter;
+                break;
+            case ButtonLabelCorner::AwayFromCenter:
+                dir = {-dirTowardCenter.x, -dirTowardCenter.y};
+                break;
         }
+
+        const ImVec2 textSize = ImGui::CalcTextSize(text);
+
+        const float anchorX = slotCenter.x + dir.x * (slotRadius + padding);
+        const float anchorY = slotCenter.y + dir.y * (slotRadius + padding);
+
+        float x = anchorX - textSize.x * 0.5f;
+        float y = anchorY - textSize.y * 0.5f;
+
+        if (dir.y < -0.1f)
+            y = anchorY - textSize.y;
+        else if (dir.y > 0.1f)
+            y = anchorY;
+        if (dir.x < -0.1f)
+            x = anchorX - textSize.x;
+        else if (dir.x > 0.1f)
+            x = anchorX;
+
+        if (st.textShadowEnabled) {
+            dl->AddText({x + st.textShadowOffsetX, y + st.textShadowOffsetY}, st.textShadowColor, text);
+        }
+        dl->AddText({x, y}, st.textColor, text);
     }
 }

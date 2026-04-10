@@ -682,18 +682,34 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         float maxScale = SlotAnimator::MaxPossibleScale();
         for (int i = 0; i < n; ++i) maxScale = std::max(maxScale, SlotAnimator::GetScale(i));
 
-        float extraY = kGlowPad;
-        if (st.showSpellNamesInHud) {
-            const bool iconsVisible = st.buttonLabelVisibility == ButtonLabelVisibility::Always ||
-                                      (st.buttonLabelVisibility == ButtonLabelVisibility::OnModifier && modHeld);
-            const float iconReserve = iconsVisible ? (st.buttonLabelIconSize + st.buttonLabelMargin) : 0.f;
-            extraY += ImGui::GetTextLineHeight() * 3.f + 4.f + iconReserve;
-        }
-
         const float scalePad = (SlotAnimator::MaxPossibleScale() - 1.f) * st.slotRadius + kGlowPad;
         const LayoutVec2 baseHalf =
             SlotLayout::BoundingHalf(st.hudLayout, n, st.slotRadius, st.ringRadius, st.slotSpacing, st.gridColumns);
-        const LayoutVec2 stableHalf = {baseHalf.x + scalePad, baseHalf.y + scalePad + extraY - kGlowPad};
+
+        float textPadTop = 0.f, textPadBottom = 0.f, textPadLeft = 0.f, textPadRight = 0.f;
+        if (st.showSpellNamesInHud) {
+            const float textReserve = ImGui::GetTextLineHeight() * 2.f + 8.f + st.spellNamePadding;
+            switch (st.spellNamePosition) {
+                case ButtonLabelCorner::Top:
+                    textPadTop = textReserve;
+                    break;
+                case ButtonLabelCorner::Bottom:
+                    textPadBottom = textReserve;
+                    break;
+                case ButtonLabelCorner::Left:
+                    textPadLeft = textReserve;
+                    break;
+                case ButtonLabelCorner::Right:
+                    textPadRight = textReserve;
+                    break;
+                default:
+                    textPadTop = textPadBottom = textPadLeft = textPadRight = textReserve;
+                    break;
+            }
+        }
+
+        const LayoutVec2 stableHalf = {baseHalf.x + scalePad + std::max(textPadLeft, textPadRight),
+                                       baseHalf.y + scalePad + std::max(textPadTop, textPadBottom)};
 
         ImGuiIO fakeIo = io;
         fakeIo.DisplaySize = IntegratedMagic::HUD::GetDisplaySize();
@@ -712,7 +728,11 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             return {hudOrigin.x + (rx / len) * scaledLen, hudOrigin.y + (ry / len) * scaledLen};
         };
 
-        ImGui::SetNextWindowPos({hudOrigin.x - stableHalf.x, hudOrigin.y - stableHalf.y}, ImGuiCond_Always);
+        const float winOffsetX = (textPadRight - textPadLeft) * 0.5f;
+        const float winOffsetY = (textPadBottom - textPadTop) * 0.5f;
+
+        ImGui::SetNextWindowPos({hudOrigin.x - stableHalf.x + winOffsetX, hudOrigin.y - stableHalf.y + winOffsetY},
+                                ImGuiCond_Always);
         ImGui::SetNextWindowSize({stableHalf.x * 2.f, stableHalf.y * 2.f}, ImGuiCond_Always);
         ImGui::SetNextWindowBgAlpha(0.f);
         ImGui::Begin(kHudWindowID, nullptr,
@@ -737,32 +757,29 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             DrawSlotVisual(dl, center, slotR, active, is2H ? nullptr : rSp, is2H ? nullptr : lSp, is2H ? lID : shID);
 
             if (st.showSpellNamesInHud && !MagicState::Get().IsActive()) {
-                const bool iconsVisible = st.buttonLabelVisibility == ButtonLabelVisibility::Always ||
-                                          (st.buttonLabelVisibility == ButtonLabelVisibility::OnModifier && modHeld);
-                const float iconReserve = iconsVisible ? (st.buttonLabelIconSize + st.buttonLabelMargin) : 0.f;
-                const float slotTop = center.y - slotR - iconReserve;
+                const ImVec2 toCenter = [&]() -> ImVec2 {
+                    const float dx = hudOrigin.x - center.x;
+                    const float dy = hudOrigin.y - center.y;
+                    const float len = std::sqrt(dx * dx + dy * dy);
+                    return len > 0.5f ? ImVec2{dx / len, dy / len} : ImVec2{0.f, -1.f};
+                }();
+
+                auto drawLabel = [&](const char* name) {
+                    DrawSpellLabel(name, center, slotR, toCenter, st.spellNamePosition, st.spellNamePadding);
+                };
 
                 if (shID || is2H) {
                     const RE::FormID dispID = shID ? shID : lID;
                     auto const* f = RE::TESForm::LookupByID(dispID);
-                    const char* name = f ? f->GetName() : "";
-                    DrawWrappedLabelAbove(name, center.x - slotR, slotR * 2.f, slotTop, 4.f, true);
+                    drawLabel(f ? f->GetName() : "");
                 } else if (rSp || lSp) {
-                    const bool sameSpell = rSp && lSp && (rSp->GetFormID() == lSp->GetFormID());
+                    const bool same = rSp && lSp && (rSp->GetFormID() == lSp->GetFormID());
                     const bool onlyOne = (rSp != nullptr) != (lSp != nullptr);
-
-                    if (sameSpell || onlyOne) {
-                        const RE::SpellItem* sp = rSp ? rSp : lSp;
-                        DrawWrappedLabelAbove(sp->GetName(), center.x - slotR, slotR * 2.f, slotTop, 4.f, true);
+                    if (same || onlyOne) {
+                        drawLabel((rSp ? rSp : lSp)->GetName());
                     } else {
-                        constexpr float kPipeGap = 6.f;
-                        const float pipeW = ImGui::CalcTextSize("|").x;
-                        const float halfPipe = pipeW * 0.5f;
-                        DrawWrappedLabelAbove(lSp->GetName(), center.x - slotR, slotR - halfPipe - kPipeGap, slotTop);
-                        const float pipeH = ImGui::GetTextLineHeight();
-                        ImGui::SetCursorScreenPos({center.x - halfPipe, slotTop - 4.f - pipeH});
-                        DrawWrappedLabelAbove(rSp->GetName(), center.x + halfPipe + kPipeGap,
-                                              slotR - halfPipe - kPipeGap, slotTop);
+                        std::string combined = std::string(lSp->GetName()) + " | " + rSp->GetName();
+                        drawLabel(combined.c_str());
                     }
                 }
             }
