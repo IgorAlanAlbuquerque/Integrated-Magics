@@ -227,14 +227,10 @@ namespace IntegratedMagic::Hooks {
                         io.Fonts->AddFontFromFileTTF(fontPath, fc.size, &mergeCfg, FontLoader::GetGlyphRangesKorean());
                     if (fc.rangeGreek)
                         io.Fonts->AddFontFromFileTTF(fontPath, fc.size, &mergeCfg, FontLoader::GetGlyphRangesGreek());
-#ifdef DEBUG
-                    spdlog::info("[Hooks] D3DInitHook: loaded font '{}' size {}", fontPath, fc.size);
-#endif
+                    MAGIC_DEBUG_LOG("[Hooks] D3DInitHook: loaded font '{}' size {}", fontPath, fc.size);
                 } else {
                     io.Fonts->AddFontDefault();
-#ifdef DEBUG
-                    spdlog::info("[Hooks] D3DInitHook: font not found, using default");
-#endif
+                    MAGIC_DEBUG_LOG("[Hooks] D3DInitHook: font not found, using default");
                 }
 
                 WndProcHook::func = reinterpret_cast<WNDPROC>(
@@ -244,14 +240,12 @@ namespace IntegratedMagic::Hooks {
                 }
 
                 g_renderInitialized.store(true);
-#ifdef DEBUG
-                spdlog::info("[Hooks] D3DInitHook: ImGui HUD context initialized");
-#endif
+                MAGIC_DEBUG_LOG("[Hooks] D3DInitHook: ImGui HUD context initialized");
             }
 
             static void Install() {
                 Hook::stl::write_call<D3DInitHook>(id, offset);
-                spdlog::info("[Hooks] D3DInitHook installed");
+                MAGIC_DEBUG_LOG("[Hooks] D3DInitHook installed");
             }
         };
 
@@ -293,12 +287,9 @@ namespace IntegratedMagic::Hooks {
                         res->Release();
                     }
                     rtv->Release();
-                }
-#ifdef DEBUG
-                else {
+                } else {
                     spdlog::warn("[HUD] No RTV bound");
                 }
-#endif
 
                 if (Application::InputController::Get().IsCaptureModeActive()) {
                     static bool s_prevMouse[5]{};
@@ -323,7 +314,7 @@ namespace IntegratedMagic::Hooks {
 
             static void Install() {
                 Hook::stl::write_call<DXGIPresentHook>(id, offset);
-                spdlog::info("[Hooks] DXGIPresentHook installed");
+                MAGIC_DEBUG_LOG("[Hooks] DXGIPresentHook installed");
             }
         };
     }

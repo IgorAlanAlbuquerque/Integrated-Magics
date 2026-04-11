@@ -1,6 +1,6 @@
 set(headers
     src/Hooks.h
-    src/Config/ConfigPath.h
+    src/Util/ConfigPath.h
     src/Config/Config.h
     src/Config/StyleConfig.h
     src/Config/ConfigAdapter.h

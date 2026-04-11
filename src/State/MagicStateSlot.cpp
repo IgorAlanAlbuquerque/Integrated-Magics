@@ -20,9 +20,8 @@ namespace IntegratedMagic {
     }
 
     void MagicState::DisableHand(Slots::Hand hand) {
-#ifdef DEBUG
-        spdlog::info("[State] DisableHand: hand={}", IsLeft(hand) ? "Left" : "Right");
-#endif
+        MAGIC_DEBUG_LOG("[State] DisableHand: hand={}", IsLeft(hand) ? "Left" : "Right");
+
         StopAutoAttack(hand);
         ModeFor(hand) = {};
         ModeFor(hand).finished = true;
@@ -30,9 +29,8 @@ namespace IntegratedMagic {
     }
 
     void MagicState::FinishHand(Slots::Hand hand) {
-#ifdef DEBUG
-        spdlog::info("[State] FinishHand: hand={}", IsLeft(hand) ? "Left" : "Right");
-#endif
+        MAGIC_DEBUG_LOG("[State] FinishHand: hand={}", IsLeft(hand) ? "Left" : "Right");
+
         auto& hm = ModeFor(hand);
         hm.finished = true;
         hm.holdActive = false;
@@ -62,9 +60,9 @@ namespace IntegratedMagic {
         hm = {};
         hm.mode = ss.mode;
         hm.wantAutoAttack = ss.autoAttack;
-#ifdef DEBUG
+
         const char* handStr = IsLeft(hand) ? "Left" : "Right";
-#endif
+
         const bool skipAnim = IntegratedMagic::Config::MagicConfigAdapter::Get().SkipEquipAnimation();
         switch (ss.mode) {
             case Hold:
@@ -78,12 +76,12 @@ namespace IntegratedMagic {
                     _session.attackEnabled = false;
                     _cast.castStopsToSkip = skipAnim ? (_session.wasHandsDown ? 2 : 1) : 0;
                 }
-#ifdef DEBUG
-                spdlog::info(
+
+                MAGIC_DEBUG_LOG(
                     "[State] EnterHand: hand={} mode=Hold wantAutoAttack={} "
                     "waitingAutoAfterEquip={} castStopsToSkip={}",
                     handStr, hm.wantAutoAttack, hm.waitingAutoAfterEquip, _cast.castStopsToSkip);
-#endif
+
                 break;
             case Automatic:
                 hm.autoActive = true;
@@ -96,12 +94,12 @@ namespace IntegratedMagic {
                 hm.beginCastRetries = 0;
                 _session.attackEnabled = false;
                 _cast.castStopsToSkip = skipAnim ? (_session.wasHandsDown ? 2 : 1) : 0;
-#ifdef DEBUG
-                spdlog::info(
+
+                MAGIC_DEBUG_LOG(
                     "[State] EnterHand: hand={} mode=Automatic waitingChargeComplete=true "
                     "waitingAutoAfterEquip=true castStopsToSkip={}",
                     handStr, _cast.castStopsToSkip);
-#endif
+
                 break;
             case Press:
                 hm.pressActive = true;
@@ -117,11 +115,11 @@ namespace IntegratedMagic {
                     _session.attackEnabled = false;
                     _cast.castStopsToSkip = skipAnim ? (_session.wasHandsDown ? 2 : 1) : 0;
                 }
-#ifdef DEBUG
-                spdlog::info(
+
+                MAGIC_DEBUG_LOG(
                     "[State] EnterHand: hand={} mode=Press wantAutoAttack={} pressAutocast={} castStopsToSkip={}",
                     handStr, hm.wantAutoAttack, hm.pressAutocast, _cast.castStopsToSkip);
-#endif
+
                 break;
         }
     }
@@ -150,10 +148,10 @@ namespace IntegratedMagic {
             _right.finished = true;
             _session.modeSpellLeft = nullptr;
             _session.modeSpellRight = nullptr;
-#ifdef DEBUG
-            spdlog::info("[State] PrepareSlotEntry: shout slot={} shoutID={:#010x} isPower={} mode={}", slot,
-                         out.shoutID, _shout.isPower, static_cast<int>(std::to_underlying(out.shoutSettings.mode)));
-#endif
+
+            MAGIC_DEBUG_LOG("[State] PrepareSlotEntry: shout slot={} shoutID={:#010x} isPower={} mode={}", slot,
+                            out.shoutID, _shout.isPower, static_cast<int>(std::to_underlying(out.shoutSettings.mode)));
+
             return true;
         }
 
@@ -189,19 +187,17 @@ namespace IntegratedMagic {
     }
 
     void MagicState::StartShoutPress() {
-#ifdef DEBUG
-        spdlog::info("[State] StartShoutPress: held={} modeShoutID={:#010x}", _shout.held, _shout.modeShoutID);
-#endif
+        MAGIC_DEBUG_LOG("[State] StartShoutPress: held={} modeShoutID={:#010x}", _shout.held, _shout.modeShoutID);
+
         _shout.held = true;
         _shout.heldSecs = 0.f;
         detail::DispatchShout(1.0f, 0.0f);
     }
 
     void MagicState::StopShoutPress() {
-#ifdef DEBUG
-        spdlog::info("[State] StopShoutPress: held={} heldSecs={:.3f} modeShoutID={:#010x}", _shout.held,
-                     _shout.heldSecs, _shout.modeShoutID);
-#endif
+        MAGIC_DEBUG_LOG("[State] StopShoutPress: held={} heldSecs={:.3f} modeShoutID={:#010x}", _shout.held,
+                        _shout.heldSecs, _shout.modeShoutID);
+
         if (!_shout.held) return;
         const float held = (_shout.heldSecs > 0.f) ? _shout.heldSecs : 0.1f;
         detail::DispatchShout(0.0f, held);
@@ -210,10 +206,9 @@ namespace IntegratedMagic {
     }
 
     SlotPressResult MagicState::OnSlotPressed(int slot) {
-#ifdef DEBUG
-        spdlog::info("[State] OnSlotPressed: slot={} active={} activeSlot={} modeShoutID={:#010x}", slot,
-                     _session.active, _session.activeSlot, _shout.modeShoutID);
-#endif
+        MAGIC_DEBUG_LOG("[State] OnSlotPressed: slot={} active={} activeSlot={} modeShoutID={:#010x}", slot,
+                        _session.active, _session.activeSlot, _shout.modeShoutID);
+
         using enum Slots::Hand;
         using enum ActivationMode;
 
@@ -222,9 +217,8 @@ namespace IntegratedMagic {
                 if (_shout.finished) return SlotPressResult::None;
                 const auto ss = SpellSettingsDB::Get().Get(_shout.modeShoutID);
                 if (ss && ss->mode == Press) {
-#ifdef DEBUG
-                    spdlog::info("[State] OnSlotPressed: shout Press toggle -> StopShoutPress + finish");
-#endif
+                    MAGIC_DEBUG_LOG("[State] OnSlotPressed: shout Press toggle -> StopShoutPress + finish");
+
                     StopShoutPress();
                     _shout.finished = true;
                     TryFinalizeExit();
@@ -240,23 +234,22 @@ namespace IntegratedMagic {
             if (!PrepareSlotEntry(slot, e)) return SlotPressResult::None;
             if ((e.shoutSettings.mode == Hold || e.shoutSettings.mode == Automatic) && !_shout.isPower &&
                 e.player->GetVoiceRecoveryTime() > 0.f) {
-#ifdef DEBUG
-                spdlog::info("[State] OnSlotPressed: shout on cooldown -> early exit");
-#endif
+                MAGIC_DEBUG_LOG("[State] OnSlotPressed: shout on cooldown -> early exit");
+
                 _shout.finished = true;
                 TryFinalizeExit();
                 return SlotPressResult::None;
             }
-#ifdef DEBUG
-            spdlog::info("[State] OnSlotPressed: EquipShoutInVoice shoutID={:#010x} isPower={} mode={}", e.shoutID,
-                         _shout.isPower, static_cast<int>(std::to_underlying(e.shoutSettings.mode)));
-#endif
+
+            MAGIC_DEBUG_LOG("[State] OnSlotPressed: EquipShoutInVoice shoutID={:#010x} isPower={} mode={}", e.shoutID,
+                            _shout.isPower, static_cast<int>(std::to_underlying(e.shoutSettings.mode)));
+
             MagicAction::EquipShoutInVoice(e.player, e.shoutForm);
             _restore.dirtyShout = true;
-#ifdef DEBUG
-            spdlog::info("[State] OnSlotPressed: calling StartShoutPress (mode={})",
-                         static_cast<int>(std::to_underlying(e.shoutSettings.mode)));
-#endif
+
+            MAGIC_DEBUG_LOG("[State] OnSlotPressed: calling StartShoutPress (mode={})",
+                            static_cast<int>(std::to_underlying(e.shoutSettings.mode)));
+
             StartShoutPress();
             if (e.shoutSettings.mode == Automatic) _shout.powerAutoSecs = 0.f;
             return SlotPressResult::None;
@@ -268,10 +261,10 @@ namespace IntegratedMagic {
             const bool pressL = needL && _left.mode == Press && _left.pressActive;
             const bool pressR = needR && _right.mode == Press && _right.pressActive;
             if (!pressL && !pressR) return SlotPressResult::None;
-#ifdef DEBUG
-            spdlog::info("[State] OnSlotPressed: active slot pressed again, toggling press -> pressL={} pressR={}",
-                         pressL, pressR);
-#endif
+
+            MAGIC_DEBUG_LOG("[State] OnSlotPressed: active slot pressed again, toggling press -> pressL={} pressR={}",
+                            pressL, pressR);
+
             if (pressL && pressR) {
                 FinishHand(Left);
                 FinishHand(Right);
@@ -351,30 +344,28 @@ namespace IntegratedMagic {
     }
 
     void MagicState::OnSlotReleased(int slot) {
-#ifdef DEBUG
-        spdlog::info("[State] OnSlotReleased: slot={} active={} activeSlot={} modeShoutID={:#010x} isPower={} held={}",
-                     slot, _session.active, _session.activeSlot, _shout.modeShoutID, _shout.isPower, _shout.held);
-#endif
+        MAGIC_DEBUG_LOG(
+            "[State] OnSlotReleased: slot={} active={} activeSlot={} modeShoutID={:#010x} isPower={} held={}", slot,
+            _session.active, _session.activeSlot, _shout.modeShoutID, _shout.isPower, _shout.held);
+
         if (!_session.active || slot != _session.activeSlot) return;
 
         if (_shout.modeShoutID != 0) {
             const auto ss = SpellSettingsDB::Get().Get(_shout.modeShoutID);
             const auto mode = ss ? ss->mode : ActivationMode::Hold;
-#ifdef DEBUG
-            spdlog::info("[State] OnSlotReleased: shout path mode={}", static_cast<int>(std::to_underlying(mode)));
-#endif
+
+            MAGIC_DEBUG_LOG("[State] OnSlotReleased: shout path mode={}", static_cast<int>(std::to_underlying(mode)));
+
             if (mode == ActivationMode::Hold) {
                 StopShoutPress();
                 if (_shout.isPower) {
-#ifdef DEBUG
-                    spdlog::info("[State] OnSlotReleased: power Hold release -> finishing + TryFinalizeExit");
-#endif
+                    MAGIC_DEBUG_LOG("[State] OnSlotReleased: power Hold release -> finishing + TryFinalizeExit");
+
                     _shout.finished = true;
                     TryFinalizeExit();
                 } else {
-#ifdef DEBUG
-                    spdlog::info("[State] OnSlotReleased: shout Hold release -> waitingStopEvent");
-#endif
+                    MAGIC_DEBUG_LOG("[State] OnSlotReleased: shout Hold release -> waitingStopEvent");
+
                     _shout.waitingStopEvent = true;
                 }
             }

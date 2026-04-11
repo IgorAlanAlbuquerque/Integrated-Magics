@@ -77,11 +77,11 @@ namespace IntegratedMagic::MagicAction {
                         }
                         auto* pc = RE::PlayerCharacter::GetSingleton();
                         SetSkipEquipVars(pc, false);
-#ifdef DEBUG
-                        spdlog::info(
+
+                        MAGIC_DEBUG_LOG(
                             "[Action] ScheduleDisableSkipEquip: token={} - disabling InstantEquipAnim (timer fallback)",
                             token);
-#endif
+
                         g_skipToken.fetch_add(1, std::memory_order_relaxed);
                     });
                 }
@@ -114,21 +114,20 @@ namespace IntegratedMagic::MagicAction {
         }
         auto* caster = GetCaster(player, ToCastingSource(hand));
         SetCasterDual(caster, false);
-#ifdef DEBUG
-        spdlog::info("[Action] EquipSpellInHand: hand={} spellID={:#010x} name='{}' | currentCasterSpell={:#010x}",
-                     (hand == Slots::Hand::Left) ? "Left" : "Right", spell->GetFormID(),
-                     spell->GetFullName() ? spell->GetFullName() : "<null>",
-                     (caster && caster->currentSpell) ? caster->currentSpell->GetFormID() : 0u);
-#endif
+
+        MAGIC_DEBUG_LOG("[Action] EquipSpellInHand: hand={} spellID={:#010x} name='{}' | currentCasterSpell={:#010x}",
+                        (hand == Slots::Hand::Left) ? "Left" : "Right", spell->GetFormID(),
+                        spell->GetFullName() ? spell->GetFullName() : "<null>",
+                        (caster && caster->currentSpell) ? caster->currentSpell->GetFormID() : 0u);
 
         const auto& patches = IntegratedMagic::Config::MagicConfigAdapter::Get();
         if (patches.SkipEquipAnimation()) {
             const std::uint64_t token = (g_skipToken.fetch_add(1, std::memory_order_relaxed) + 1) | 1ull;
             g_skipToken.store(token, std::memory_order_relaxed);
             SetSkipEquipVars(player, true);
-#ifdef DEBUG
-            spdlog::info("[Action] EquipSpellInHand: InstantEquipAnim = true (token={})", token);
-#endif
+
+            MAGIC_DEBUG_LOG("[Action] EquipSpellInHand: InstantEquipAnim = true (token={})", token);
+
             ScheduleDisableSkipEquip(token, 500);
         }
 
@@ -145,19 +144,18 @@ namespace IntegratedMagic::MagicAction {
         const std::uint64_t next = (cur + 1ull) & ~1ull;
         g_skipToken.store(next, std::memory_order_relaxed);
         SetSkipEquipVars(player, false);
-#ifdef DEBUG
-        spdlog::info("[Action] DisableSkipEquipVarsNow: InstantEquipAnim = false (token {} -> {})", cur, next);
-#endif
+
+        MAGIC_DEBUG_LOG("[Action] DisableSkipEquipVarsNow: InstantEquipAnim = false (token {} -> {})", cur, next);
     }
 
     void ClearHandSpell(RE::PlayerCharacter* player, RE::SpellItem* spell, Slots::Hand hand) {
         if (!player || !spell) {
             return;
         }
-#ifdef DEBUG
-        spdlog::info("[Action] ClearHandSpell(spell): hand={} spellID={:#010x}",
-                     (hand == Slots::Hand::Left) ? "Left" : "Right", spell->GetFormID());
-#endif
+
+        MAGIC_DEBUG_LOG("[Action] ClearHandSpell(spell): hand={} spellID={:#010x}",
+                        (hand == Slots::Hand::Left) ? "Left" : "Right", spell->GetFormID());
+
         auto* caster = GetCaster(player, ToCastingSource(hand));
         SetCasterDual(caster, false);
         UnEquipSpell(player, spell, ToUnEquipHandInt(hand));
@@ -170,16 +168,15 @@ namespace IntegratedMagic::MagicAction {
         auto* caster = GetCaster(player, ToCastingSource(hand));
         auto* cur = GetEquippedSpellFromCaster(caster);
         if (!cur) {
-#ifdef DEBUG
-            spdlog::info("[Action] ClearHandSpell(no-spell): hand={} - caster has no spell, skipping",
-                         (hand == Slots::Hand::Left) ? "Left" : "Right");
-#endif
+            MAGIC_DEBUG_LOG("[Action] ClearHandSpell(no-spell): hand={} - caster has no spell, skipping",
+                            (hand == Slots::Hand::Left) ? "Left" : "Right");
+
             return;
         }
-#ifdef DEBUG
-        spdlog::info("[Action] ClearHandSpell(no-spell): hand={} clearing spellID={:#010x}",
-                     (hand == Slots::Hand::Left) ? "Left" : "Right", cur->GetFormID());
-#endif
+
+        MAGIC_DEBUG_LOG("[Action] ClearHandSpell(no-spell): hand={} clearing spellID={:#010x}",
+                        (hand == Slots::Hand::Left) ? "Left" : "Right", cur->GetFormID());
+
         ClearHandSpell(player, cur, hand);
     }
 
@@ -216,9 +213,9 @@ namespace IntegratedMagic::MagicAction {
         const std::uint64_t token = (g_skipToken.fetch_add(1, std::memory_order_relaxed) + 1) | 1ull;
         g_skipToken.store(token, std::memory_order_relaxed);
         SetSkipEquipVars(player, true);
-#ifdef DEBUG
-        spdlog::info("[Action] ApplySkipEquipAnimReturn: InstantEquipAnim = true (token={})", token);
-#endif
+
+        MAGIC_DEBUG_LOG("[Action] ApplySkipEquipAnimReturn: InstantEquipAnim = true (token={})", token);
+
         ScheduleDisableSkipEquip(token, 500);
     }
 }

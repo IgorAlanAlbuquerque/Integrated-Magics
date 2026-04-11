@@ -26,12 +26,11 @@ namespace IntegratedMagic::EquipSink {
                     if (!effect || !effect->baseEffect) continue;
                     const auto* associated = effect->baseEffect->data.associatedForm;
                     if (associated && associated->GetFormID() == weaponFormID) {
-#ifdef DEBUG
-                        spdlog::info(
+                        MAGIC_DEBUG_LOG(
                             "[EquipSink] IsAssociatedBoundWeaponOfSlot: weaponID={:#010x} matched "
                             "associatedForm of spell={:#010x} in slot={}",
                             weaponFormID, spellID, activeSlot);
-#endif
+
                         return true;
                     }
                 }
@@ -54,9 +53,8 @@ namespace IntegratedMagic::EquipSink {
 
                 if (form->As<RE::TESShout>() || form->As<RE::SpellItem>()) {
                     s_lastEquippedMagicFormID.store(formID, std::memory_order_relaxed);
-#ifdef DEBUG
-                    spdlog::info("[EquipSink] cached formID={:#010x}", formID);
-#endif
+
+                    MAGIC_DEBUG_LOG("[EquipSink] cached formID={:#010x}", formID);
                 }
 
                 auto& state = MagicState::Get();
@@ -77,11 +75,11 @@ namespace IntegratedMagic::EquipSink {
                                           spell->GetSpellType() == RE::MagicSystem::SpellType::kLesserPower);
                     if (isPower) {
                         if (!sID) return RE::BSEventNotifyControl::kContinue;
-#ifdef DEBUG
-                        spdlog::info(
+
+                        MAGIC_DEBUG_LOG(
                             "[EquipSink] foreign power {:#010x} equipped during active slot {} -> ForceExitNoRestore",
                             formID, activeSlot);
-#endif
+
                         if (auto* task = SKSE::GetTaskInterface()) {
                             task->AddTask([]() { MagicState::Get().ForceExitNoRestore(); });
                         }
@@ -103,12 +101,12 @@ namespace IntegratedMagic::EquipSink {
                     const bool conflictsLeft = isInLeftHand && (lID != 0);
 
                     if (!conflictsRight && !conflictsLeft) return RE::BSEventNotifyControl::kContinue;
-#ifdef DEBUG
-                    spdlog::info(
+
+                    MAGIC_DEBUG_LOG(
                         "[EquipSink] foreign spell {:#010x} equipped in {} hand during active slot {} -> "
                         "ForceExitNoRestore",
                         formID, isInRightHand ? "right" : "left", activeSlot);
-#endif
+
                     if (auto* task = SKSE::GetTaskInterface()) {
                         task->AddTask([]() { MagicState::Get().ForceExitNoRestore(); });
                     }
@@ -121,11 +119,11 @@ namespace IntegratedMagic::EquipSink {
                     const auto sID = Slots::GetSlotShout(activeSlot);
                     if (!sID) return RE::BSEventNotifyControl::kContinue;
                     if (formID == sID) return RE::BSEventNotifyControl::kContinue;
-#ifdef DEBUG
-                    spdlog::info(
+
+                    MAGIC_DEBUG_LOG(
                         "[EquipSink] foreign shout/power {:#010x} equipped during active slot {} -> ForceExitNoRestore",
                         formID, activeSlot);
-#endif
+
                     if (auto* task = SKSE::GetTaskInterface()) {
                         task->AddTask([]() { MagicState::Get().ForceExitNoRestore(); });
                     }
@@ -138,10 +136,9 @@ namespace IntegratedMagic::EquipSink {
                     if (state.IsInSlotSetup() || state.IsShoutActive()) return RE::BSEventNotifyControl::kContinue;
 
                     if (form->As<RE::TESObjectWEAP>() && IsAssociatedBoundWeaponOfSlot(formID, activeSlot)) {
-#ifdef DEBUG
-                        spdlog::info("[EquipSink] weaponID={:#010x} is bound weapon of active slot {} -> ignoring",
-                                     formID, activeSlot);
-#endif
+                        MAGIC_DEBUG_LOG("[EquipSink] weaponID={:#010x} is bound weapon of active slot {} -> ignoring",
+                                        formID, activeSlot);
+
                         return RE::BSEventNotifyControl::kContinue;
                     }
 
@@ -153,11 +150,11 @@ namespace IntegratedMagic::EquipSink {
                         const bool isShield = armature->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kShield);
                         if (!isShield) return RE::BSEventNotifyControl::kContinue;
                         if (!lID) return RE::BSEventNotifyControl::kContinue;
-#ifdef DEBUG
-                        spdlog::info(
+
+                        MAGIC_DEBUG_LOG(
                             "[EquipSink] shield {:#010x} in left hand conflicts with slot {} -> ForceExitNoRestore",
                             formID, activeSlot);
-#endif
+
                         if (auto* task = SKSE::GetTaskInterface())
                             task->AddTask([]() { MagicState::Get().ForceExitNoRestore(); });
                         return RE::BSEventNotifyControl::kContinue;
@@ -174,11 +171,11 @@ namespace IntegratedMagic::EquipSink {
                     const bool conflictsLeft = (leftNow == formID) && (lID != 0);
 
                     if (!conflictsRight && !conflictsLeft) return RE::BSEventNotifyControl::kContinue;
-#ifdef DEBUG
-                    spdlog::info(
+
+                    MAGIC_DEBUG_LOG(
                         "[EquipSink] weapon/misc {:#010x} in {} hand conflicts with slot {} -> ForceExitNoRestore",
                         formID, conflictsRight ? "right" : "left", activeSlot);
-#endif
+
                     if (auto* task = SKSE::GetTaskInterface())
                         task->AddTask([]() { MagicState::Get().ForceExitNoRestore(); });
                 }

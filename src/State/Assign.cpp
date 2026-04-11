@@ -11,31 +11,28 @@ namespace IntegratedMagic::MagicAssign {
     bool TryAssignHoveredSpellToSlot(int slot, Slots::Hand hand) {
         const auto formID = HoveredForm::GetHoveredFormID();
         if (!formID) {
-#ifdef DEBUG
-            spdlog::info("[Assign] TryAssignHoveredSpellToSlot: slot={} hand={} - no hovered formID, abort", slot,
-                         (hand == Slots::Hand::Left) ? "Left" : "Right");
-#endif
+            MAGIC_DEBUG_LOG("[Assign] TryAssignHoveredSpellToSlot: slot={} hand={} - no hovered formID, abort", slot,
+                            (hand == Slots::Hand::Left) ? "Left" : "Right");
+
             return false;
         }
 
         auto* form = RE::TESForm::LookupByID(formID);
         auto const* spell = form ? form->As<RE::SpellItem>() : nullptr;
         if (!spell) {
-#ifdef DEBUG
-            spdlog::info(
+            MAGIC_DEBUG_LOG(
                 "[Assign] TryAssignHoveredSpellToSlot: slot={} hand={} - formID={:#010x} is not a SpellItem, abort",
                 slot, (hand == Slots::Hand::Left) ? "Left" : "Right", formID);
-#endif
+
             return false;
         }
 
         if (SpellClassify::IsTwoHandedSpell(spell)) {
-#ifdef DEBUG
-            spdlog::info(
+            MAGIC_DEBUG_LOG(
                 "[Assign] TryAssignHoveredSpellToSlot: slot={} spellID={:#010x} name='{}' "
                 "-> TwoHanded: storing Left, clearing Right",
                 slot, spell->GetFormID(), spell->GetFullName() ? spell->GetFullName() : "<null>");
-#endif
+
             Slots::SetSlotSpell(slot, Slots::Hand::Left, spell->GetFormID(), true);
             Slots::SetSlotSpell(slot, Slots::Hand::Right, 0, true);
             Slots::SetSlotShout(slot, 0, true);
@@ -48,11 +45,10 @@ namespace IntegratedMagic::MagicAssign {
             Slots::SetSlotSpell(slot, Slots::Hand::Left, 0, true);
         }
 
-#ifdef DEBUG
-        spdlog::info("[Assign] TryAssignHoveredSpellToSlot: slot={} hand={} spellID={:#010x} name='{}'", slot,
-                     (hand == Slots::Hand::Left) ? "Left" : "Right", spell->GetFormID(),
-                     spell->GetFullName() ? spell->GetFullName() : "<null>");
-#endif
+        MAGIC_DEBUG_LOG("[Assign] TryAssignHoveredSpellToSlot: slot={} hand={} spellID={:#010x} name='{}'", slot,
+                        (hand == Slots::Hand::Left) ? "Left" : "Right", spell->GetFormID(),
+                        spell->GetFullName() ? spell->GetFullName() : "<null>");
+
         Slots::SetSlotSpell(slot, hand, spell->GetFormID(), true);
         return true;
     }
@@ -60,26 +56,23 @@ namespace IntegratedMagic::MagicAssign {
     bool TryAssignHoveredShoutToSlot(int slot) {
         const auto formID = HoveredForm::GetHoveredFormID();
         if (!formID) {
-#ifdef DEBUG
-            spdlog::info("[Assign] TryAssignHoveredShoutToSlot: slot={} - no hovered formID, abort", slot);
-#endif
+            MAGIC_DEBUG_LOG("[Assign] TryAssignHoveredShoutToSlot: slot={} - no hovered formID, abort", slot);
+
             return false;
         }
 
         auto* form = RE::TESForm::LookupByID(formID);
         if (!form) {
-#ifdef DEBUG
-            spdlog::info("[Assign] TryAssignHoveredShoutToSlot: slot={} formID={:#010x} not found, abort", slot,
-                         formID);
-#endif
+            MAGIC_DEBUG_LOG("[Assign] TryAssignHoveredShoutToSlot: slot={} formID={:#010x} not found, abort", slot,
+                            formID);
+
             return false;
         }
 
         if (form->As<RE::TESShout>()) {
-#ifdef DEBUG
-            spdlog::info("[Assign] TryAssignHoveredShoutToSlot: slot={} formID={:#010x} -> assigned as Shout", slot,
-                         formID);
-#endif
+            MAGIC_DEBUG_LOG("[Assign] TryAssignHoveredShoutToSlot: slot={} formID={:#010x} -> assigned as Shout", slot,
+                            formID);
+
             Slots::SetSlotShout(slot, formID, true);
             return true;
         }
@@ -88,29 +81,26 @@ namespace IntegratedMagic::MagicAssign {
             using ST = RE::MagicSystem::SpellType;
             const auto t = spell->GetSpellType();
             if (t == ST::kPower || t == ST::kLesserPower) {
-#ifdef DEBUG
-                spdlog::info(
+                MAGIC_DEBUG_LOG(
                     "[Assign] TryAssignHoveredShoutToSlot: slot={} formID={:#010x} spellType={} -> assigned as Power",
                     slot, formID, static_cast<int>(t));
-#endif
+
                 Slots::SetSlotShout(slot, formID, true);
                 return true;
             }
-#ifdef DEBUG
-            spdlog::info(
+
+            MAGIC_DEBUG_LOG(
                 "[Assign] TryAssignHoveredShoutToSlot: slot={} formID={:#010x} is a regular spell (not Power), abort",
                 slot, formID);
-#endif
         }
 
         return false;
     }
 
     bool TryClearSlotHand(int slot, Slots::Hand hand) {
-#ifdef DEBUG
-        spdlog::info("[Assign] TryClearSlotHand: slot={} hand={}", slot,
-                     (hand == Slots::Hand::Left) ? "Left" : "Right");
-#endif
+        MAGIC_DEBUG_LOG("[Assign] TryClearSlotHand: slot={} hand={}", slot,
+                        (hand == Slots::Hand::Left) ? "Left" : "Right");
+
         auto& adapter = Config::MagicConfigAdapter::Get();
         adapter.SetSpell(slot, hand == Slots::Hand::Left, 0u);
         adapter.Save();
@@ -118,9 +108,8 @@ namespace IntegratedMagic::MagicAssign {
     }
 
     bool TryClearSlotShout(int slot) {
-#ifdef DEBUG
-        spdlog::info("[Assign] TryClearSlotShout: slot={}", slot);
-#endif
+        MAGIC_DEBUG_LOG("[Assign] TryClearSlotShout: slot={}", slot);
+
         Slots::SetSlotShout(slot, 0u, true);
         return true;
     }

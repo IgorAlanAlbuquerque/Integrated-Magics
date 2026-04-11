@@ -91,9 +91,8 @@ namespace Input::detail {
         }
 
         if (clearedAny) {
-#ifdef DEBUG
-            spdlog::info("[Input] ReconcilePhysicalKeyState: cleared stuck keys");
-#endif
+            MAGIC_DEBUG_LOG("[Input] ReconcilePhysicalKeyState: cleared stuck keys");
+
             ClearEdgeStateOnly(slots, excl, replay, retained, deferred, keys);
         }
     }

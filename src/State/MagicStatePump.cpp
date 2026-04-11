@@ -9,9 +9,8 @@
 namespace IntegratedMagic {
 
     void MagicState::StartAutoAttack(Slots::Hand hand) {
-#ifdef DEBUG
-        spdlog::info("[State] StartAutoAttack: hand={}", IsLeft(hand) ? "Left" : "Right");
-#endif
+        MAGIC_DEBUG_LOG("[State] StartAutoAttack: hand={}", IsLeft(hand) ? "Left" : "Right");
+
         _aa.Held(hand) = true;
         _aa.Secs(hand) = 0.f;
         detail::DispatchAttack(hand, 1.0f, 0.0f);
@@ -20,9 +19,9 @@ namespace IntegratedMagic {
     void MagicState::StopAutoAttack(Slots::Hand hand) {
         if (!_aa.Held(hand)) return;
         const float held = (_aa.Secs(hand) > 0.f) ? _aa.Secs(hand) : 0.1f;
-#ifdef DEBUG
-        spdlog::info("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(hand) ? "Left" : "Right", held);
-#endif
+
+        MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(hand) ? "Left" : "Right", held);
+
         detail::DispatchAttack(hand, 0.0f, held);
         _aa.Held(hand) = false;
         _aa.Secs(hand) = 0.f;
@@ -53,29 +52,28 @@ namespace IntegratedMagic {
 
     void MagicState::NotifyAttackEnabled() {
         if (!_session.active) {
-#ifdef DEBUG
-            spdlog::info("[State] NotifyAttackEnabled: ignored - not active");
-#endif
+            MAGIC_DEBUG_LOG("[State] NotifyAttackEnabled: ignored - not active");
+
             return;
         }
         _session.attackEnabled = true;
 
         if (auto* player = GetPlayer()) MagicAction::DisableSkipEquipVarsNow(player);
-#ifdef DEBUG
-        spdlog::info(
+
+        MAGIC_DEBUG_LOG(
             "[State] NotifyAttackEnabled: left.waitingAutoAfterEquip={} right.waitingAutoAfterEquip={} "
             "aaHeldLeft={} aaHeldRight={}",
             _left.waitingAutoAfterEquip, _right.waitingAutoAfterEquip, _aa.heldLeft, _aa.heldRight);
-#endif
+
         using enum Slots::Hand;
         auto tryStart = [&](Slots::Hand hand) {
             auto& hm = ModeFor(hand);
             if (!hm.waitingAutoAfterEquip) return;
             hm.waitingAutoAfterEquip = false;
             if (!(hm.autoActive || hm.wantAutoAttack) || _aa.Held(hand)) return;
-#ifdef DEBUG
-            spdlog::info("[State] NotifyAttackEnabled: starting {} auto attack", IsLeft(hand) ? "Left" : "Right");
-#endif
+
+            MAGIC_DEBUG_LOG("[State] NotifyAttackEnabled: starting {} auto attack", IsLeft(hand) ? "Left" : "Right");
+
             StartAutoAttack(hand);
             if (hm.autoActive || (hm.holdActive && hm.wantAutoAttack)) {
                 hm.waitingBeginCast = true;
@@ -88,20 +86,20 @@ namespace IntegratedMagic {
 
     void MagicState::OnBeginCast(Slots::Hand hand) {
         auto& hm = ModeFor(hand);
-#ifdef DEBUG
-        spdlog::info("[State] OnBeginCast: hand={} waitingBeginCast={} retries={}", IsLeft(hand) ? "Left" : "Right",
-                     hm.waitingBeginCast, hm.beginCastRetries);
-#endif
+
+        MAGIC_DEBUG_LOG("[State] OnBeginCast: hand={} waitingBeginCast={} retries={}", IsLeft(hand) ? "Left" : "Right",
+                        hm.waitingBeginCast, hm.beginCastRetries);
+
         if (!hm.waitingBeginCast) return;
 
         hm.waitingBeginCast = false;
         hm.beginCastWaitSecs = 0.f;
         hm.beginCastRetries = 0;
         CancelDelayedStart(hand);
-#ifdef DEBUG
-        spdlog::info("[State] OnBeginCast: hand={} -> cast confirmed, begin cast wait cleared",
-                     IsLeft(hand) ? "Left" : "Right");
-#endif
+
+        MAGIC_DEBUG_LOG("[State] OnBeginCast: hand={} -> cast confirmed, begin cast wait cleared",
+                        IsLeft(hand) ? "Left" : "Right");
+
         using enum Slots::Hand;
         const auto other = IsLeft(hand) ? Right : Left;
         auto& otherHm = ModeFor(other);
@@ -116,13 +114,12 @@ namespace IntegratedMagic {
     void MagicState::OnCastStop() {
         using enum Slots::Hand;
         if (!_session.active) {
-#ifdef DEBUG
-            spdlog::info("[State] OnCastStop: ignored - not active");
-#endif
+            MAGIC_DEBUG_LOG("[State] OnCastStop: ignored - not active");
+
             return;
         }
-#ifdef DEBUG
-        spdlog::info(
+
+        MAGIC_DEBUG_LOG(
             "[State] OnCastStop: castStopsToSkip={} isDualCasting={} "
             "left.autoActive={} left.chargeComplete={} left.finished={} "
             "right.autoActive={} right.chargeComplete={} right.finished={} "
@@ -130,15 +127,13 @@ namespace IntegratedMagic {
             _cast.castStopsToSkip, _session.isDualCasting, _left.autoActive, _left.chargeComplete, _left.finished,
             _right.autoActive, _right.chargeComplete, _right.finished, _left.holdFiredAndWaitingCastStop,
             _right.holdFiredAndWaitingCastStop);
-#endif
 
         if (_cast.castStopsToSkip > 0) {
             --_cast.castStopsToSkip;
             const bool isLastSkip = (_cast.castStopsToSkip == 0);
-#ifdef DEBUG
-            spdlog::info("[State] OnCastStop: SKIPPING cast stop (remaining={}), isLastSkip={}", _cast.castStopsToSkip,
-                         isLastSkip);
-#endif
+
+            MAGIC_DEBUG_LOG("[State] OnCastStop: SKIPPING cast stop (remaining={}), isLastSkip={}",
+                            _cast.castStopsToSkip, isLastSkip);
 
             if (isLastSkip) {
                 if (const bool isTwoHanded =
@@ -159,10 +154,9 @@ namespace IntegratedMagic {
                         hm.beginCastWaitSecs = 0.f;
                         hm.beginCastRetries = 0;
                         ScheduleDelayedStart(h);
-#ifdef DEBUG
-                        spdlog::info("[State] OnCastStop: scheduled delayed start for hand={}",
-                                     IsLeft(h) ? "Left" : "Right");
-#endif
+
+                        MAGIC_DEBUG_LOG("[State] OnCastStop: scheduled delayed start for hand={}",
+                                        IsLeft(h) ? "Left" : "Right");
                     }
                 };
                 stopAndDelay(Left);
@@ -213,22 +207,22 @@ namespace IntegratedMagic {
 
     void MagicState::OnCastInterrupt() {
         if (!_session.active) return;
-#ifdef DEBUG
-        spdlog::info("[State] OnCastInterrupt: firstInterrupt={} left.autoActive={} right.autoActive={}",
-                     _session.firstInterrupt, _left.autoActive, _right.autoActive);
-#endif
+
+        MAGIC_DEBUG_LOG("[State] OnCastInterrupt: firstInterrupt={} left.autoActive={} right.autoActive={}",
+                        _session.firstInterrupt, _left.autoActive, _right.autoActive);
+
         if (_session.firstInterrupt == 0) {
             ++_session.firstInterrupt;
-#ifdef DEBUG
-            spdlog::info("[State] OnCastInterrupt: first interrupt - ignoring");
-#endif
+
+            MAGIC_DEBUG_LOG("[State] OnCastInterrupt: first interrupt - ignoring");
+
             return;
         }
         if (_session.wasHandsDown && !_session.attackEnabled) {
             ++_session.firstInterrupt;
-#ifdef DEBUG
-            spdlog::info("[State] OnCastInterrupt: low hands interrupt - ignoring");
-#endif
+
+            MAGIC_DEBUG_LOG("[State] OnCastInterrupt: low hands interrupt - ignoring");
+
             return;
         }
         ++_session.firstInterrupt;
@@ -248,10 +242,9 @@ namespace IntegratedMagic {
     void MagicState::OnShoutStop() {
         if (!_session.active || _shout.modeShoutID == 0 || _shout.finished) return;
         if (_shout.isPower) return;
-#ifdef DEBUG
-        spdlog::info("[State] OnShoutStop: modeShoutID={:#010x} waitingStopEvent={}", _shout.modeShoutID,
-                     _shout.waitingStopEvent);
-#endif
+
+        MAGIC_DEBUG_LOG("[State] OnShoutStop: modeShoutID={:#010x} waitingStopEvent={}", _shout.modeShoutID,
+                        _shout.waitingStopEvent);
 
         const auto ss = SpellSettingsDB::Get().Get(_shout.modeShoutID);
         if (!ss) return;
@@ -292,10 +285,10 @@ namespace IntegratedMagic {
             IsLeft(hand) ? RE::MagicSystem::CastingSource::kLeftHand : RE::MagicSystem::CastingSource::kRightHand;
 
         if (auto const* caster = MagicAction::GetCaster(player, src); !IsChargeComplete(caster, spell)) return;
-#ifdef DEBUG
-        spdlog::info("[State] PumpAutomaticHand: hand={} CHARGE COMPLETE - stopping auto attack",
-                     IsLeft(hand) ? "Left" : "Right");
-#endif
+
+        MAGIC_DEBUG_LOG("[State] PumpAutomaticHand: hand={} CHARGE COMPLETE - stopping auto attack",
+                        IsLeft(hand) ? "Left" : "Right");
+
         hm.waitingChargeComplete = false;
         hm.chargeComplete = true;
         StopAutoAttack(hand);
@@ -305,17 +298,16 @@ namespace IntegratedMagic {
         using enum ActivationMode;
         auto& hm = ModeFor(hand);
         if (!_session.active) return;
-#ifdef DEBUG
+
         const char* handStr = IsLeft(hand) ? "Left" : "Right";
-#endif
+
         if (hm.waitingAutoAfterEquip) {
             hm.waitingEnableBumperSecs += dt > 0.f ? dt : 0.f;
 
             if (constexpr float kFallbackDelay = 0.25f; hm.waitingEnableBumperSecs >= kFallbackDelay) {
-#ifdef DEBUG
-                spdlog::info("[State] PumpAutoStartFallback: hand={} FALLBACK after {:.3f}s", handStr,
-                             hm.waitingEnableBumperSecs);
-#endif
+                MAGIC_DEBUG_LOG("[State] PumpAutoStartFallback: hand={} FALLBACK after {:.3f}s", handStr,
+                                hm.waitingEnableBumperSecs);
+
                 hm.waitingAutoAfterEquip = false;
                 if (!_aa.Held(hand)) {
                     StartAutoAttack(hand);
@@ -339,10 +331,10 @@ namespace IntegratedMagic {
         hm.beginCastWaitSecs = 0.f;
 
         const bool hasLimit = (hm.mode == Automatic);
-#ifdef DEBUG
-        spdlog::info("[State] PumpAutoStartFallback: hand={} BeginCast timeout! retry={}/{} hasLimit={}", handStr,
-                     hm.beginCastRetries, kMaxRetries, hasLimit);
-#endif
+
+        MAGIC_DEBUG_LOG("[State] PumpAutoStartFallback: hand={} BeginCast timeout! retry={}/{} hasLimit={}", handStr,
+                        hm.beginCastRetries, kMaxRetries, hasLimit);
+
         if (!hasLimit || hm.beginCastRetries < kMaxRetries) {
             ++hm.beginCastRetries;
             if (!DelayFor(hand).pending) {
@@ -350,9 +342,8 @@ namespace IntegratedMagic {
                 ScheduleDelayedStart(hand);
             }
         } else {
-#ifdef DEBUG
-            spdlog::info("[State] PumpAutoStartFallback: hand={} MAX RETRIES -> FinishHand", handStr);
-#endif
+            MAGIC_DEBUG_LOG("[State] PumpAutoStartFallback: hand={} MAX RETRIES -> FinishHand", handStr);
+
             hm.waitingBeginCast = false;
             FinishHand(hand);
         }
@@ -373,16 +364,15 @@ namespace IntegratedMagic {
             d.secs = 0.f;
 
             auto& hm = ModeFor(h);
-#ifdef DEBUG
-            spdlog::info(
+
+            MAGIC_DEBUG_LOG(
                 "[State] PumpDelayedStarts: hand={} delay elapsed! autoActive={} holdActive={} "
                 "wantAutoAttack={} finished={}",
                 IsLeft(h) ? "Left" : "Right", hm.autoActive, hm.holdActive, hm.wantAutoAttack, hm.finished);
-#endif
+
             if ((hm.autoActive || (hm.holdActive && hm.wantAutoAttack)) && !hm.finished) {
-#ifdef DEBUG
-                spdlog::info("[State] PumpDelayedStarts: hand={} -> StartAutoAttack", IsLeft(h) ? "Left" : "Right");
-#endif
+                MAGIC_DEBUG_LOG("[State] PumpDelayedStarts: hand={} -> StartAutoAttack", IsLeft(h) ? "Left" : "Right");
+
                 StartAutoAttack(h);
                 hm.waitingBeginCast = true;
                 hm.beginCastWaitSecs = 0.f;
@@ -400,9 +390,9 @@ namespace IntegratedMagic {
                 _restore.pendingPowerRestoreDelaySecs -= dt > 0.f ? dt : 0.f;
                 return;
             }
-#ifdef DEBUG
-            spdlog::info("[State] PumpAutomatic: pendingPowerRestore -> RestoreSnapshot");
-#endif
+
+            MAGIC_DEBUG_LOG("[State] PumpAutomatic: pendingPowerRestore -> RestoreSnapshot");
+
             _restore.pendingPowerRestore = false;
             _restore.pendingPowerRestoreDelaySecs = 0.f;
             if (auto* player = GetPlayer()) {
@@ -426,9 +416,9 @@ namespace IntegratedMagic {
                 ;
                 if (_restore.sheatheAnimComplete || giveUp) {
                     _restore.sheatheWaitSecs = 0.f;
-#ifdef DEBUG
-                    spdlog::info("[State] PumpAutomatic: pendingRestoreAfterSheathe -> restore (giveUp={})", giveUp);
-#endif
+
+                    MAGIC_DEBUG_LOG("[State] PumpAutomatic: pendingRestoreAfterSheathe -> restore (giveUp={})", giveUp);
+
                     _restore.pendingRestoreAfterSheathe = false;
                     _restore.sheatheAnimComplete = false;
                     RestoreSnapshot(player);
@@ -444,9 +434,8 @@ namespace IntegratedMagic {
         }
 
         if (_restore.pendingRestore) {
-#ifdef DEBUG
-            spdlog::info("[State] PumpAutomatic: pendingRestore -> RestoreSnapshot + deactivate");
-#endif
+            MAGIC_DEBUG_LOG("[State] PumpAutomatic: pendingRestore -> RestoreSnapshot + deactivate");
+
             _restore.pendingRestore = false;
             if (auto* player = GetPlayer()) {
                 StopShoutPress();
@@ -472,18 +461,16 @@ namespace IntegratedMagic {
         if (!_session.active) return;
 
         if (ShouldForceInterrupt()) {
-#ifdef DEBUG
-            spdlog::info("[State] PumpAutomatic: ShouldForceInterrupt -> ForceExit");
-#endif
+            MAGIC_DEBUG_LOG("[State] PumpAutomatic: ShouldForceInterrupt -> ForceExit");
+
             ForceExit();
             return;
         }
 
         _session.activeTimeoutSecs += dt > 0.f ? dt : 0.f;
         if (_session.activeTimeoutSecs > kMaxActiveTimeoutSecs) {
-#ifdef DEBUG
-            spdlog::info("[State] PumpAutomatic: TIMEOUT -> ForceExit");
-#endif
+            MAGIC_DEBUG_LOG("[State] PumpAutomatic: TIMEOUT -> ForceExit");
+
             ForceExit();
             return;
         }
@@ -493,14 +480,13 @@ namespace IntegratedMagic {
             if (ss && ss->mode == ActivationMode::Automatic) {
                 constexpr float kPowerAutoDuration = 0.2f;
                 _shout.powerAutoSecs += dt > 0.f ? dt : 0.f;
-#ifdef DEBUG
-                spdlog::info("[State] PumpAutomatic: power auto secs={:.3f}/{:.3f}", _shout.powerAutoSecs,
-                             kPowerAutoDuration);
-#endif
+
+                MAGIC_DEBUG_LOG("[State] PumpAutomatic: power auto secs={:.3f}/{:.3f}", _shout.powerAutoSecs,
+                                kPowerAutoDuration);
+
                 if (_shout.powerAutoSecs >= kPowerAutoDuration) {
-#ifdef DEBUG
-                    spdlog::info("[State] PumpAutomatic: power auto duration elapsed -> StopShoutPress + finish");
-#endif
+                    MAGIC_DEBUG_LOG("[State] PumpAutomatic: power auto duration elapsed -> StopShoutPress + finish");
+
                     StopShoutPress();
                     _shout.finished = true;
                     TryFinalizeExit();

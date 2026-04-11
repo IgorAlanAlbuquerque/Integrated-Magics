@@ -114,9 +114,8 @@ namespace IntegratedMagic {
         std::scoped_lock lk(_mtx);
         _bySave.clear();
         const auto path = JsonPath();
-#ifdef DEBUG
-        spdlog::info("[SaveSpellDB] LoadFromDisk: path='{}'", path.string());
-#endif
+
+        MAGIC_DEBUG_LOG("[SaveSpellDB] LoadFromDisk: path='{}'", path.string());
 
         std::ifstream in(path);
         if (!in.good()) {
@@ -150,16 +149,16 @@ namespace IntegratedMagic {
                 } else if (v.is_array()) {
                     slots = _migrateV2ArrayToLR(v);
                     migratedAny = true;
-#ifdef DEBUG
-                    spdlog::info("[SaveSpellDB] LoadFromDisk: key='{}' migrated from v2", key);
-#endif
+
+                    MAGIC_DEBUG_LOG("[SaveSpellDB] LoadFromDisk: key='{}' migrated from v2", key);
+
                 } else {
                     spdlog::warn("[SaveSpellDB] LoadFromDisk: key='{}' unexpected value type, skipping", key);
                     continue;
                 }
-#ifdef DEBUG
-                spdlog::info("[SaveSpellDB] LoadFromDisk: loaded key='{}' slots={}", key, slots.Size());
-#endif
+
+                MAGIC_DEBUG_LOG("[SaveSpellDB] LoadFromDisk: loaded key='{}' slots={}", key, slots.Size());
+
                 _bySave.insert_or_assign(key, std::move(slots));
             } catch (const nlohmann::json::exception& e) {
                 spdlog::error("[SaveSpellDB] LoadFromDisk: JSON exception key='{}': {}", it.key(), e.what());
@@ -167,9 +166,9 @@ namespace IntegratedMagic {
                 spdlog::error("[SaveSpellDB] LoadFromDisk: exception key='{}': {}", it.key(), e.what());
             }
         }
-#ifdef DEBUG
-        spdlog::info("[SaveSpellDB] LoadFromDisk: total keys loaded={}", _bySave.size());
-#endif
+
+        MAGIC_DEBUG_LOG("[SaveSpellDB] LoadFromDisk: total keys loaded={}", _bySave.size());
+
         if (migratedAny) {
             try {
                 const auto outJson = _buildJsonV3_NoLock(_bySave);
@@ -183,14 +182,13 @@ namespace IntegratedMagic {
     void SaveSpellDB::SaveToDisk() {
         std::scoped_lock lk(_mtx);
         const auto path = JsonPath();
-#ifdef DEBUG
-        spdlog::info("[SaveSpellDB] SaveToDisk: path='{}' entries={}", path.string(), _bySave.size());
-#endif
+
+        MAGIC_DEBUG_LOG("[SaveSpellDB] SaveToDisk: path='{}' entries={}", path.string(), _bySave.size());
+
         const auto j = _buildJsonV3_NoLock(_bySave);
         _writeJsonToDisk(path, j);
-#ifdef DEBUG
-        spdlog::info("[SaveSpellDB] SaveToDisk: done");
-#endif
+
+        MAGIC_DEBUG_LOG("[SaveSpellDB] SaveToDisk: done");
     }
 
     bool SaveSpellDB::TryGet(std::string_view saveKey, SaveSpellSlots& out) const {
@@ -206,9 +204,9 @@ namespace IntegratedMagic {
     void SaveSpellDB::Upsert(std::string_view saveKey, const SaveSpellSlots& slots) {
         std::scoped_lock lk(_mtx);
         auto key = NormalizeKeyCopy(saveKey);
-#ifdef DEBUG
-        spdlog::info("[SaveSpellDB] Upsert: key='{}' slots={}", key, slots.Size());
-#endif
+
+        MAGIC_DEBUG_LOG("[SaveSpellDB] Upsert: key='{}' slots={}", key, slots.Size());
+
         _bySave.insert_or_assign(std::move(key), slots);
     }
 
@@ -221,14 +219,13 @@ namespace IntegratedMagic {
         std::scoped_lock lk(_mtx);
         auto it = _bySave.find(normalizedKey);
         if (it == _bySave.end()) {
-#ifdef DEBUG
-            spdlog::info("[SaveSpellDB] TryGet: key='{}' NOT FOUND (total keys={})", normalizedKey, _bySave.size());
-#endif
+            MAGIC_DEBUG_LOG("[SaveSpellDB] TryGet: key='{}' NOT FOUND (total keys={})", normalizedKey, _bySave.size());
+
             return false;
         }
-#ifdef DEBUG
-        spdlog::info("[SaveSpellDB] TryGet: key='{}' FOUND slots={}", normalizedKey, it->second.Size());
-#endif
+
+        MAGIC_DEBUG_LOG("[SaveSpellDB] TryGet: key='{}' FOUND slots={}", normalizedKey, it->second.Size());
+
         out = it->second;
         return true;
     }

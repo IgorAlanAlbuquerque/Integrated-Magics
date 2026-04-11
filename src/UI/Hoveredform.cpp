@@ -47,17 +47,15 @@ namespace IntegratedMagic::HoveredForm {
     MagicType GetHoveredMagicType() {
         const auto formID = GetHoveredFormID();
         if (!formID) {
-#ifdef DEBUG
-            spdlog::info("[HoveredForm] GetHoveredMagicType: no hovered formID -> None");
-#endif
+            MAGIC_DEBUG_LOG("[HoveredForm] GetHoveredMagicType: no hovered formID -> None");
+
             return MagicType::None;
         }
 
         auto* form = RE::TESForm::LookupByID(formID);
         if (!form) {
-#ifdef DEBUG
-            spdlog::info("[HoveredForm] GetHoveredMagicType: formID={:#010x} not found -> None", formID);
-#endif
+            MAGIC_DEBUG_LOG("[HoveredForm] GetHoveredMagicType: formID={:#010x} not found -> None", formID);
+
             return MagicType::None;
         }
 
@@ -75,9 +73,8 @@ namespace IntegratedMagic::HoveredForm {
             return MagicType::Spell;
         }
 
-#ifdef DEBUG
-        spdlog::info("[HoveredForm] GetHoveredMagicType: formID={:#010x} unrecognised form type -> None", formID);
-#endif
+        MAGIC_DEBUG_LOG("[HoveredForm] GetHoveredMagicType: formID={:#010x} unrecognised form type -> None", formID);
+
         return MagicType::None;
     }
 

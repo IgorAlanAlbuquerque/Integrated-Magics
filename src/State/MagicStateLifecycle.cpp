@@ -49,10 +49,9 @@ namespace IntegratedMagic {
 
     void MagicState::EnsureActiveWithSnapshot(RE::PlayerCharacter const* player, int slot, bool raiseHandsIfSheathed) {
         if (_session.active) {
-#ifdef DEBUG
-            spdlog::info("[State] EnsureActiveWithSnapshot: already active, updating slot {} -> {}",
-                         _session.activeSlot, slot);
-#endif
+            MAGIC_DEBUG_LOG("[State] EnsureActiveWithSnapshot: already active, updating slot {} -> {}",
+                            _session.activeSlot, slot);
+
             _session.activeSlot = slot;
             return;
         }
@@ -64,10 +63,10 @@ namespace IntegratedMagic {
         auto* pc = const_cast<RE::PlayerCharacter*>(player);
         const auto ws = pc->AsActorState()->GetWeaponState();
         _session.wasHandsDown = (ws == RE::WEAPON_STATE::kSheathed);
-#ifdef DEBUG
-        spdlog::info("[State] EnsureActiveWithSnapshot: ACTIVATING slot={} wasHandsDown={} weaponState={}", slot,
-                     _session.wasHandsDown, static_cast<int>(std::to_underlying(ws)));
-#endif
+
+        MAGIC_DEBUG_LOG("[State] EnsureActiveWithSnapshot: ACTIVATING slot={} wasHandsDown={} weaponState={}", slot,
+                        _session.wasHandsDown, static_cast<int>(std::to_underlying(ws)));
+
         if (_session.wasHandsDown && raiseHandsIfSheathed) {
             pc->DrawWeaponMagicHands(true);
         }
@@ -124,12 +123,11 @@ namespace IntegratedMagic {
             }
         }
         _restore.snapshot.valid = true;
-#ifdef DEBUG
-        spdlog::info("[State] CaptureSnapshot: snapShoutID={:#010x} rightSpell={:#010x} leftSpell={:#010x}",
-                     _restore.snapshot.snapShoutID,
-                     _restore.snapshot.rightSpell ? _restore.snapshot.rightSpell->GetFormID() : 0u,
-                     _restore.snapshot.leftSpell ? _restore.snapshot.leftSpell->GetFormID() : 0u);
-#endif
+
+        MAGIC_DEBUG_LOG("[State] CaptureSnapshot: snapShoutID={:#010x} rightSpell={:#010x} leftSpell={:#010x}",
+                        _restore.snapshot.snapShoutID,
+                        _restore.snapshot.rightSpell ? _restore.snapshot.rightSpell->GetFormID() : 0u,
+                        _restore.snapshot.leftSpell ? _restore.snapshot.leftSpell->GetFormID() : 0u);
     }
 
     void MagicState::RestoreSnapshot(RE::PlayerCharacter* player) {
@@ -139,10 +137,8 @@ namespace IntegratedMagic {
         auto* mgr = RE::ActorEquipManager::GetSingleton();
         if (!mgr) return;
 
-#ifdef DEBUG
-        spdlog::info("[State] RestoreSnapshot: dirtyLeft={} dirtyRight={} dirtyShout={} snapShoutID={:#010x}",
-                     _restore.dirtyLeft, _restore.dirtyRight, _restore.dirtyShout, _restore.snapshot.snapShoutID);
-#endif
+        MAGIC_DEBUG_LOG("[State] RestoreSnapshot: dirtyLeft={} dirtyRight={} dirtyShout={} snapShoutID={:#010x}",
+                        _restore.dirtyLeft, _restore.dirtyRight, _restore.dirtyShout, _restore.snapshot.snapShoutID);
 
         _session.wasHandsDown = false;
         MagicAction::ApplySkipEquipAnimReturn(player);
@@ -156,17 +152,15 @@ namespace IntegratedMagic {
         auto* leftSnapSpell = snap.leftObj.base ? nullptr : AsSpell(snap.leftSpell);
 
         if (_restore.dirtyRight) {
-#ifdef DEBUG
-            spdlog::info("[State] RestoreSnapshot: restoring Right hand");
-#endif
+            MAGIC_DEBUG_LOG("[State] RestoreSnapshot: restoring Right hand");
+
             if (!snap.rightObj.base) ClearHandSpellIfNoSnapshot(player, rightSnapSpell, _session.modeSpellRight, Right);
             RestoreOneHand(player, mgr, idx, false, snap.rightObj, rightSlot);
             EquipSpellIfPresent(player, rightSnapSpell, Right);
         }
         if (_restore.dirtyLeft) {
-#ifdef DEBUG
-            spdlog::info("[State] RestoreSnapshot: restoring Left hand");
-#endif
+            MAGIC_DEBUG_LOG("[State] RestoreSnapshot: restoring Left hand");
+
             if (!snap.leftObj.base) ClearHandSpellIfNoSnapshot(player, leftSnapSpell, _session.modeSpellLeft, Left);
             RestoreOneHand(player, mgr, idx, true, snap.leftObj, leftSlot);
             EquipSpellIfPresent(player, leftSnapSpell, Left);
@@ -174,9 +168,8 @@ namespace IntegratedMagic {
                 RestoreOneHand(player, mgr, idx, false, snap.rightObj, rightSlot);
         }
         if (_restore.dirtyShout) {
-#ifdef DEBUG
-            spdlog::info("[State] RestoreSnapshot: restoring shout, snapShoutID={:#010x}", snap.snapShoutID);
-#endif
+            MAGIC_DEBUG_LOG("[State] RestoreSnapshot: restoring shout, snapShoutID={:#010x}", snap.snapShoutID);
+
             MagicAction::ClearVoiceShout(player);
             if (snap.snapShoutID) {
                 if (auto* form = RE::TESForm::LookupByID(snap.snapShoutID))
@@ -191,9 +184,8 @@ namespace IntegratedMagic {
         _session.modeSpellLeft = nullptr;
         _session.modeSpellRight = nullptr;
         _restore.ClearDirty();
-#ifdef DEBUG
-        spdlog::info("[State] RestoreSnapshot: done");
-#endif
+
+        MAGIC_DEBUG_LOG("[State] RestoreSnapshot: done");
     }
 
     bool MagicState::HandIsRelevant(Slots::Hand h) const {
@@ -248,18 +240,16 @@ namespace IntegratedMagic {
         if (_session.modeSpellRight) {
             auto* caster = MagicAction::GetCaster(pc, RE::MagicSystem::CastingSource::kRightHand);
             if (CasterSpellMismatch(caster, _session.modeSpellRight)) {
-#ifdef DEBUG
-                spdlog::info("[State] ShouldForceInterrupt: TRUE - Right caster spell mismatch");
-#endif
+                MAGIC_DEBUG_LOG("[State] ShouldForceInterrupt: TRUE - Right caster spell mismatch");
+
                 return true;
             }
         }
         if (_session.modeSpellLeft) {
             auto* caster = MagicAction::GetCaster(pc, RE::MagicSystem::CastingSource::kLeftHand);
             if (CasterSpellMismatch(caster, _session.modeSpellLeft)) {
-#ifdef DEBUG
-                spdlog::info("[State] ShouldForceInterrupt: TRUE - Left caster spell mismatch");
-#endif
+                MAGIC_DEBUG_LOG("[State] ShouldForceInterrupt: TRUE - Left caster spell mismatch");
+
                 return true;
             }
         }
@@ -269,26 +259,23 @@ namespace IntegratedMagic {
     void MagicState::TryFinalizeExit() {
         if (!_session.active) return;
         const bool allFinished = AllRelevantHandsFinished();
-#ifdef DEBUG
-        spdlog::info("[State] TryFinalizeExit: allFinished={} left.finished={} right.finished={} shoutFinished={}",
-                     allFinished, _left.finished, _right.finished, _shout.finished);
-#endif
+
+        MAGIC_DEBUG_LOG("[State] TryFinalizeExit: allFinished={} left.finished={} right.finished={} shoutFinished={}",
+                        allFinished, _left.finished, _right.finished, _shout.finished);
+
         if (allFinished) ExitAllNow();
     }
 
     void MagicState::ExitAllNow() {
-#ifdef DEBUG
-        spdlog::info(
+        MAGIC_DEBUG_LOG(
             "[State] ExitAllNow: modeShoutID={:#010x} shoutIsPower={} shoutFinished={} "
             "firstInterrupt={} active={} wasHandsDown={} pendingRestore={}",
             _shout.modeShoutID, _shout.isPower, _shout.finished, _session.firstInterrupt, _session.active,
             _session.wasHandsDown, _restore.pendingRestore);
-#endif
 
         if (_shout.modeShoutID != 0 && _shout.isPower && _shout.finished) {
-#ifdef DEBUG
-            spdlog::info("[State] ExitAllNow: power path -> pendingPowerRestore, dispatching StopShoutPress");
-#endif
+            MAGIC_DEBUG_LOG("[State] ExitAllNow: power path -> pendingPowerRestore, dispatching StopShoutPress");
+
             _restore.pendingPowerRestore = true;
             _restore.pendingPowerRestoreDelaySecs = RestoreContext::kPowerRestoreDelaySec;
             StopAllAutoAttack();
@@ -317,25 +304,22 @@ namespace IntegratedMagic {
         CancelAllDelayedStarts();
 
         if (_session.wasHandsDown && !player->IsInCombat()) {
-#ifdef DEBUG
-            spdlog::info("[State] ExitAllNow: hands were down -> sheathing before restore");
-#endif
+            MAGIC_DEBUG_LOG("[State] ExitAllNow: hands were down -> sheathing before restore");
+
             player->DrawWeaponMagicHands(false);
             _restore.pendingRestoreAfterSheathe = true;
             return;
         }
 
         if (_session.firstInterrupt > 1) {
-#ifdef DEBUG
-            spdlog::info("[State] ExitAllNow: firstInterrupt={} > 1 -> pendingRestore", _session.firstInterrupt);
-#endif
+            MAGIC_DEBUG_LOG("[State] ExitAllNow: firstInterrupt={} > 1 -> pendingRestore", _session.firstInterrupt);
+
             _restore.pendingRestore = true;
             return;
         }
 
-#ifdef DEBUG
-        spdlog::info("[State] ExitAllNow: immediate RestoreSnapshot");
-#endif
+        MAGIC_DEBUG_LOG("[State] ExitAllNow: immediate RestoreSnapshot");
+
         RestoreSnapshot(player);
         if (auto* mgr = RE::ActorEquipManager::GetSingleton()) {
             auto idx = BuildInventoryIndex(player);
@@ -345,9 +329,8 @@ namespace IntegratedMagic {
     }
 
     void MagicState::PrepareForOverwriteToSlot(int newSlot) {
-#ifdef DEBUG
-        spdlog::info("[State] PrepareForOverwriteToSlot: newSlot={}", newSlot);
-#endif
+        MAGIC_DEBUG_LOG("[State] PrepareForOverwriteToSlot: newSlot={}", newSlot);
+
         StopAllAutoAttack();
         _session.activeSlot = newSlot;
         _session.attackEnabled = false;
@@ -366,10 +349,10 @@ namespace IntegratedMagic {
 
     void MagicState::ForceExit() {
         if (!_session.active) return;
-#ifdef DEBUG
-        spdlog::info("[State] ForceExit: slot={} left.autoActive={} right.autoActive={} aaHeldL={} aaHeldR={}",
-                     _session.activeSlot, _left.autoActive, _right.autoActive, _aa.heldLeft, _aa.heldRight);
-#endif
+
+        MAGIC_DEBUG_LOG("[State] ForceExit: slot={} left.autoActive={} right.autoActive={} aaHeldL={} aaHeldR={}",
+                        _session.activeSlot, _left.autoActive, _right.autoActive, _aa.heldLeft, _aa.heldRight);
+
         StopAllAutoAttack();
         CancelAllDelayedStarts();
         _left = {};
@@ -385,9 +368,9 @@ namespace IntegratedMagic {
 
     void MagicState::ForceExitNoRestore() {
         if (!_session.active) return;
-#ifdef DEBUG
-        spdlog::info("[State] ForceExitNoRestore: discarding snapshot and forcing exit");
-#endif
+
+        MAGIC_DEBUG_LOG("[State] ForceExitNoRestore: discarding snapshot and forcing exit");
+
         _restore.snapshot = {};
         ForceExit();
     }
