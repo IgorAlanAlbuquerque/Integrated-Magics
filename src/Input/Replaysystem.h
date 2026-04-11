@@ -1,20 +1,48 @@
 #pragma once
+#include <array>
+#include <cstdint>
+#include <vector>
 
-#include "InputState.h"
+#include "Config/InputConstants.h"
+#include "PCH.h"
+
+struct ReplayState {
+    bool armed{false};
+    RE::INPUT_DEVICE dev{RE::INPUT_DEVICE::kKeyboard};
+    std::uint32_t rawIdCode{0};
+    RE::BSFixedString userEvent{};
+    bool valueAboveHalf{false};
+};
+
+struct RetainedEvent {
+    RE::INPUT_DEVICE dev;
+    std::uint32_t rawIdCode;
+    RE::BSFixedString userEvent;
+    float value;
+    float heldSecs;
+};
+
+struct DeferredReplayEvent {
+    std::size_t slot{0};
+    RetainedEvent ev{};
+};
 
 namespace Input::detail {
 
-    void ResetReplayState(std::size_t s);
+    using ReplayArr = std::array<ReplayState, kInputMaxSlots>;
+    using RetainedArr = std::array<std::vector<RetainedEvent>, kInputMaxSlots>;
+    using DeferredVec = std::vector<DeferredReplayEvent>;
 
-    [[nodiscard]] bool HasDeferredReplayForSlot(std::size_t s);
+    void ResetReplayState(std::size_t s, ReplayArr& replay);
 
-    void QueueDeferredReplayEvent(std::size_t s, const RetainedEvent& ev);
+    [[nodiscard]] bool HasDeferredReplayForSlot(std::size_t s, const DeferredVec& deferred);
 
-    void ClearDeferredReplayEventsForSlot(std::size_t s);
+    void QueueDeferredReplayEvent(std::size_t s, const RetainedEvent& ev, DeferredVec& deferred);
+
+    void ClearDeferredReplayEventsForSlot(std::size_t s, DeferredVec& deferred);
 
     [[nodiscard]] bool ReplayMatchesEvent(std::size_t s, RE::INPUT_DEVICE dev, std::uint32_t rawIdCode,
-                                          const RE::BSFixedString& userEvent, float value);
+                                          const RE::BSFixedString& userEvent, float value, const ReplayArr& replay);
 
-    void DrainOneDeferredReplayEvent();
-
+    void DrainOneDeferredReplayEvent(ReplayArr& replay, DeferredVec& deferred);
 }

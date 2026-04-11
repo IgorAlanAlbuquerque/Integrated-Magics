@@ -14,13 +14,12 @@ set(sources
     src/UI/SlotDrawer.cpp
     src/UI/PopupDrawer.cpp
     src/UI/HoveredForm.cpp
-    src/Input/Input.cpp
-    src/Input/EventFilter.cpp
-    src/Input/ExclusivePending.cpp
-    src/Input/HotkeyCache.cpp
+    src/Input/InputFilter.cpp
+    src/Input/ExclusiveTracker.cpp
+    src/Input/HotkeyMatcher.cpp
     src/Input/HudToggle.cpp
-    src/Input/InputState.cpp
     src/Input/ReplaySystem.cpp
+    src/Input/PhysicalReconciler.cpp
     src/State/Action.cpp
     src/State/AnimListener.cpp
     src/State/InventoryUtil.cpp
@@ -31,6 +30,8 @@ set(sources
     src/State/Assign.cpp
     src/State/EquipSink.cpp
     src/State/SlotCostUtil.cpp
+    src/Application/InputController.cpp
+    src/Application/HudController.cpp
     src/Adapters/Inbound/SpellTypeDetector.cpp
     src/Detours/detours.cpp
     src/Detours/disasm.cpp

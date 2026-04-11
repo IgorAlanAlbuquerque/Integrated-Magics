@@ -6,9 +6,9 @@
 #include <cmath>
 #include <numbers>
 
-#include "Config/Config.h"
+#include "Application/HudController.h"
+#include "Config/ConfigAdapter.h"
 #include "Config/StyleConfig.h"
-#include "Input/Input.h"
 #include "PCH.h"
 #include "Persistence/Slots.h"
 #include "State/SlotCostUtil.h"
@@ -106,25 +106,21 @@ namespace IntegratedMagic::HUD::SlotDrawer {
 
         const TextureManager::Image& ResolveModifierIcon() {
             static const TextureManager::Image kEmpty{};
-            const auto& cfg = IntegratedMagic::GetMagicConfig();
+            const auto& bindings = IntegratedMagic::Config::MagicConfigAdapter::Get();
             const auto& st = StyleConfig::Get();
 
             if (st.buttonIconType == ButtonIconType::Keyboard) {
-                const int kbPos = cfg.modifierKeyboardPosition;
+                const int kbPos = bindings.ModifierKbPosition();
                 if (kbPos <= 0) return kEmpty;
-                const auto& ic = cfg.slotInput[0];
-                int sc = kbPos == 1   ? ic.KeyboardScanCode1.load(std::memory_order_relaxed)
-                         : kbPos == 2 ? ic.KeyboardScanCode2.load(std::memory_order_relaxed)
-                                      : ic.KeyboardScanCode3.load(std::memory_order_relaxed);
+                const auto binding = bindings.GetSlotBinding(0);
+                const int sc = kbPos == 1 ? binding.kb[0] : kbPos == 2 ? binding.kb[1] : binding.kb[2];
                 if (sc < 0) return kEmpty;
                 return TextureManager::GetKeyboardIcon(sc);
             } else {
-                const int gpPos = cfg.modifierGamepadPosition;
+                const int gpPos = bindings.ModifierGpPosition();
                 if (gpPos <= 0) return kEmpty;
-                const auto& ic = cfg.slotInput[0];
-                int idx = gpPos == 1   ? ic.GamepadButton1.load(std::memory_order_relaxed)
-                          : gpPos == 2 ? ic.GamepadButton2.load(std::memory_order_relaxed)
-                                       : ic.GamepadButton3.load(std::memory_order_relaxed);
+                const auto binding = bindings.GetSlotBinding(0);
+                const int idx = gpPos == 1 ? binding.gp[0] : gpPos == 2 ? binding.gp[1] : binding.gp[2];
                 if (idx < 0) return kEmpty;
                 return TextureManager::GetGamepadButtonIcon(idx, st.buttonIconType);
             }
@@ -511,7 +507,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
     }
 
     void DrawSlotHotkeyIcons(ImDrawList* dl, ImVec2 center, float slotR, int slotIndex) {
-        const auto& cfg = IntegratedMagic::GetMagicConfig();
+        const auto& bindings = IntegratedMagic::Config::MagicConfigAdapter::Get();
         const auto& st = StyleConfig::Get();
         const auto iconType = st.buttonIconType;
 
@@ -526,18 +522,12 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         KeyEntry keys[3]{};
         int keyCount = 0;
 
-        const auto& ic = cfg.slotInput[static_cast<std::size_t>(slotIndex)];
+        const auto binding = bindings.GetSlotBinding(slotIndex);
         if (iconType == ButtonIconType::Keyboard) {
-            int codes[3] = {ic.KeyboardScanCode1.load(std::memory_order_relaxed),
-                            ic.KeyboardScanCode2.load(std::memory_order_relaxed),
-                            ic.KeyboardScanCode3.load(std::memory_order_relaxed)};
-            for (int c : codes)
+            for (int c : binding.kb)
                 if (c >= 0 && keyCount < 3) keys[keyCount++] = {false, c};
         } else {
-            int codes[3] = {ic.GamepadButton1.load(std::memory_order_relaxed),
-                            ic.GamepadButton2.load(std::memory_order_relaxed),
-                            ic.GamepadButton3.load(std::memory_order_relaxed)};
-            for (int c : codes)
+            for (int c : binding.gp)
                 if (c >= 0 && keyCount < 3) keys[keyCount++] = {true, c};
         }
         if (keyCount == 0) return;
@@ -565,11 +555,11 @@ namespace IntegratedMagic::HUD::SlotDrawer {
     void DrawSlotButtonLabel(ImDrawList* dl, ImVec2 center, float slotR, int slotIndex, ImVec2 hudOrigin, float alpha) {
         if (alpha <= 0.f) return;
 
-        const auto& cfg = IntegratedMagic::GetMagicConfig();
+        const auto& bindings = IntegratedMagic::Config::MagicConfigAdapter::Get();
         const auto& st = StyleConfig::Get();
         const auto iconType = st.buttonIconType;
         const int modPos =
-            (iconType == ButtonIconType::Keyboard) ? cfg.modifierKeyboardPosition : cfg.modifierGamepadPosition;
+            (iconType == ButtonIconType::Keyboard) ? bindings.ModifierKbPosition() : bindings.ModifierGpPosition();
         const bool suppressMod = (st.modifierWidgetVisibility != ModifierWidgetVisibility::Never) && (modPos > 0);
 
         struct KeyEntry {
@@ -579,24 +569,18 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         KeyEntry keys[3]{};
         int keyCount = 0;
 
-        const auto& ic = cfg.slotInput[static_cast<std::size_t>(slotIndex)];
+        const auto binding = bindings.GetSlotBinding(slotIndex);
         if (iconType == ButtonIconType::Keyboard) {
-            int codes[3] = {ic.KeyboardScanCode1.load(std::memory_order_relaxed),
-                            ic.KeyboardScanCode2.load(std::memory_order_relaxed),
-                            ic.KeyboardScanCode3.load(std::memory_order_relaxed)};
             for (int k = 0; k < 3; ++k) {
-                if (codes[k] < 0) continue;
+                if (binding.kb[k] < 0) continue;
                 if (suppressMod && (k + 1) == modPos) continue;
-                if (keyCount < 3) keys[keyCount++] = {false, codes[k]};
+                if (keyCount < 3) keys[keyCount++] = {false, binding.kb[k]};
             }
         } else {
-            int codes[3] = {ic.GamepadButton1.load(std::memory_order_relaxed),
-                            ic.GamepadButton2.load(std::memory_order_relaxed),
-                            ic.GamepadButton3.load(std::memory_order_relaxed)};
             for (int k = 0; k < 3; ++k) {
-                if (codes[k] < 0) continue;
+                if (binding.gp[k] < 0) continue;
                 if (suppressMod && (k + 1) == modPos) continue;
-                if (keyCount < 3) keys[keyCount++] = {true, codes[k]};
+                if (keyCount < 3) keys[keyCount++] = {true, binding.gp[k]};
             }
         }
         if (keyCount == 0) return;
@@ -678,7 +662,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         const auto& st = Style();
         const auto n = static_cast<int>(Slots::GetSlotCount());
         const int activeSlot = MagicState::Get().ActiveSlot();
-        const bool modHeld = !MagicState::Get().IsActive() && Input::IsModifierHeld();
+        const bool modHeld = !MagicState::Get().IsActive() && Application::HudController::Get().IsModifierHeld();
 
         SlotAnimator::Update(n, activeSlot, modHeld, st.hudLayout, st.gridColumns);
 
@@ -873,7 +857,8 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             DrawSlotButtonLabel(dl, ScaledCenter(activeSlot), st.slotRadius * SlotAnimator::GetScale(activeSlot),
                                 activeSlot, hudOrigin, s_labelAlpha[activeSlot]);
 
-        DrawModifierWidget(dl, hudOrigin, Input::IsModifierHeld() || MagicState::Get().IsActive());
+        DrawModifierWidget(dl, hudOrigin,
+                           Application::HudController::Get().IsModifierHeld() || MagicState::Get().IsActive());
 
         ImGui::End();
     }

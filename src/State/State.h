@@ -10,6 +10,10 @@
 #include "SyntheticInput.h"
 
 namespace IntegratedMagic {
+    enum class SlotPressResult {
+        None,
+        Deactivated  // ← indica que o slot foi desativado nesse press
+    };
     struct SpellSettings;
 
     struct HandSnapshot {
@@ -112,7 +116,7 @@ namespace IntegratedMagic {
     public:
         static MagicState& Get();
 
-        void OnSlotPressed(int slot);
+        [[nodiscard]] SlotPressResult OnSlotPressed(int slot);
         void OnSlotReleased(int slot);
 
         void OnBeginCast(Slots::Hand hand);

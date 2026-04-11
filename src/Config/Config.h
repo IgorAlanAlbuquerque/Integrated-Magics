@@ -6,7 +6,8 @@
 #include <filesystem>
 #include <utility>
 
-#include "SpellType.h"
+#include "Config/SpellType.h"
+#include "Config/Limits.h"
 
 namespace IntegratedMagic {
 
@@ -33,10 +34,8 @@ namespace IntegratedMagic {
     };
 
     struct MagicConfig {
-        static constexpr std::uint32_t kMaxSlots = 64;
-
         std::atomic<std::uint32_t> slotCount{4};
-        std::array<InputConfig, kMaxSlots> slotInput;
+        std::array<InputConfig, IntegratedMagic::Config::kMaxSlots> slotInput;
         InputConfig hudPopupInput;
 
         std::array<SpellTypeDefaults, static_cast<std::size_t>(std::to_underlying(SpellType::Shout)) + 1>

@@ -8,5 +8,7 @@ namespace IntegratedMagic::Config {
 
         [[nodiscard]] virtual bool SkipEquipAnimation() const = 0;
         [[nodiscard]] virtual bool SkipEquipAnimationOnReturn() const = 0;
+        [[nodiscard]] virtual bool RequireExclusiveHotkey() const = 0;
+        [[nodiscard]] virtual bool PressBothAtSame() const = 0;
     };
 }

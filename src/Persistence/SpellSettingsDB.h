@@ -7,7 +7,7 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "Config/ConfigPath.h"
+#include "Util/ConfigPath.h"
 #include "Config/Ports/SlotAssignments.h"
 #include "Config/SpellType.h"
 

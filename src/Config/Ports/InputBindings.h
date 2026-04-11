@@ -18,7 +18,5 @@ namespace IntegratedMagic::Config {
         [[nodiscard]] virtual SlotBinding GetHudToggleBinding() const = 0;
         [[nodiscard]] virtual int ModifierKbPosition() const = 0;
         [[nodiscard]] virtual int ModifierGpPosition() const = 0;
-        [[nodiscard]] virtual bool RequireExclusiveHotkey() const = 0;
-        [[nodiscard]] virtual bool PressBothAtSame() const = 0;
     };
 }

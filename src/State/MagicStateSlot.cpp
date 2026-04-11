@@ -1,13 +1,12 @@
 #include <utility>
 
-#include "Action.h"
-#include "Config/Config.h"
-#include "Input/InputState.h"
+#include "Config/ConfigAdapter.h"
 #include "InventoryUtil.h"
 #include "PCH.h"
 #include "Persistence/Slots.h"
 #include "Persistence/SpellSettingsDB.h"
 #include "State.h"
+#include "State/Action.h"
 #include "State/SlotCostUtil.h"
 #include "State/SpellClassify.h"
 
@@ -66,7 +65,7 @@ namespace IntegratedMagic {
 #ifdef DEBUG
         const char* handStr = IsLeft(hand) ? "Left" : "Right";
 #endif
-        const auto& cfg = IntegratedMagic::GetMagicConfig();
+        const bool skipAnim = IntegratedMagic::Config::MagicConfigAdapter::Get().SkipEquipAnimation();
         switch (ss.mode) {
             case Hold:
                 hm.holdActive = true;
@@ -77,11 +76,7 @@ namespace IntegratedMagic {
                     hm.beginCastWaitSecs = 0.f;
                     hm.beginCastRetries = 0;
                     _session.attackEnabled = false;
-                    if (cfg.skipEquipAnimationPatch) {
-                        _cast.castStopsToSkip = _session.wasHandsDown ? 2 : 1;
-                    } else {
-                        _cast.castStopsToSkip = 0;
-                    }
+                    _cast.castStopsToSkip = skipAnim ? (_session.wasHandsDown ? 2 : 1) : 0;
                 }
 #ifdef DEBUG
                 spdlog::info(
@@ -100,11 +95,7 @@ namespace IntegratedMagic {
                 hm.beginCastWaitSecs = 0.f;
                 hm.beginCastRetries = 0;
                 _session.attackEnabled = false;
-                if (cfg.skipEquipAnimationPatch) {
-                    _cast.castStopsToSkip = _session.wasHandsDown ? 2 : 1;
-                } else {
-                    _cast.castStopsToSkip = 0;
-                }
+                _cast.castStopsToSkip = skipAnim ? (_session.wasHandsDown ? 2 : 1) : 0;
 #ifdef DEBUG
                 spdlog::info(
                     "[State] EnterHand: hand={} mode=Automatic waitingChargeComplete=true "
@@ -124,11 +115,7 @@ namespace IntegratedMagic {
                     hm.beginCastWaitSecs = 0.f;
                     hm.beginCastRetries = 0;
                     _session.attackEnabled = false;
-                    if (cfg.skipEquipAnimationPatch) {
-                        _cast.castStopsToSkip = _session.wasHandsDown ? 2 : 1;
-                    } else {
-                        _cast.castStopsToSkip = 0;
-                    }
+                    _cast.castStopsToSkip = skipAnim ? (_session.wasHandsDown ? 2 : 1) : 0;
                 }
 #ifdef DEBUG
                 spdlog::info(
@@ -222,7 +209,7 @@ namespace IntegratedMagic {
         _shout.heldSecs = 0.f;
     }
 
-    void MagicState::OnSlotPressed(int slot) {
+    SlotPressResult MagicState::OnSlotPressed(int slot) {
 #ifdef DEBUG
         spdlog::info("[State] OnSlotPressed: slot={} active={} activeSlot={} modeShoutID={:#010x}", slot,
                      _session.active, _session.activeSlot, _shout.modeShoutID);
@@ -232,7 +219,7 @@ namespace IntegratedMagic {
 
         if (Slots::IsShoutSlot(slot)) {
             if (_session.active && slot == _session.activeSlot && _shout.modeShoutID != 0) {
-                if (_shout.finished) return;
+                if (_shout.finished) return SlotPressResult::None;
                 const auto ss = SpellSettingsDB::Get().Get(_shout.modeShoutID);
                 if (ss && ss->mode == Press) {
 #ifdef DEBUG
@@ -242,15 +229,15 @@ namespace IntegratedMagic {
                     _shout.finished = true;
                     TryFinalizeExit();
                 }
-                return;
+                return SlotPressResult::None;
             }
             if (_session.active && slot != _session.activeSlot) {
-                if (!CanOverwriteNow()) return;
+                if (!CanOverwriteNow()) return SlotPressResult::None;
                 _session.firstInterrupt = 0;
                 PrepareForOverwriteToSlot(slot);
             }
             SlotEntry e{};
-            if (!PrepareSlotEntry(slot, e)) return;
+            if (!PrepareSlotEntry(slot, e)) return SlotPressResult::None;
             if ((e.shoutSettings.mode == Hold || e.shoutSettings.mode == Automatic) && !_shout.isPower &&
                 e.player->GetVoiceRecoveryTime() > 0.f) {
 #ifdef DEBUG
@@ -258,7 +245,7 @@ namespace IntegratedMagic {
 #endif
                 _shout.finished = true;
                 TryFinalizeExit();
-                return;
+                return SlotPressResult::None;
             }
 #ifdef DEBUG
             spdlog::info("[State] OnSlotPressed: EquipShoutInVoice shoutID={:#010x} isPower={} mode={}", e.shoutID,
@@ -272,7 +259,7 @@ namespace IntegratedMagic {
 #endif
             StartShoutPress();
             if (e.shoutSettings.mode == Automatic) _shout.powerAutoSecs = 0.f;
-            return;
+            return SlotPressResult::None;
         }
 
         if (_session.active && slot == _session.activeSlot) {
@@ -280,37 +267,36 @@ namespace IntegratedMagic {
             const bool needR = (_session.modeSpellRight != nullptr);
             const bool pressL = needL && _left.mode == Press && _left.pressActive;
             const bool pressR = needR && _right.mode == Press && _right.pressActive;
-            if (!pressL && !pressR) return;
+            if (!pressL && !pressR) return SlotPressResult::None;
 #ifdef DEBUG
             spdlog::info("[State] OnSlotPressed: active slot pressed again, toggling press -> pressL={} pressR={}",
                          pressL, pressR);
 #endif
-            g_slotDeactivatedThisPress[static_cast<std::size_t>(slot)] = true;
             if (pressL && pressR) {
                 FinishHand(Left);
                 FinishHand(Right);
                 ExitAllNow();
-                return;
+                return SlotPressResult::Deactivated;  // ← retorna em vez de chamar controller
             }
             if (pressL) FinishHand(Left);
             if (pressR) FinishHand(Right);
             TryFinalizeExit();
-            return;
+            return SlotPressResult::Deactivated;  // ← idem
         }
 
         if (_session.active && slot != _session.activeSlot) {
-            if (!CanOverwriteNow()) return;
+            if (!CanOverwriteNow()) return SlotPressResult::None;
             _session.firstInterrupt = 0;
             PrepareForOverwriteToSlot(slot);
         }
 
         if (const auto afford = ComputeSlotAffordability(slot); afford.hasSpells && !afford.canCast) {
             ExitAllNow();
-            return;
+            return SlotPressResult::None;
         }
 
         SlotEntry e{};
-        if (!PrepareSlotEntry(slot, e)) return;
+        if (!PrepareSlotEntry(slot, e)) return SlotPressResult::None;
 
         _session.isDualCasting = false;
         if (e.hasRight && e.hasLeft && e.rightSettings.mode == Automatic && e.leftSettings.mode == Automatic &&
@@ -328,7 +314,7 @@ namespace IntegratedMagic {
         }
         if (!e.hasLeft && !e.hasRight) {
             ExitAllNow();
-            return;
+            return SlotPressResult::None;
         }
 
         auto* player = e.player;
@@ -360,6 +346,8 @@ namespace IntegratedMagic {
         } else {
             _left = {};
         }
+
+        return SlotPressResult::None;
     }
 
     void MagicState::OnSlotReleased(int slot) {

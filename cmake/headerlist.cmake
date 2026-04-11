@@ -5,6 +5,8 @@ set(headers
     src/Config/StyleConfig.h
     src/Config/ConfigAdapter.h
     src/Config/SpellType.h
+    src/Config/Limits.h
+    src/Config/InputConstants.h
     src/Config/Ports/HudSettings.h
     src/Config/Ports/InputBindings.h
     src/Config/Ports/PatchSettings.h
@@ -25,14 +27,17 @@ set(headers
     src/UI/HoveredForm.h
     src/UI/PolyFill.h
     src/UI/HudTextUtil.h
-    src/Input/Input.h
-    src/Input/EventFilter.h
-    src/Input/ExclusivePending.h
-    src/Input/HotkeyCache.h
+    src/Input/CaptureState.h
+    src/Input/InputFilter.h
+    src/Input/ExclusiveTracker.h
+    src/Input/HotkeyMatcher.h
     src/Input/HudToggle.h
-    src/Input/InputInternal.h
-    src/Input/InputState.h
     src/Input/ReplaySystem.h
+    src/Input/SlotEdgeStore.h
+    src/Input/HotkeyCacheStore.h
+    src/Input/ExclusiveStore.h
+    src/Input/KeyStateStore.h
+    src/Input/PhysicalReconciler.h
     src/State/State.h
     src/State/Action.h
     src/State/AnimListener.h
@@ -43,6 +48,8 @@ set(headers
     src/State/SpellClassify.h
     src/State/EquipSink.h
     src/State/SlotCostUtil.h
+    src/Application/InputController.h
+    src/Application/HudController.h
     src/Adapters/Inbound/SpellTypeDetector.h
     src/Adapters/Outbound/EquipSlots.h
 )

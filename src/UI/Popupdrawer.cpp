@@ -7,7 +7,6 @@
 #include <string>
 #include <vector>
 
-#include "Config/Config.h"
 #include "Config/StyleConfig.h"
 #include "PCH.h"
 #include "Persistence/Slots.h"

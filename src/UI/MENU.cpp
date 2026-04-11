@@ -6,10 +6,11 @@
 #include <string>
 #include <utility>
 
+#include "Application/InputController.h"
 #include "Config/ConfigAdapter.h"
+#include "Config/Limits.h"
 #include "Config/SpellType.h"
 #include "Config/StyleConfig.h"
-#include "Input/Input.h"
 #include "PCH.h"
 #include "Persistence/SpellSettingsDB.h"
 #include "SKSEMenuFramework.h"
@@ -65,8 +66,8 @@ namespace {
 
     void CancelFieldCapture() {
         if (g_fieldCapture.active) {
-            Input::CancelHotkeyCapture();
-            Input::SetCaptureModeActive(false);
+            Application::InputController::Get().CancelHotkeyCapture();
+            Application::InputController::Get().SetCaptureModeActive(false);
             g_fieldCapture = {};
         }
     }
@@ -84,17 +85,17 @@ namespace {
         ImGuiMCP::SameLine();
 
         if (const bool isThis = g_fieldCapture.active && g_fieldCapture.field == &field; isThis) {
-            if (const int encoded = Input::PollCapturedHotkey(); encoded != -1) {
+            if (const int encoded = Application::InputController::Get().PollCapturedHotkey(); encoded != -1) {
                 const bool gotKb = (encoded >= 0);
                 if (gotKb == wantKeyboard) {
                     const int val = wantKeyboard ? encoded : -(encoded + 2);
                     field.store(val, std::memory_order_relaxed);
                     dirty = true;
                     g_fieldCapture = {};
-                    Input::SetCaptureModeActive(false);
+                    Application::InputController::Get().SetCaptureModeActive(false);
                 } else {
-                    Input::RequestHotkeyCapture();
-                    Input::SetCaptureModeActive(true);
+                    Application::InputController::Get().RequestHotkeyCapture();
+                    Application::InputController::Get().SetCaptureModeActive(true);
                 }
             }
 
@@ -107,8 +108,8 @@ namespace {
             if (g_fieldCapture.active) ImGuiMCP::BeginDisabled(true);
             if (ImGuiMCP::SmallButton(IntegratedMagic::Strings::Get("Btn_Cap", "Cap").c_str())) {
                 g_fieldCapture = {&field, wantKeyboard, true};
-                Input::RequestHotkeyCapture();
-                Input::SetCaptureModeActive(true);
+                Application::InputController::Get().RequestHotkeyCapture();
+                Application::InputController::Get().SetCaptureModeActive(true);
             }
             if (g_fieldCapture.active) ImGuiMCP::EndDisabled();
         }
@@ -252,8 +253,8 @@ namespace {
         ImGuiMCP::SetNextItemWidth(180.0f);
         if (ImGuiMCP::InputInt(IntegratedMagic::Strings::Get("Item_SlotCount", "Slot count").c_str(), &n)) {
             if (n < 1) n = 1;
-            if (n > static_cast<int>(IntegratedMagic::MagicConfig::kMaxSlots)) {
-                n = static_cast<int>(IntegratedMagic::MagicConfig::kMaxSlots);
+            if (n > static_cast<int>(IntegratedMagic::Config::kMaxSlots)) {
+                n = static_cast<int>(IntegratedMagic::Config::kMaxSlots);
             }
             cfg.slotCount.store(static_cast<std::uint32_t>(n), std::memory_order_relaxed);
             dirty = true;
@@ -1412,7 +1413,7 @@ void __stdcall IntegratedMagic::MENU::DrawSettings() {
                 IntegratedMagic::SpellSettingsDB::Get().Save();
                 IntegratedMagic::SpellSettingsDB::Get().ClearDirty();
             }
-            Input::OnConfigChanged();
+            Application::InputController::Get().OnConfigChanged();
             g_pending = false;
         }
         ImGuiMCP::EndDisabled();

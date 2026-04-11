@@ -10,3 +10,9 @@
 using namespace std::literals;
 
 #define DEBUG
+
+#ifdef DEBUG
+    #define MAGIC_DEBUG_LOG(...) spdlog::info(__VA_ARGS__)
+#else
+    #define MAGIC_DEBUG_LOG(...) ((void)0)
+#endif

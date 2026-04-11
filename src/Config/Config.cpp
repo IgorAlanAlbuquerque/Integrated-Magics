@@ -7,8 +7,8 @@
 #include <string>
 #include <utility>
 
-#include "ConfigPath.h"
 #include "PCH.h"
+#include "Util/ConfigPath.h"
 
 using namespace std::string_literals;
 
@@ -124,7 +124,7 @@ std::filesystem::path IntegratedMagic::MagicConfig::IniPath() { return GetThisDl
 std::uint32_t IntegratedMagic::MagicConfig::SlotCount() const noexcept {
     auto v = slotCount.load(std::memory_order_relaxed);
     if (v < 1u) v = 1u;
-    if (v > kMaxSlots) v = kMaxSlots;
+    if (v > IntegratedMagic::Config::kMaxSlots) v = IntegratedMagic::Config::kMaxSlots;
     return v;
 }
 
@@ -135,7 +135,7 @@ void IntegratedMagic::MagicConfig::Load() {
 
     const int raw = _getInt(ini, "General", "SlotCount", 4);
     std::uint32_t v = (raw < 1) ? 1u : static_cast<std::uint32_t>(raw);
-    if (v > kMaxSlots) v = kMaxSlots;
+    if (v > IntegratedMagic::Config::kMaxSlots) v = IntegratedMagic::Config::kMaxSlots;
     slotCount.store(v, std::memory_order_relaxed);
 
     std::byte flags{0};

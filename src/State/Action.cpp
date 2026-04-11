@@ -5,7 +5,7 @@
 #include <thread>
 
 #include "Adapters/Outbound/EquipSlots.h"
-#include "Config/Config.h"
+#include "Config/ConfigAdapter.h"
 
 namespace IntegratedMagic::MagicAction {
     namespace {
@@ -121,9 +121,8 @@ namespace IntegratedMagic::MagicAction {
                      (caster && caster->currentSpell) ? caster->currentSpell->GetFormID() : 0u);
 #endif
 
-        auto const& cfg = IntegratedMagic::GetMagicConfig();
-
-        if (cfg.skipEquipAnimationPatch) {
+        const auto& patches = IntegratedMagic::Config::MagicConfigAdapter::Get();
+        if (patches.SkipEquipAnimation()) {
             const std::uint64_t token = (g_skipToken.fetch_add(1, std::memory_order_relaxed) + 1) | 1ull;
             g_skipToken.store(token, std::memory_order_relaxed);
             SetSkipEquipVars(player, true);
@@ -138,8 +137,7 @@ namespace IntegratedMagic::MagicAction {
     }
 
     void DisableSkipEquipVarsNow(RE::PlayerCharacter* player) {
-        auto const& cfg = IntegratedMagic::GetMagicConfig();
-        if (!cfg.skipEquipAnimationPatch) return;
+        if (!IntegratedMagic::Config::MagicConfigAdapter::Get().SkipEquipAnimation()) return;
 
         const std::uint64_t cur = g_skipToken.load(std::memory_order_relaxed);
         if ((cur & 1ull) == 0) return;
@@ -214,10 +212,7 @@ namespace IntegratedMagic::MagicAction {
     }
 
     void ApplySkipEquipAnimReturn(RE::PlayerCharacter* player) {
-        auto const& cfg = IntegratedMagic::GetMagicConfig();
-        if (!cfg.skipEquipAnimationOnReturnPatch) {
-            return;
-        }
+        if (!IntegratedMagic::Config::MagicConfigAdapter::Get().SkipEquipAnimationOnReturn()) return;
         const std::uint64_t token = (g_skipToken.fetch_add(1, std::memory_order_relaxed) + 1) | 1ull;
         g_skipToken.store(token, std::memory_order_relaxed);
         SetSkipEquipVars(player, true);

@@ -1,7 +1,7 @@
+#include "Application/InputController.h"
 #include "Config/ConfigAdapter.h"
 #include "Config/StyleConfig.h"
 #include "Hooks.h"
-#include "Input/Input.h"
 #include "PCH.h"
 #include "Persistence/SaveSpellDB.h"
 #include "Persistence/SpellSettingsDB.h"
@@ -101,7 +101,7 @@ namespace {
                 IntegratedMagic::GetMagicConfig().Load();
                 IntegratedMagic::SpellSettingsDB::Get().Load();
                 IntegratedMagic::MENU::Register();
-                Input::OnConfigChanged();
+                Application::InputController::Get().OnConfigChanged();
 
                 CastGuardEvents::Get().Register();
                 IntegratedMagic::EquipSink::RegisterEquipListener();

@@ -3,8 +3,8 @@
 #include <fstream>
 #include <unordered_map>
 
-#include "Config/ConfigPath.h"
 #include "PCH.h"
+#include "Util/ConfigPath.h"
 
 namespace IntegratedMagic::Strings {
     namespace {

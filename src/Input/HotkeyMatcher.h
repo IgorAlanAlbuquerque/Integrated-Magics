@@ -1,10 +1,12 @@
 #pragma once
-
 #include <algorithm>
 #include <array>
 #include <ranges>
 
-#include "InputState.h"
+#include "Config/InputConstants.h"
+#include "Input/HotkeyCacheStore.h"
+#include "Input/KeyStateStore.h"
+#include "Input/SlotEdgeStore.h"
 
 namespace Input::detail {
 
@@ -47,8 +49,8 @@ namespace Input::detail {
         return true;
     }
 
-    void LoadHotkeyCache_FromConfig();
+    void LoadHotkeyCache_FromConfig(HotkeyCacheStore& cache, SlotEdgeStore& slots);
 
-    [[nodiscard]] bool SlotComboDown(int slot);
-
+    [[nodiscard]] bool SlotComboDown(int slot, const HotkeyCacheStore& cache, const KeyStateStore& keys,
+                                     const SlotEdgeStore& slots);
 }

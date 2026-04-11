@@ -9,9 +9,9 @@
 
 #include <utility>
 
+#include "Application/InputController.h"
+#include "Config/InputConstants.h"
 #include "HookUtil.hpp"
-#include "Input/Input.h"
-#include "Input/InputState.h"
 #include "PCH.h"
 #include "State/AnimListener.h"
 #include "State/State.h"
@@ -31,7 +31,7 @@ namespace IntegratedMagic::Hooks {
             static void thunk(RE::BSTEventSource<RE::InputEvent*>* a_dispatcher, RE::InputEvent* const* a_events) {
                 if (!a_events) return;
 
-                Input::ProcessAndFilter(const_cast<RE::InputEvent**>(a_events));
+                Application::InputController::Get().ProcessAndFilter(const_cast<RE::InputEvent**>(a_events));
 
                 RE::InputEvent* head = IntegratedMagic::detail::FlushSyntheticInput(*a_events);
 
@@ -81,21 +81,21 @@ namespace IntegratedMagic::Hooks {
                 if (g_renderInitialized.load()) {
                     ImGui::SetCurrentContext(g_imguiContext);
 
-                    if (Input::IsCaptureModeActive()) {
+                    if (Application::InputController::Get().IsCaptureModeActive()) {
                         if (uMsg == WM_KEYDOWN || uMsg == WM_SYSKEYDOWN) {
                             const UINT sc = (lParam >> 16) & 0x7F;
                             if (sc > 0 && sc < static_cast<UINT>(kMouseButtonBase))
-                                Input::InjectCapturedScancode(static_cast<int>(sc));
+                                Application::InputController::Get().InjectCapturedScancode(static_cast<int>(sc));
                         } else if (uMsg == WM_LBUTTONDOWN) {
-                            Input::InjectCapturedScancode(kMouseButtonBase + 0);
+                            Application::InputController::Get().InjectCapturedScancode(kMouseButtonBase + 0);
                         } else if (uMsg == WM_RBUTTONDOWN) {
-                            Input::InjectCapturedScancode(kMouseButtonBase + 1);
+                            Application::InputController::Get().InjectCapturedScancode(kMouseButtonBase + 1);
                         } else if (uMsg == WM_MBUTTONDOWN) {
-                            Input::InjectCapturedScancode(kMouseButtonBase + 2);
+                            Application::InputController::Get().InjectCapturedScancode(kMouseButtonBase + 2);
                         }
                     }
 
-                    if (!Input::IsCaptureModeActive()) {
+                    if (!Application::InputController::Get().IsCaptureModeActive()) {
                         if (uMsg == WM_KILLFOCUS) {
                             auto& io = ImGui::GetIO();
                             io.ClearInputCharacters();
@@ -300,17 +300,18 @@ namespace IntegratedMagic::Hooks {
                 }
 #endif
 
-                if (Input::IsCaptureModeActive()) {
+                if (Application::InputController::Get().IsCaptureModeActive()) {
                     static bool s_prevMouse[5]{};
                     constexpr int kMouseVKs[5] = {VK_LBUTTON, VK_RBUTTON, VK_MBUTTON, VK_XBUTTON1, VK_XBUTTON2};
                     for (int i = 0; i < 5; ++i) {
                         const bool down = (GetAsyncKeyState(kMouseVKs[i]) & 0x8000) != 0;
-                        if (down && !s_prevMouse[i]) Input::InjectCapturedScancode(kMouseButtonBase + i);
+                        if (down && !s_prevMouse[i])
+                            Application::InputController::Get().InjectCapturedScancode(kMouseButtonBase + i);
                         s_prevMouse[i] = down;
                     }
 
                     const int gpIdx = PollGamepadCapture();
-                    if (gpIdx >= 0) Input::InjectCapturedGamepad(gpIdx);
+                    if (gpIdx >= 0) Application::InputController::Get().InjectCapturedGamepad(gpIdx);
                 }
 
                 ImGui::NewFrame();

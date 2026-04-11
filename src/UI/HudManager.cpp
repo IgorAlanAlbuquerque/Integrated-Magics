@@ -2,9 +2,9 @@
 
 #include <imgui.h>
 
+#include "Application/HudController.h"
 #include "Config/ConfigAdapter.h"
 #include "HudState.h"
-#include "Input/Input.h"
 #include "PCH.h"
 #include "Persistence/Slots.h"
 #include "PopupDrawer.h"
@@ -85,7 +85,7 @@ namespace IntegratedMagic::HUD {
         if (Slots::GetSlotCount() == 0) return;
 
         const bool inMagicMenu = IsInMagicMenu();
-        if (inMagicMenu && Input::ConsumeHudToggle()) ToggleDetailPopup();
+        if (inMagicMenu && Application::HudController::Get().ConsumeHudToggle()) ToggleDetailPopup();
         if (!inMagicMenu && g_popupOpen.load()) {
             g_popupOpen.store(false);
         }
