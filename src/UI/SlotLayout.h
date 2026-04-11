@@ -3,7 +3,7 @@
 #include <cmath>
 #include <numbers>
 
-#include "UI/StyleConfig.h"
+#include "Config/StyleConfig.h"
 
 namespace IntegratedMagic {
 

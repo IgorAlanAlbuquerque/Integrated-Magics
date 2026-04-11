@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <format>
 #include <string>
+#include <utility>
 
 #include "ConfigPath.h"
 #include "PCH.h"
@@ -12,24 +13,19 @@
 using namespace std::string_literals;
 
 namespace {
+
     int _getInt(CSimpleIniA const& ini, const char* sec, const char* k, int defVal) {
         const char* v = ini.GetValue(sec, k, nullptr);
-        if (!v) {
-            return defVal;
-        }
+        if (!v) return defVal;
         char* end = nullptr;
-        long r = std::strtol(v, &end, 10);
-        if (!end || end == v) {
-            return defVal;
-        }
+        const long r = std::strtol(v, &end, 10);
+        if (!end || end == v) return defVal;
         return static_cast<int>(r);
     }
 
     bool _getBool(CSimpleIniA const& ini, const char* sec, const char* k, bool defVal) {
         const char* v = ini.GetValue(sec, k, nullptr);
-        if (!v) {
-            return defVal;
-        }
+        if (!v) return defVal;
         return (_stricmp(v, "true") == 0 || std::strcmp(v, "1") == 0);
     }
 
@@ -71,173 +67,160 @@ namespace {
         ini.SetLongValue(sec, "GamepadButton2", in.GamepadButton2.load(std::memory_order_relaxed));
         ini.SetLongValue(sec, "GamepadButton3", in.GamepadButton3.load(std::memory_order_relaxed));
     }
+
+    struct SpellTypeEntry {
+        IntegratedMagic::SpellType type;
+        const char* modeKey;
+        const char* aaKey;
+    };
+
+    constexpr std::array kSpellTypeEntries{
+        SpellTypeEntry{IntegratedMagic::SpellType::Concentration, "ConcentrationMode", "ConcentrationAutoAttack"},
+        SpellTypeEntry{IntegratedMagic::SpellType::Cast, "CastMode", "CastAutoAttack"},
+        SpellTypeEntry{IntegratedMagic::SpellType::Bound, "BoundMode", "BoundAutoAttack"},
+        SpellTypeEntry{IntegratedMagic::SpellType::Power, "PowerMode", "PowerAutoAttack"},
+        SpellTypeEntry{IntegratedMagic::SpellType::Shout, "ShoutMode", "ShoutAutoAttack"},
+    };
+
+    struct HudFlagEntry {
+        IntegratedMagic::HudVisibilityFlag flag;
+        const char* key;
+    };
+
+    constexpr std::array kHudFlagEntries{
+        HudFlagEntry{IntegratedMagic::HudVisibilityFlag::Always, "HudShowAlways"},
+        HudFlagEntry{IntegratedMagic::HudVisibilityFlag::SlotActive, "HudShowOnSlotActive"},
+        HudFlagEntry{IntegratedMagic::HudVisibilityFlag::InCombat, "HudShowInCombat"},
+        HudFlagEntry{IntegratedMagic::HudVisibilityFlag::WeaponDrawn, "HudShowWeaponDrawn"},
+    };
+
+    using FieldPtr = std::atomic<int> IntegratedMagic::InputConfig::*;
+    constexpr FieldPtr GetInputField(int pos, bool isKb) noexcept {
+        if (isKb) {
+            if (pos == 1) return &IntegratedMagic::InputConfig::KeyboardScanCode1;
+            if (pos == 2) return &IntegratedMagic::InputConfig::KeyboardScanCode2;
+            return &IntegratedMagic::InputConfig::KeyboardScanCode3;
+        }
+
+        if (pos == 1) return &IntegratedMagic::InputConfig::GamepadButton1;
+        if (pos == 2) return &IntegratedMagic::InputConfig::GamepadButton2;
+        return &IntegratedMagic::InputConfig::GamepadButton3;
+    }
 }
 
-namespace IntegratedMagic {
+IntegratedMagic::MagicConfig::MagicConfig() {
+    using enum IntegratedMagic::SpellType;
+    using enum IntegratedMagic::ActivationMode;
+    spellTypeDefaults[static_cast<int>(std::to_underlying(Concentration))] = {Hold, true};
+    spellTypeDefaults[static_cast<int>(std::to_underlying(Cast))] = {Automatic, true};
+    spellTypeDefaults[static_cast<int>(std::to_underlying(Bound))] = {Press, false};
+    spellTypeDefaults[static_cast<int>(std::to_underlying(Power))] = {Automatic, false};
+    spellTypeDefaults[static_cast<int>(std::to_underlying(Shout))] = {Hold, true};
+    spellTypeDefaults[static_cast<int>(std::to_underlying(Unknown))] = {Hold, true};
+}
 
-    MagicConfig::MagicConfig() {
-        for (auto& a : slotSpellFormIDLeft) a.store(0u, std::memory_order_relaxed);
-        for (auto& a : slotSpellFormIDRight) a.store(0u, std::memory_order_relaxed);
-        using ST = SpellType;
-        spellTypeDefaults[static_cast<int>(ST::Concentration)] = {ActivationMode::Hold, true};
-        spellTypeDefaults[static_cast<int>(ST::Cast)] = {ActivationMode::Automatic, true};
-        spellTypeDefaults[static_cast<int>(ST::Bound)] = {ActivationMode::Press, false};
-        spellTypeDefaults[static_cast<int>(ST::Power)] = {ActivationMode::Automatic, false};
-        spellTypeDefaults[static_cast<int>(ST::Shout)] = {ActivationMode::Hold, true};
-        spellTypeDefaults[static_cast<int>(ST::Unknown)] = {ActivationMode::Hold, true};
-    }
+std::filesystem::path IntegratedMagic::MagicConfig::IniPath() { return GetThisDllDir() / "IntegratedMagic.ini"; }
 
-    std::filesystem::path MagicConfig::IniPath() {
-        const auto& base = GetThisDllDir();
-        return base / "IntegratedMagic.ini";
-    }
+std::uint32_t IntegratedMagic::MagicConfig::SlotCount() const noexcept {
+    auto v = slotCount.load(std::memory_order_relaxed);
+    if (v < 1u) v = 1u;
+    if (v > kMaxSlots) v = kMaxSlots;
+    return v;
+}
 
-    std::uint32_t MagicConfig::SlotCount() const noexcept {
-        auto v = slotCount.load(std::memory_order_relaxed);
-        if (v < 1u) {
-            v = 1u;
-        } else if (v > kMaxSlots) {
-            v = kMaxSlots;
-        }
-        return v;
-    }
+void IntegratedMagic::MagicConfig::Load() {
+    CSimpleIniA ini;
+    ini.SetUnicode();
+    if (const auto path = IniPath(); ini.LoadFile(path.string().c_str()) < 0) return;
 
-    void MagicConfig::Load() {
-        CSimpleIniA ini;
-        ini.SetUnicode();
-        const auto path = IniPath();
-        if (SI_Error rc = ini.LoadFile(path.string().c_str()); rc < 0) {
-            return;
-        }
-        const int raw = _getInt(ini, "General", "SlotCount", 4);
-        using F = HudVisibilityFlag;
-        std::uint8_t flags = 0;
-        if (_getBool(ini, "General", "HudShowAlways", false)) flags |= static_cast<std::uint8_t>(F::Always);
-        if (_getBool(ini, "General", "HudShowOnSlotActive", false)) flags |= static_cast<std::uint8_t>(F::SlotActive);
-        if (_getBool(ini, "General", "HudShowInCombat", false)) flags |= static_cast<std::uint8_t>(F::InCombat);
-        if (_getBool(ini, "General", "HudShowWeaponDrawn", false)) flags |= static_cast<std::uint8_t>(F::WeaponDrawn);
-        hudVisibilityFlags = flags;
-        std::uint32_t v = (raw < 1) ? 1u : static_cast<std::uint32_t>(raw);
-        if (v > kMaxSlots) {
-            v = kMaxSlots;
-        }
-        slotCount.store(v, std::memory_order_relaxed);
-        const auto n = SlotCount();
-        for (std::uint32_t i = 0; i < n; ++i) {
-            const auto sec = std::format("Magic{}", i + 1);
-            _loadInput(ini, sec.c_str(), slotInput[i]);
-        }
-        _loadInput(ini, "HudPopup", hudPopupInput);
-        skipEquipAnimationPatch = _getBool(ini, "Patches", "SkipEquipAnimationPatch", false);
-        skipEquipAnimationOnReturnPatch = _getBool(ini, "Patches", "SkipEquipAnimationOnReturn", false);
-        requireExclusiveHotkeyPatch = _getBool(ini, "Patches", "RequireExclusiveHotkeyPatch", false);
-        pressBothAtSamePatch = _getBool(ini, "Patches", "PressBothAtSamePatch", false);
+    const int raw = _getInt(ini, "General", "SlotCount", 4);
+    std::uint32_t v = (raw < 1) ? 1u : static_cast<std::uint32_t>(raw);
+    if (v > kMaxSlots) v = kMaxSlots;
+    slotCount.store(v, std::memory_order_relaxed);
 
-        modifierKeyboardPosition = std::clamp(_getInt(ini, "Modifier", "KeyboardPosition", 0), 0, 3);
-        modifierGamepadPosition = std::clamp(_getInt(ini, "Modifier", "GamepadPosition", 0), 0, 3);
-
-        using FieldPtr = std::atomic<int> InputConfig::*;
-
-        auto propagateModifier = [&](int pos, bool isKb) {
-            if (pos <= 0) return;
-            FieldPtr field = nullptr;
-            if (isKb) {
-                if (pos == 1)
-                    field = &InputConfig::KeyboardScanCode1;
-                else if (pos == 2)
-                    field = &InputConfig::KeyboardScanCode2;
-                else
-                    field = &InputConfig::KeyboardScanCode3;
-            } else {
-                if (pos == 1)
-                    field = &InputConfig::GamepadButton1;
-                else if (pos == 2)
-                    field = &InputConfig::GamepadButton2;
-                else
-                    field = &InputConfig::GamepadButton3;
-            }
-            const int canonical = (slotInput[0].*field).load(std::memory_order_relaxed);
-            for (std::uint32_t i = 1; i < n; ++i) (slotInput[i].*field).store(canonical, std::memory_order_relaxed);
-        };
-
-        propagateModifier(modifierKeyboardPosition, true);
-        propagateModifier(modifierGamepadPosition, false);
-
-        using ST = SpellType;
-        constexpr const char* sec = "SpellTypeDefaults";
-
-        struct TypeEntry {
-            ST type;
-            const char* modeKey;
-            const char* aaKey;
-        };
-        constexpr TypeEntry entries[] = {
-            {ST::Concentration, "ConcentrationMode", "ConcentrationAutoAttack"},
-            {ST::Cast, "CastMode", "CastAutoAttack"},
-            {ST::Bound, "BoundMode", "BoundAutoAttack"},
-            {ST::Power, "PowerMode", "PowerAutoAttack"},
-            {ST::Shout, "ShoutMode", "ShoutAutoAttack"},
-        };
-
-        for (const auto& e : entries) {
-            auto& d = spellTypeDefaults[static_cast<int>(e.type)];
-            const char* modeStr = ini.GetValue(sec, e.modeKey, _modeToStr(d.mode));
-            d.mode = _modeFromStr(modeStr);
-            d.autoAttack = _getBool(ini, sec, e.aaKey, d.autoAttack);
+    std::byte flags{0};
+    for (const auto& e : kHudFlagEntries) {
+        if (_getBool(ini, "General", e.key, false)) {
+            flags |= static_cast<std::byte>(std::to_underlying(e.flag));
         }
     }
+    hudVisibilityFlags = flags;
 
-    void MagicConfig::Save() const {
-        CSimpleIniA ini;
-        ini.SetUnicode();
-        const auto path = IniPath();
-        ini.LoadFile(path.string().c_str());
-        const auto n = SlotCount();
-        ini.SetLongValue("General", "SlotCount", static_cast<long>(n));
-        using F = HudVisibilityFlag;
-        ini.SetBoolValue("General", "HudShowAlways", HudFlagSet(F::Always));
-        ini.SetBoolValue("General", "HudShowOnSlotActive", HudFlagSet(F::SlotActive));
-        ini.SetBoolValue("General", "HudShowInCombat", HudFlagSet(F::InCombat));
-        ini.SetBoolValue("General", "HudShowWeaponDrawn", HudFlagSet(F::WeaponDrawn));
-        for (std::uint32_t i = 0; i < n; ++i) {
-            const auto sec = std::format("Magic{}", i + 1);
-            _saveInput(ini, sec.c_str(), slotInput[i]);
-        }
-        _saveInput(ini, "HudPopup", hudPopupInput);
-        ini.SetBoolValue("Patches", "SkipEquipAnimationPatch", skipEquipAnimationPatch);
-        ini.SetBoolValue("Patches", "SkipEquipAnimationOnReturn", skipEquipAnimationOnReturnPatch);
-        ini.SetBoolValue("Patches", "RequireExclusiveHotkeyPatch", requireExclusiveHotkeyPatch);
-        ini.SetBoolValue("Patches", "PressBothAtSamePatch", pressBothAtSamePatch);
-        ini.SetLongValue("Modifier", "KeyboardPosition", modifierKeyboardPosition);
-        ini.SetLongValue("Modifier", "GamepadPosition", modifierGamepadPosition);
+    const auto n = SlotCount();
+    for (std::uint32_t i = 0; i < n; ++i) {
+        const auto sec = std::format("Magic{}", i + 1);
+        _loadInput(ini, sec.c_str(), slotInput[i]);
+    }
+    _loadInput(ini, "HudPopup", hudPopupInput);
 
-        using ST = SpellType;
-        constexpr const char* sec = "SpellTypeDefaults";
-        struct TypeEntry {
-            ST type;
-            const char* modeKey;
-            const char* aaKey;
-        };
-        constexpr TypeEntry entries[] = {
-            {ST::Concentration, "ConcentrationMode", "ConcentrationAutoAttack"},
-            {ST::Cast, "CastMode", "CastAutoAttack"},
-            {ST::Bound, "BoundMode", "BoundAutoAttack"},
-            {ST::Power, "PowerMode", "PowerAutoAttack"},
-            {ST::Shout, "ShoutMode", "ShoutAutoAttack"},
-        };
-        for (const auto& e : entries) {
-            const auto& d = spellTypeDefaults[static_cast<int>(e.type)];
-            ini.SetValue(sec, e.modeKey, _modeToStr(d.mode));
-            ini.SetBoolValue(sec, e.aaKey, d.autoAttack);
-        }
+    skipEquipAnimationPatch = _getBool(ini, "Patches", "SkipEquipAnimationPatch", false);
+    skipEquipAnimationOnReturnPatch = _getBool(ini, "Patches", "SkipEquipAnimationOnReturn", false);
+    requireExclusiveHotkeyPatch = _getBool(ini, "Patches", "RequireExclusiveHotkeyPatch", false);
+    pressBothAtSamePatch = _getBool(ini, "Patches", "PressBothAtSamePatch", false);
 
-        std::error_code ec;
-        std::filesystem::create_directories(path.parent_path(), ec);
-        ini.SaveFile(path.string().c_str());
+    modifierKeyboardPosition = std::clamp(_getInt(ini, "Modifier", "KeyboardPosition", 0), 0, 3);
+    modifierGamepadPosition = std::clamp(_getInt(ini, "Modifier", "GamepadPosition", 0), 0, 3);
+
+    using FieldPtr = std::atomic<int> InputConfig::*;
+    auto propagate = [&](int pos, bool isKb) {
+        if (pos <= 0) return;
+
+        const FieldPtr field = GetInputField(pos, isKb);
+        const int canonical = (slotInput[0].*field).load(std::memory_order_relaxed);
+
+        for (std::uint32_t i = 1; i < n; ++i) (slotInput[i].*field).store(canonical, std::memory_order_relaxed);
+    };
+    propagate(modifierKeyboardPosition, true);
+    propagate(modifierGamepadPosition, false);
+
+    constexpr const char* sec = "SpellTypeDefaults";
+    for (const auto& e : kSpellTypeEntries) {
+        auto& d = spellTypeDefaults[static_cast<int>(std::to_underlying(e.type))];
+        d.mode = _modeFromStr(ini.GetValue(sec, e.modeKey, _modeToStr(d.mode)));
+        d.autoAttack = _getBool(ini, sec, e.aaKey, d.autoAttack);
+    }
+}
+
+void IntegratedMagic::MagicConfig::Save() const {
+    CSimpleIniA ini;
+    ini.SetUnicode();
+    const auto path = IniPath();
+    ini.LoadFile(path.string().c_str());
+
+    const auto n = SlotCount();
+    ini.SetLongValue("General", "SlotCount", static_cast<long>(n));
+
+    for (const auto& e : kHudFlagEntries) {
+        ini.SetBoolValue("General", e.key, HudFlagSet(e.flag));
     }
 
-    MagicConfig& GetMagicConfig() {
-        static MagicConfig g{};
-        return g;
+    for (std::uint32_t i = 0; i < n; ++i) {
+        const auto sec = std::format("Magic{}", i + 1);
+        _saveInput(ini, sec.c_str(), slotInput[i]);
     }
+    _saveInput(ini, "HudPopup", hudPopupInput);
+
+    ini.SetBoolValue("Patches", "SkipEquipAnimationPatch", skipEquipAnimationPatch);
+    ini.SetBoolValue("Patches", "SkipEquipAnimationOnReturn", skipEquipAnimationOnReturnPatch);
+    ini.SetBoolValue("Patches", "RequireExclusiveHotkeyPatch", requireExclusiveHotkeyPatch);
+    ini.SetBoolValue("Patches", "PressBothAtSamePatch", pressBothAtSamePatch);
+
+    ini.SetLongValue("Modifier", "KeyboardPosition", modifierKeyboardPosition);
+    ini.SetLongValue("Modifier", "GamepadPosition", modifierGamepadPosition);
+
+    constexpr const char* sec = "SpellTypeDefaults";
+    for (const auto& e : kSpellTypeEntries) {
+        const auto& d = spellTypeDefaults[static_cast<int>(std::to_underlying(e.type))];
+        ini.SetValue(sec, e.modeKey, _modeToStr(d.mode));
+        ini.SetBoolValue(sec, e.aaKey, d.autoAttack);
+    }
+
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    ini.SaveFile(path.string().c_str());
+}
+
+IntegratedMagic::MagicConfig& IntegratedMagic::GetMagicConfig() {
+    static MagicConfig g{};  // NOSONAR
+    return g;
 }

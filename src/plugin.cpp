@@ -1,4 +1,5 @@
-#include "Config/Config.h"
+#include "Config/ConfigAdapter.h"
+#include "Config/StyleConfig.h"
 #include "Hooks.h"
 #include "Input/Input.h"
 #include "PCH.h"
@@ -8,7 +9,6 @@
 #include "State/EquipSink.h"
 #include "UI/MENU.h"
 #include "UI/Strings.h"
-#include "UI/StyleConfig.h"
 #include "UI/TextureManager.h"
 
 #ifndef DLLEXPORT
@@ -31,32 +31,14 @@ namespace {
     }
 
     IntegratedMagic::SaveSpellSlots ReadSlotsFromConfig() {
-        auto const& cfg = IntegratedMagic::GetMagicConfig();
+        auto& adapter = IntegratedMagic::Config::MagicConfigAdapter::Get();
         IntegratedMagic::SaveSpellSlots s{};
-        const auto n = cfg.SlotCount();
-        s.left.resize(n, 0u);
-        s.right.resize(n, 0u);
-        s.shout.resize(n, 0u);
-        for (std::uint32_t i = 0; i < n; ++i) {
-            s.left[i] = cfg.slotSpellFormIDLeft[static_cast<std::size_t>(i)].load(std::memory_order_relaxed);
-            s.right[i] = cfg.slotSpellFormIDRight[static_cast<std::size_t>(i)].load(std::memory_order_relaxed);
-            s.shout[i] = cfg.slotShoutFormID[static_cast<std::size_t>(i)].load(std::memory_order_relaxed);
-        }
+        adapter.ReadAllSlots(s.left, s.right, s.shout);
         return s;
     }
 
     void ApplySlotsToConfig(const IntegratedMagic::SaveSpellSlots& s) {
-        auto& cfg = IntegratedMagic::GetMagicConfig();
-        const auto n = cfg.SlotCount();
-        for (std::uint32_t i = 0; i < n; ++i) {
-            const auto idx = static_cast<std::size_t>(i);
-            const std::uint32_t l = (i < s.left.size()) ? s.left[i] : 0u;
-            const std::uint32_t r = (i < s.right.size()) ? s.right[i] : 0u;
-            const std::uint32_t sh = (i < s.shout.size()) ? s.shout[i] : 0u;
-            cfg.slotSpellFormIDLeft[idx].store(l, std::memory_order_relaxed);
-            cfg.slotSpellFormIDRight[idx].store(r, std::memory_order_relaxed);
-            cfg.slotShoutFormID[idx].store(sh, std::memory_order_relaxed);
-        }
+        IntegratedMagic::Config::MagicConfigAdapter::Get().ApplyAllSlots(s.left, s.right, s.shout);
     }
 
     std::string ExtractKey(std::string s) {

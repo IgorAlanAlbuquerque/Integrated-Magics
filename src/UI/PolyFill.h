@@ -1,7 +1,7 @@
 #pragma once
 #include <vector>
 
-#include "UI/StyleConfig.h"
+#include "Config/StyleConfig.h"
 
 namespace IntegratedMagic::PolyFill {
 

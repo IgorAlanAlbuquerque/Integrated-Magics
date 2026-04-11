@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstdint>
 
-#include "UI/StyleConfig.h"
+#include "Config/StyleConfig.h"
 
 namespace IntegratedMagic {
     class SlotAnimator {

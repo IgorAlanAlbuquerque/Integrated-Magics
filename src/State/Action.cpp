@@ -4,8 +4,8 @@
 #include <chrono>
 #include <thread>
 
+#include "Adapters/Outbound/EquipSlots.h"
 #include "Config/Config.h"
-#include "Config/EquipSlots.h"
 
 namespace IntegratedMagic::MagicAction {
     namespace {

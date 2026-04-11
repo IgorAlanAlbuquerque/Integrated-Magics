@@ -5,9 +5,9 @@
 #endif
 
 #include "Action.h"
-#include "Config/EquipSlots.h"
-#include "Config/Slots.h"
+#include "Adapters/Outbound/EquipSlots.h"
 #include "PCH.h"
+#include "Persistence/Slots.h"
 
 namespace IntegratedMagic {
 

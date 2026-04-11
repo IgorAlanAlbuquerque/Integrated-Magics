@@ -6,8 +6,7 @@
 #include <iomanip>
 #include <nlohmann/json.hpp>
 
-#include "Config/Config.h"
-#include "Config/SpellType.h"
+#include "Adapters/Inbound/SpellTypeDetector.h"
 #include "PCH.h"
 
 namespace {
@@ -20,7 +19,7 @@ namespace {
 
 namespace IntegratedMagic {
     SpellSettingsDB& SpellSettingsDB::Get() {
-        static SpellSettingsDB inst;
+        static SpellSettingsDB inst;  // NOSONAR
         return inst;
     }
 
@@ -69,7 +68,7 @@ namespace IntegratedMagic {
                 s.autoAttack = v.value("autoAttack", true);
                 _byKey.insert_or_assign(key, s);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception& e) {  // NOSONAR
             spdlog::error("[IMAGIC][SPELLCFG] Load failed: {}", e.what());
         }
     }
@@ -88,27 +87,36 @@ namespace IntegratedMagic {
             j["spells"] = std::move(spells);
             std::ofstream o(path);
             o << j.dump(2);
-        } catch (const std::exception& e) {
+        } catch (const std::exception& e) {  // NOSONAR
             spdlog::error("[IMAGIC][SPELLCFG] Save failed: {}", e.what());
         }
     }
 
-    SpellSettings SpellSettingsDB::GetOrCreate(std::uint32_t spellFormID, const RE::TESForm* form) {
+    SpellSettings SpellSettingsDB::GetOrCreate(std::uint32_t spellFormID, const RE::TESForm* form,
+                                               const Config::ISlotAssignments* assignments) {
         std::scoped_lock _{_mtx};
         std::array<char, 9> buf{};
         const std::string_view keysv = MakeKeyView(spellFormID, buf);
         if (auto it = _byKey.find(keysv); it != _byKey.end()) return it->second;
 
         SpellSettings s{};
-        if (form) {
-            const auto type = DetectSpellType(form);
-            const auto& d = GetMagicConfig().spellTypeDefaults[static_cast<int>(type)];
+        if (form && assignments) {
+            const auto type = Adapters::DetectSpellType(form);
+            const auto d = assignments->GetSpellDefaults(type);
             s.mode = d.mode;
             s.autoAttack = d.autoAttack;
         }
         _byKey.try_emplace(std::string(keysv), s);
         _dirty = true;
         return s;
+    }
+
+    std::optional<SpellSettings> SpellSettingsDB::Get(std::uint32_t spellFormID) const {
+        std::scoped_lock _{_mtx};
+        std::array<char, 9> buf{};
+        const std::string_view keysv = MakeKeyView(spellFormID, buf);
+        if (auto it = _byKey.find(keysv); it != _byKey.end()) return it->second;
+        return std::nullopt;
     }
 
     void SpellSettingsDB::Set(std::uint32_t spellFormID, const SpellSettings& s) {

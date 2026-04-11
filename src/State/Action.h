@@ -1,6 +1,6 @@
 #pragma once
-#include "Config/Slots.h"
 #include "PCH.h"
+#include "Persistence/Slots.h"
 
 namespace IntegratedMagic::MagicAction {
     RE::ActorMagicCaster* GetCaster(RE::PlayerCharacter* player, RE::MagicSystem::CastingSource source);

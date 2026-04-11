@@ -1,7 +1,7 @@
 #include <utility>
 
 #include "Action.h"
-#include "Config/EquipSlots.h"
+#include "Adapters/Outbound/EquipSlots.h"
 #include "InventoryUtil.h"
 #include "PCH.h"
 #include "Persistence/SpellSettingsDB.h"
@@ -43,7 +43,7 @@ namespace IntegratedMagic {
     }
 
     MagicState& MagicState::Get() {
-        static MagicState inst;
+        static MagicState inst;  // NOSONAR
         return inst;
     }
 
@@ -214,7 +214,8 @@ namespace IntegratedMagic {
         if (!_session.active || _session.activeSlot < 0) return false;
         if (_shout.modeShoutID != 0) {
             if (_shout.finished) return false;
-            return SpellSettingsDB::Get().GetOrCreate(_shout.modeShoutID).mode == Press;
+            const auto settings = SpellSettingsDB::Get().Get(_shout.modeShoutID);
+            return settings && settings->mode == Press;
         }
         using enum Slots::Hand;
         const bool needL = (_session.modeSpellLeft != nullptr);

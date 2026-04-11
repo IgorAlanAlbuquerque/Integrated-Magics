@@ -5,8 +5,8 @@
 #include <map>
 #include <string>
 
+#include "Config/StyleConfig.h"
 #include "PCH.h"
-#include "StyleConfig.h"
 
 namespace IntegratedMagic {
 

@@ -11,5 +11,5 @@ namespace IntegratedMagic {
         Shout,
     };
 
-    SpellType DetectSpellType(const RE::TESForm* form);
+    enum class ActivationMode : std::uint32_t { Hold = 0, Press = 1, Automatic = 2 };
 }

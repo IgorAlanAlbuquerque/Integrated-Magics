@@ -5,7 +5,7 @@
 #endif
 
 #include "PCH.h"
-#include "Slots.h"
+#include "Persistence/Slots.h"
 
 namespace IntegratedMagic::EquipUtil {
     inline const RE::BGSEquipSlot* GetHandEquipSlot(IntegratedMagic::Slots::Hand hand) {

@@ -1,7 +1,7 @@
 #include "Action.h"
-#include "Config/Slots.h"
 #include "InventoryUtil.h"
 #include "PCH.h"
+#include "Persistence/Slots.h"
 #include "Persistence/SpellSettingsDB.h"
 #include "State.h"
 #include "State/SpellClassify.h"
@@ -253,9 +253,10 @@ namespace IntegratedMagic {
                      _shout.waitingStopEvent);
 #endif
 
-        const auto ss = SpellSettingsDB::Get().GetOrCreate(_shout.modeShoutID);
-        const bool isHold = (ss.mode == ActivationMode::Hold);
-        const bool isAuto = (ss.mode == ActivationMode::Automatic);
+        const auto ss = SpellSettingsDB::Get().Get(_shout.modeShoutID);
+        if (!ss) return;
+        const bool isHold = (ss->mode == ActivationMode::Hold);
+        const bool isAuto = (ss->mode == ActivationMode::Automatic);
 
         if (isAuto || _shout.waitingStopEvent || isHold) {
             if (isHold && !_shout.waitingStopEvent) StopShoutPress();
@@ -487,21 +488,23 @@ namespace IntegratedMagic {
             return;
         }
 
-        if (_shout.modeShoutID != 0 && _shout.isPower && _shout.held && !_shout.finished &&
-            (SpellSettingsDB::Get().GetOrCreate(_shout.modeShoutID).mode == ActivationMode::Automatic)) {
-            constexpr float kPowerAutoDuration = 0.2f;
-            _shout.powerAutoSecs += dt > 0.f ? dt : 0.f;
+        if (_shout.modeShoutID != 0 && _shout.isPower && _shout.held && !_shout.finished) {
+            const auto ss = SpellSettingsDB::Get().Get(_shout.modeShoutID);
+            if (ss && ss->mode == ActivationMode::Automatic) {
+                constexpr float kPowerAutoDuration = 0.2f;
+                _shout.powerAutoSecs += dt > 0.f ? dt : 0.f;
 #ifdef DEBUG
-            spdlog::info("[State] PumpAutomatic: power auto secs={:.3f}/{:.3f}", _shout.powerAutoSecs,
-                         kPowerAutoDuration);
+                spdlog::info("[State] PumpAutomatic: power auto secs={:.3f}/{:.3f}", _shout.powerAutoSecs,
+                             kPowerAutoDuration);
 #endif
-            if (_shout.powerAutoSecs >= kPowerAutoDuration) {
+                if (_shout.powerAutoSecs >= kPowerAutoDuration) {
 #ifdef DEBUG
-                spdlog::info("[State] PumpAutomatic: power auto duration elapsed -> StopShoutPress + finish");
+                    spdlog::info("[State] PumpAutomatic: power auto duration elapsed -> StopShoutPress + finish");
 #endif
-                StopShoutPress();
-                _shout.finished = true;
-                TryFinalizeExit();
+                    StopShoutPress();
+                    _shout.finished = true;
+                    TryFinalizeExit();
+                }
             }
         }
     }

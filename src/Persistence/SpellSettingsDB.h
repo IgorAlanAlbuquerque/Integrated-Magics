@@ -8,6 +8,8 @@
 #include <unordered_map>
 
 #include "Config/ConfigPath.h"
+#include "Config/Ports/SlotAssignments.h"
+#include "Config/SpellType.h"
 
 namespace IntegratedMagic {
 
@@ -17,8 +19,6 @@ namespace IntegratedMagic {
         std::size_t operator()(const std::string& s) const noexcept { return (*this)(std::string_view{s}); }
         std::size_t operator()(const char* s) const noexcept { return (*this)(std::string_view{s}); }
     };
-
-    enum class ActivationMode : std::uint32_t { Hold = 0, Press = 1, Automatic = 2 };
 
     struct SpellSettings {
         ActivationMode mode{ActivationMode::Hold};
@@ -30,7 +30,9 @@ namespace IntegratedMagic {
         static SpellSettingsDB& Get();
         void Load();
         void Save() const;
-        SpellSettings GetOrCreate(std::uint32_t spellFormID, const RE::TESForm* form = nullptr);
+        SpellSettings GetOrCreate(std::uint32_t spellFormID, const RE::TESForm* form,
+                                  const Config::ISlotAssignments* assignments = nullptr);
+        [[nodiscard]] std::optional<SpellSettings> Get(std::uint32_t spellFormID) const;
         void Set(std::uint32_t spellFormID, const SpellSettings& s);
         bool IsDirty() const;
         void ClearDirty();

@@ -1,7 +1,7 @@
 #include "EquipSink.h"
 
-#include "Config/Slots.h"
 #include "PCH.h"
+#include "Persistence/Slots.h"
 #include "State/State.h"
 
 namespace IntegratedMagic::EquipSink {

@@ -8,7 +8,7 @@
 #include <vector>
 
 namespace IntegratedMagic {
-    inline const std::filesystem::path& GetThisDllDir() {
+    inline const std::filesystem::path& GetThisDllDir() {  // NOSONAR
         static std::filesystem::path cached = []() {
             HMODULE hMod = nullptr;
             if (!::GetModuleHandleExW(

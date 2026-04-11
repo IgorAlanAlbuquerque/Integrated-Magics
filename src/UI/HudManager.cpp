@@ -2,11 +2,11 @@
 
 #include <imgui.h>
 
-#include "Config/Config.h"
-#include "Config/Slots.h"
+#include "Config/ConfigAdapter.h"
 #include "HudState.h"
 #include "Input/Input.h"
 #include "PCH.h"
+#include "Persistence/Slots.h"
 #include "PopupDrawer.h"
 #include "SlotDrawer.h"
 #include "State/State.h"
@@ -59,15 +59,17 @@ namespace IntegratedMagic::HUD {
     }
 
     bool EvaluateHudVisibility() {
-        using enum IntegratedMagic::HudVisibilityFlag;
-        const auto& cfg = IntegratedMagic::GetMagicConfig();
-        if (cfg.hudVisibilityFlags == 0) return false;
-        if (cfg.HudFlagSet(Always)) return true;
+        const auto& hud = Config::MagicConfigAdapter::Get();
+        using enum Config::HudVisibilityFlag;
+
+        if (hud.FlagSet(Always)) return true;
+
         auto* player = RE::PlayerCharacter::GetSingleton();
         if (!player) return false;
-        if (cfg.HudFlagSet(SlotActive) && IntegratedMagic::MagicState::Get().IsActive()) return true;
-        if (cfg.HudFlagSet(InCombat) && player->IsInCombat()) return true;
-        if (cfg.HudFlagSet(WeaponDrawn)) {
+
+        if (hud.FlagSet(SlotActive) && MagicState::Get().IsActive()) return true;
+        if (hud.FlagSet(InCombat) && player->IsInCombat()) return true;
+        if (hud.FlagSet(WeaponDrawn)) {
             using enum RE::WEAPON_STATE;
             const auto ws = player->AsActorState()->GetWeaponState();
             if (ws == kDrawn || ws == kWantToDraw || ws == kDrawing) return true;

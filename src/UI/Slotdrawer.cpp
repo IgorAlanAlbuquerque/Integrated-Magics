@@ -7,9 +7,11 @@
 #include <numbers>
 
 #include "Config/Config.h"
-#include "Config/Slots.h"
+#include "Config/StyleConfig.h"
 #include "Input/Input.h"
 #include "PCH.h"
+#include "Persistence/Slots.h"
+#include "State/SlotCostUtil.h"
 #include "State/SpellClassify.h"
 #include "State/State.h"
 #include "UI/HudState.h"
@@ -17,7 +19,6 @@
 #include "UI/PolyFill.h"
 #include "UI/SlotAnimator.h"
 #include "UI/SlotLayout.h"
-#include "UI/StyleConfig.h"
 #include "UI/TextureManager.h"
 #include "imgui_internal.h"
 
@@ -356,8 +357,39 @@ namespace IntegratedMagic::HUD::SlotDrawer {
                      {0.f, 0.f}, {1.f, 1.f}, ComputeIconTint());
     }
 
+    void DrawCrackOverlay(ImDrawList* dl, ImVec2 center, float r) {
+        struct CrackPoint {
+            float x, y;
+        };
+        struct Crack {
+            CrackPoint pts[4];
+            int count;
+        };
+
+        static constexpr Crack kCracks[] = {
+            {{{-0.10f, -0.20f}, {-0.28f, -0.42f}, {-0.40f, -0.55f}, {-0.55f, -0.70f}}, 4},
+            {{{-0.10f, -0.20f}, {0.12f, -0.38f}, {0.30f, -0.52f}, {0.45f, -0.65f}}, 4},
+            {{{-0.10f, -0.20f}, {-0.30f, 0.00f}, {-0.45f, 0.15f}, {-0.60f, 0.25f}}, 4},
+            {{{-0.10f, -0.20f}, {0.15f, 0.08f}, {0.35f, 0.25f}, {0.50f, 0.40f}}, 4},
+            {{{-0.10f, -0.20f}, {-0.05f, 0.15f}, {-0.20f, 0.45f}, {-0.15f, 0.75f}}, 4},
+            {{{-0.40f, -0.55f}, {-0.50f, -0.72f}, {-0.30f, -0.88f}}, 3},
+            {{{0.30f, -0.52f}, {0.55f, -0.58f}, {0.70f, -0.40f}}, 3},
+        };
+
+        const ImU32 col = IM_COL32(255, 255, 255, 90);
+        const ImU32 colFaint = IM_COL32(255, 255, 255, 40);
+
+        for (int i = 0; i < static_cast<int>(std::size(kCracks)); ++i) {
+            const auto& crack = kCracks[i];
+            ImVec2 pts[4];
+            for (int k = 0; k < crack.count; ++k)
+                pts[k] = {center.x + crack.pts[k].x * r, center.y + crack.pts[k].y * r};
+            dl->AddPolyline(pts, crack.count, i < 5 ? col : colFaint, 0, 1.f);
+        }
+    }
+
     void DrawSlotVisual(ImDrawList* dl, ImVec2 center, float r, bool isActive, RE::SpellItem const* rSpell,
-                        RE::SpellItem const* lSpell, RE::FormID shoutFormID, bool forceOffset) {
+                        RE::SpellItem const* lSpell, RE::FormID shoutFormID, bool forceOffset, bool canCast) {
         const auto rPal = SpellPalette(rSpell);
         const auto lPal = SpellPalette(lSpell);
 
@@ -439,6 +471,8 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             dl->AddLine({center.x - d, center.y - d}, {center.x + d, center.y + d}, xc, 1.f);
             dl->AddLine({center.x + d, center.y - d}, {center.x - d, center.y + d}, xc, 1.f);
         }
+
+        if (!canCast) DrawCrackOverlay(dl, center, r);
     }
 
     void DrawRingCenter(ImDrawList* dl, ImVec2 c, float r) {
@@ -679,6 +713,44 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             for (int i = n; i < SlotLayout::kMaxSlots; ++i) s_labelAlpha[i] = 0.f;
         }
 
+        struct SlotManaAnim {
+            bool wasCastable = true;
+            float pulseT = -1.f;
+        };
+        static SlotManaAnim s_manaAnim[SlotLayout::kMaxSlots]{};
+        {
+            using clock = std::chrono::steady_clock;
+            static clock::time_point s_manaLast = clock::now();
+            const auto now = clock::now();
+            float dt = std::chrono::duration<float>(now - s_manaLast).count();
+            s_manaLast = now;
+            if (dt < 0.f || dt > 0.25f) dt = 0.f;
+
+            constexpr float kPulseDuration = 0.30f;
+
+            for (int i = 0; i < n; ++i) {
+                const auto afford = ComputeSlotAffordability(i);
+                const bool castable = !afford.hasSpells || afford.canCast;
+                auto& anim = s_manaAnim[i];
+
+                if (castable && !anim.wasCastable && anim.pulseT < 0.f) anim.pulseT = 0.f;
+
+                anim.wasCastable = castable;
+
+                if (anim.pulseT >= 0.f) {
+                    anim.pulseT += dt / kPulseDuration;
+                    if (anim.pulseT >= 1.f) anim.pulseT = -1.f;
+                }
+            }
+            for (int i = n; i < SlotLayout::kMaxSlots; ++i) s_manaAnim[i] = {};
+        }
+
+        auto GetManaPulseScale = [](int i) -> float {
+            const float t = s_manaAnim[i].pulseT;
+            if (t < 0.f) return 1.f;
+            return 1.f + 0.28f * std::sin(t * kPI);
+        };
+
         float maxScale = SlotAnimator::MaxPossibleScale();
         for (int i = 0; i < n; ++i) maxScale = std::max(maxScale, SlotAnimator::GetScale(i));
 
@@ -747,14 +819,18 @@ namespace IntegratedMagic::HUD::SlotDrawer {
 
         auto DrawSlot = [&](int i, bool active) {
             const ImVec2 center = ScaledCenter(i);
-            const float slotR = st.slotRadius * SlotAnimator::GetScale(i);
+            const float slotR = st.slotRadius * SlotAnimator::GetScale(i) * GetManaPulseScale(i);
             const auto rID = Slots::GetSlotSpell(i, Slots::Hand::Right);
             const auto lID = Slots::GetSlotSpell(i, Slots::Hand::Left);
             const auto shID = Slots::GetSlotShout(i);
             auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
             auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
             const bool is2H = !shID && !rID && lSp && SpellClassify::IsTwoHandedSpell(lSp);
-            DrawSlotVisual(dl, center, slotR, active, is2H ? nullptr : rSp, is2H ? nullptr : lSp, is2H ? lID : shID);
+
+            const bool canCast = s_manaAnim[i].wasCastable;
+
+            DrawSlotVisual(dl, center, slotR, active, is2H ? nullptr : rSp, is2H ? nullptr : lSp, is2H ? lID : shID,
+                           false, canCast);
 
             if (st.showSpellNamesInHud && !MagicState::Get().IsActive()) {
                 const ImVec2 toCenter = [&]() -> ImVec2 {

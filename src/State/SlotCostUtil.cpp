@@ -1,6 +1,5 @@
 #include "SlotCostUtil.h"
 
-#include "Config/Slots.h"
 #include "InventoryUtil.h"
 #include "PCH.h"
 

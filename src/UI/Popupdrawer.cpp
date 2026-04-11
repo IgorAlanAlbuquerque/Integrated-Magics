@@ -8,8 +8,9 @@
 #include <vector>
 
 #include "Config/Config.h"
-#include "Config/Slots.h"
+#include "Config/StyleConfig.h"
 #include "PCH.h"
+#include "Persistence/Slots.h"
 #include "Persistence/SpellSettingsDB.h"
 #include "State/Assign.h"
 #include "State/SpellClassify.h"
@@ -21,7 +22,6 @@
 #include "UI/SlotDrawer.h"
 #include "UI/SlotLayout.h"
 #include "UI/Strings.h"
-#include "UI/StyleConfig.h"
 #include "UI/TextureManager.h"
 
 namespace IntegratedMagic::HUD::PopupDrawer {

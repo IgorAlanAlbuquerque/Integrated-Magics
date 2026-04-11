@@ -1,5 +1,17 @@
 set(headers
     src/Hooks.h
+    src/Config/ConfigPath.h
+    src/Config/Config.h
+    src/Config/StyleConfig.h
+    src/Config/ConfigAdapter.h
+    src/Config/SpellType.h
+    src/Config/Ports/HudSettings.h
+    src/Config/Ports/InputBindings.h
+    src/Config/Ports/PatchSettings.h
+    src/Config/Ports/SlotAssignments.h
+    src/Persistence/SpellSettingsDB.h
+    src/Persistence/SaveSpellDB.h
+    src/Persistence/Slots.h
     src/UI/HudManager.h
     src/UI/HudState.h
     src/UI/SlotDrawer.h
@@ -7,20 +19,12 @@ set(headers
     src/UI/Strings.h
     src/UI/MENU.h
     src/UI/TextureManager.h
-    src/UI/StyleConfig.h
     src/UI/SlotAnimator.h
     src/UI/SlotLayout.h
     src/UI/FontLoader.h
     src/UI/HoveredForm.h
     src/UI/PolyFill.h
     src/UI/HudTextUtil.h
-    src/Config/ConfigPath.h
-    src/Config/Config.h
-    src/Config/Slots.h
-    src/Config/EquipSlots.h
-    src/Config/SpellType.h
-    src/Persistence/SpellSettingsDB.h
-    src/Persistence/SaveSpellDB.h
     src/Input/Input.h
     src/Input/EventFilter.h
     src/Input/ExclusivePending.h
@@ -39,4 +43,6 @@ set(headers
     src/State/SpellClassify.h
     src/State/EquipSink.h
     src/State/SlotCostUtil.h
+    src/Adapters/Inbound/SpellTypeDetector.h
+    src/Adapters/Outbound/EquipSlots.h
 )

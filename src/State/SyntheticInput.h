@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Config/Slots.h"
 #include "PCH.h"
+#include "Persistence/Slots.h"
 
 namespace IntegratedMagic::detail {
     constexpr std::uint32_t kRightAttackMouseId = 0;

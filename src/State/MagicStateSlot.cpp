@@ -2,10 +2,10 @@
 
 #include "Action.h"
 #include "Config/Config.h"
-#include "Config/Slots.h"
 #include "Input/InputState.h"
 #include "InventoryUtil.h"
 #include "PCH.h"
+#include "Persistence/Slots.h"
 #include "Persistence/SpellSettingsDB.h"
 #include "State.h"
 #include "State/SlotCostUtil.h"
@@ -233,7 +233,8 @@ namespace IntegratedMagic {
         if (Slots::IsShoutSlot(slot)) {
             if (_session.active && slot == _session.activeSlot && _shout.modeShoutID != 0) {
                 if (_shout.finished) return;
-                if (SpellSettingsDB::Get().GetOrCreate(_shout.modeShoutID).mode == Press) {
+                const auto ss = SpellSettingsDB::Get().Get(_shout.modeShoutID);
+                if (ss && ss->mode == Press) {
 #ifdef DEBUG
                     spdlog::info("[State] OnSlotPressed: shout Press toggle -> StopShoutPress + finish");
 #endif
@@ -369,7 +370,8 @@ namespace IntegratedMagic {
         if (!_session.active || slot != _session.activeSlot) return;
 
         if (_shout.modeShoutID != 0) {
-            const auto mode = SpellSettingsDB::Get().GetOrCreate(_shout.modeShoutID).mode;
+            const auto ss = SpellSettingsDB::Get().Get(_shout.modeShoutID);
+            const auto mode = ss ? ss->mode : ActivationMode::Hold;
 #ifdef DEBUG
             spdlog::info("[State] OnSlotReleased: shout path mode={}", static_cast<int>(std::to_underlying(mode)));
 #endif

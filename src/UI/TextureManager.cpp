@@ -4,7 +4,6 @@
 #include <utility>
 
 #include "PCH.h"
-#include "UI/StyleConfig.h"
 
 #define NANOSVG_IMPLEMENTATION
 #define NANOSVG_ALL_COLOR_KEYWORDS

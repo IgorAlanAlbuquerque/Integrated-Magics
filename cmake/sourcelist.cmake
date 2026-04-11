@@ -1,19 +1,19 @@
 set(sources
     src/plugin.cpp
     src/Hooks.cpp
+    src/Config/Config.cpp
+    src/Config/StyleConfig.cpp
+    src/Config/ConfigAdapter.cpp
+    src/Persistence/SpellSettingsDB.cpp
+    src/Persistence/SaveSpellDB.cpp
+    src/Persistence/Slots.cpp
     src/UI/Strings.cpp
     src/UI/MENU.cpp
     src/UI/HudManager.cpp
     src/UI/TextureManager.cpp
-    src/UI/StyleConfig.cpp
     src/UI/SlotDrawer.cpp
     src/UI/PopupDrawer.cpp
     src/UI/HoveredForm.cpp
-    src/Config/Config.cpp
-    src/Config/Slots.cpp
-    src/Config/SpellType.cpp
-    src/Persistence/SpellSettingsDB.cpp
-    src/Persistence/SaveSpellDB.cpp
     src/Input/Input.cpp
     src/Input/EventFilter.cpp
     src/Input/ExclusivePending.cpp
@@ -31,6 +31,7 @@ set(sources
     src/State/Assign.cpp
     src/State/EquipSink.cpp
     src/State/SlotCostUtil.cpp
+    src/Adapters/Inbound/SpellTypeDetector.cpp
     src/Detours/detours.cpp
     src/Detours/disasm.cpp
     src/Detours/disolx64.cpp

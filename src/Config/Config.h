@@ -4,8 +4,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <utility>
 
-#include "Persistence/SpellSettingsDB.h"
 #include "SpellType.h"
 
 namespace IntegratedMagic {
@@ -34,33 +34,36 @@ namespace IntegratedMagic {
 
     struct MagicConfig {
         static constexpr std::uint32_t kMaxSlots = 64;
+
         std::atomic<std::uint32_t> slotCount{4};
-        std::array<std::atomic<std::uint32_t>, kMaxSlots> slotSpellFormIDLeft;
-        std::array<std::atomic<std::uint32_t>, kMaxSlots> slotSpellFormIDRight;
-        std::array<std::atomic<std::uint32_t>, kMaxSlots> slotShoutFormID;
         std::array<InputConfig, kMaxSlots> slotInput;
         InputConfig hudPopupInput;
-        std::array<SpellTypeDefaults, static_cast<std::size_t>(SpellType::Shout) + 1> spellTypeDefaults{};
-        std::uint8_t hudVisibilityFlags{static_cast<std::uint8_t>(HudVisibilityFlag::Always)};
-        bool skipEquipAnimationPatch = false;
-        bool skipEquipAnimationOnReturnPatch = false;
-        bool requireExclusiveHotkeyPatch = false;
-        bool pressBothAtSamePatch = false;
+
+        std::array<SpellTypeDefaults, static_cast<std::size_t>(std::to_underlying(SpellType::Shout)) + 1>
+            spellTypeDefaults{};
+
+        std::byte hudVisibilityFlags{static_cast<std::byte>(std::to_underlying(HudVisibilityFlag::Always))};
+
+        bool skipEquipAnimationPatch{false};
+        bool skipEquipAnimationOnReturnPatch{false};
+        bool requireExclusiveHotkeyPatch{false};
+        bool pressBothAtSamePatch{false};
 
         int modifierKeyboardPosition{0};
         int modifierGamepadPosition{0};
+
         MagicConfig();
         void Load();
         void Save() const;
-        std::uint32_t SlotCount() const noexcept;
+        [[nodiscard]] std::uint32_t SlotCount() const noexcept;
 
-        bool HudFlagSet(HudVisibilityFlag f) const noexcept {
-            return (hudVisibilityFlags & static_cast<std::uint8_t>(f)) != 0;
+        [[nodiscard]] bool HudFlagSet(HudVisibilityFlag f) const noexcept {
+            return (hudVisibilityFlags & static_cast<std::byte>(std::to_underlying(f))) != std::byte{0};
         }
 
     private:
         static std::filesystem::path IniPath();
     };
 
-    MagicConfig& GetMagicConfig();
+    [[nodiscard]] MagicConfig& GetMagicConfig();
 }

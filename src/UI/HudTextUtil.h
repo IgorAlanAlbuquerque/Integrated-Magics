@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "UI/StyleConfig.h"
+#include "Config/StyleConfig.h"
 
 namespace IntegratedMagic::HUD {
 

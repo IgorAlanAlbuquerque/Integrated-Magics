@@ -1,8 +1,8 @@
 #include "Assign.h"
 
-#include "Config/Config.h"
-#include "Config/Slots.h"
+#include "Config/ConfigAdapter.h"
 #include "PCH.h"
+#include "Persistence/Slots.h"
 #include "State/SpellClassify.h"
 #include "UI/HoveredForm.h"
 
@@ -111,14 +111,9 @@ namespace IntegratedMagic::MagicAssign {
         spdlog::info("[Assign] TryClearSlotHand: slot={} hand={}", slot,
                      (hand == Slots::Hand::Left) ? "Left" : "Right");
 #endif
-        auto& cfg = GetMagicConfig();
-        const auto s = static_cast<std::size_t>(slot);
-
-        if (hand == Slots::Hand::Right)
-            cfg.slotSpellFormIDRight[s].store(0, std::memory_order_relaxed);
-        else
-            cfg.slotSpellFormIDLeft[s].store(0, std::memory_order_relaxed);
-        cfg.Save();
+        auto& adapter = Config::MagicConfigAdapter::Get();
+        adapter.SetSpell(slot, hand == Slots::Hand::Left, 0u);
+        adapter.Save();
         return true;
     }
 

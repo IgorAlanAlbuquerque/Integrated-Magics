@@ -6,8 +6,9 @@
 #include <string>
 #include <utility>
 
-#include "Config/Config.h"
+#include "Config/ConfigAdapter.h"
 #include "Config/SpellType.h"
+#include "Config/StyleConfig.h"
 #include "Input/Input.h"
 #include "PCH.h"
 #include "Persistence/SpellSettingsDB.h"
@@ -15,7 +16,6 @@
 #include "UI/HudManager.h"
 #include "UI/PolyFill.h"
 #include "UI/Strings.h"
-#include "UI/StyleConfig.h"
 
 namespace {
     struct FieldCaptureState {
@@ -43,10 +43,12 @@ namespace {
     }
 
     void ClearSlotData(IntegratedMagic::MagicConfig& cfg, int slot) {
+        auto& adapter = IntegratedMagic::Config::MagicConfigAdapter::Get();
+        adapter.SetSpell(slot, true, 0u);
+        adapter.SetSpell(slot, false, 0u);
+        adapter.SetShout(slot, 0u);
+
         const auto idx = static_cast<std::size_t>(slot);
-        cfg.slotSpellFormIDLeft[idx].store(0u, std::memory_order_relaxed);
-        cfg.slotSpellFormIDRight[idx].store(0u, std::memory_order_relaxed);
-        cfg.slotShoutFormID[idx].store(0u, std::memory_order_relaxed);
         auto& icfg = cfg.slotInput[idx];
         icfg.KeyboardScanCode1.store(-1, std::memory_order_relaxed);
         icfg.KeyboardScanCode2.store(-1, std::memory_order_relaxed);
@@ -275,9 +277,9 @@ namespace {
             bool v = cfg.HudFlagSet(flag);
             if (ImGuiMCP::Checkbox(IntegratedMagic::Strings::Get(strKey, fallback).c_str(), &v)) {
                 if (v)
-                    cfg.hudVisibilityFlags |= static_cast<std::uint8_t>(flag);
+                    cfg.hudVisibilityFlags |= static_cast<std::byte>(std::to_underlying(flag));
                 else
-                    cfg.hudVisibilityFlags &= ~static_cast<std::uint8_t>(flag);
+                    cfg.hudVisibilityFlags &= ~static_cast<std::byte>(std::to_underlying(flag));
                 dirty = true;
             }
         };
@@ -287,7 +289,7 @@ namespace {
         flagCheck(F::InCombat, "HUD_Show_InCombat", "In Combat");
         flagCheck(F::WeaponDrawn, "HUD_Show_WeaponDrawn", "Weapon Drawn");
 
-        if (cfg.hudVisibilityFlags == 0) {
+        if (cfg.hudVisibilityFlags == std::byte{0}) {
             ImGuiMCP::SameLine();
             ImGuiMCP::TextDisabled("(%s)", IntegratedMagic::Strings::Get("HUD_Show_Never_Hint", "HUD hidden").c_str());
         }

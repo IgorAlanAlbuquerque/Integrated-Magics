@@ -1,7 +1,7 @@
 #include "AnimListener.h"
 
-#include "Config/Slots.h"
 #include "PCH.h"
+#include "Persistence/Slots.h"
 #include "State.h"
 
 void AnimListener::HandleAnimEvent(const RE::BSAnimationGraphEvent* ev,
