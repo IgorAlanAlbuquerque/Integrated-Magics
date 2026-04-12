@@ -1,7 +1,7 @@
 #include "ReplaySystem.h"
 
+#include "Adapters/Outbound/SyntheticInput.h"
 #include "PCH.h"
-#include "State/SyntheticInput.h"
 
 namespace Input::detail {
 

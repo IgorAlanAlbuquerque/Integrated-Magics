@@ -5,8 +5,6 @@
 namespace IntegratedMagic::EquipSink {
 
     [[nodiscard]] RE::FormID GetLastEquippedMagicFormID();
-
     void ClearLastEquippedMagic();
-
     void RegisterEquipListener();
 }

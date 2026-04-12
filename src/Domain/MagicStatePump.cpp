@@ -1,52 +1,52 @@
-#include "Action.h"
-#include "InventoryUtil.h"
+#include "Domain/Hand.h"
+#include "Domain/InventoryUtil.h"
+#include "Domain/SpellClassify.h"
+#include "Domain/State.h"
 #include "PCH.h"
 #include "Persistence/Slots.h"
 #include "Persistence/SpellSettingsDB.h"
-#include "State.h"
-#include "State/SpellClassify.h"
 
 namespace IntegratedMagic {
 
-    void MagicState::StartAutoAttack(Slots::Hand hand) {
+    void MagicState::StartAutoAttack(Domain::Hand hand) {
         MAGIC_DEBUG_LOG("[State] StartAutoAttack: hand={}", IsLeft(hand) ? "Left" : "Right");
 
         _aa.Held(hand) = true;
         _aa.Secs(hand) = 0.f;
-        detail::DispatchAttack(hand, 1.0f, 0.0f);
+        if (_outbound.dispatchAttack) _outbound.dispatchAttack(hand, 1.0f, 0.0f);
     }
 
-    void MagicState::StopAutoAttack(Slots::Hand hand) {
+    void MagicState::StopAutoAttack(Domain::Hand hand) {
         if (!_aa.Held(hand)) return;
         const float held = (_aa.Secs(hand) > 0.f) ? _aa.Secs(hand) : 0.1f;
 
         MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(hand) ? "Left" : "Right", held);
 
-        detail::DispatchAttack(hand, 0.0f, held);
+        if (_outbound.dispatchAttack) _outbound.dispatchAttack(hand, 0.0f, held);
         _aa.Held(hand) = false;
         _aa.Secs(hand) = 0.f;
     }
 
     void MagicState::StopAllAutoAttack() {
-        using enum Slots::Hand;
+        using enum Domain::Hand;
         StopAutoAttack(Left);
         StopAutoAttack(Right);
     }
 
     void MagicState::PumpAutoAttack(float dt) {
-        using enum Slots::Hand;
+        using enum Domain::Hand;
         const float add = dt > 0.f ? dt : 0.f;
-        if (_aa.heldLeft) {
+        if (_aa.heldLeft && _outbound.dispatchAttack) {
             _aa.secsLeft += add;
-            detail::DispatchAttack(Left, 1.0f, _aa.secsLeft);
+            _outbound.dispatchAttack(Left, 1.0f, _aa.secsLeft);
         }
-        if (_aa.heldRight) {
+        if (_aa.heldRight && _outbound.dispatchAttack) {
             _aa.secsRight += add;
-            detail::DispatchAttack(Right, 1.0f, _aa.secsRight);
+            _outbound.dispatchAttack(Right, 1.0f, _aa.secsRight);
         }
-        if (_shout.held) {
+        if (_shout.held && _outbound.dispatchShout) {
             _shout.heldSecs += add;
-            detail::DispatchShout(1.0f, _shout.heldSecs);
+            _outbound.dispatchShout(1.0f, _shout.heldSecs);
         }
     }
 
@@ -58,15 +58,15 @@ namespace IntegratedMagic {
         }
         _session.attackEnabled = true;
 
-        if (auto* player = GetPlayer()) MagicAction::DisableSkipEquipVarsNow(player);
+        if (_outbound.disableSkipEquipVarsNow) _outbound.disableSkipEquipVarsNow();
 
         MAGIC_DEBUG_LOG(
             "[State] NotifyAttackEnabled: left.waitingAutoAfterEquip={} right.waitingAutoAfterEquip={} "
             "aaHeldLeft={} aaHeldRight={}",
             _left.waitingAutoAfterEquip, _right.waitingAutoAfterEquip, _aa.heldLeft, _aa.heldRight);
 
-        using enum Slots::Hand;
-        auto tryStart = [&](Slots::Hand hand) {
+        using enum Domain::Hand;
+        auto tryStart = [&](Domain::Hand hand) {
             auto& hm = ModeFor(hand);
             if (!hm.waitingAutoAfterEquip) return;
             hm.waitingAutoAfterEquip = false;
@@ -84,7 +84,7 @@ namespace IntegratedMagic {
         tryStart(Right);
     }
 
-    void MagicState::OnBeginCast(Slots::Hand hand) {
+    void MagicState::OnBeginCast(Domain::Hand hand) {
         auto& hm = ModeFor(hand);
 
         MAGIC_DEBUG_LOG("[State] OnBeginCast: hand={} waitingBeginCast={} retries={}", IsLeft(hand) ? "Left" : "Right",
@@ -100,7 +100,7 @@ namespace IntegratedMagic {
         MAGIC_DEBUG_LOG("[State] OnBeginCast: hand={} -> cast confirmed, begin cast wait cleared",
                         IsLeft(hand) ? "Left" : "Right");
 
-        using enum Slots::Hand;
+        using enum Domain::Hand;
         const auto other = IsLeft(hand) ? Right : Left;
         auto& otherHm = ModeFor(other);
         if (otherHm.waitingBeginCast) {
@@ -112,7 +112,7 @@ namespace IntegratedMagic {
     }
 
     void MagicState::OnCastStop() {
-        using enum Slots::Hand;
+        using enum Domain::Hand;
         if (!_session.active) {
             MAGIC_DEBUG_LOG("[State] OnCastStop: ignored - not active");
 
@@ -145,7 +145,7 @@ namespace IntegratedMagic {
                     isTwoHanded)
                     return;
 
-                auto stopAndDelay = [&](Slots::Hand h) {
+                auto stopAndDelay = [&](Domain::Hand h) {
                     auto& hm = ModeFor(h);
                     if ((hm.autoActive || (hm.holdActive && hm.wantAutoAttack)) && !hm.finished) {
                         CancelDelayedStart(h);
@@ -226,7 +226,7 @@ namespace IntegratedMagic {
             return;
         }
         ++_session.firstInterrupt;
-        using enum Slots::Hand;
+        using enum Domain::Hand;
         bool anyFinished = false;
         if (_left.autoActive && !_left.finished && !_left.waitingBeginCast) {
             FinishHand(Left);
@@ -259,7 +259,7 @@ namespace IntegratedMagic {
         }
     }
 
-    void MagicState::PumpAutomaticHand(Slots::Hand hand) {
+    void MagicState::PumpAutomaticHand(Domain::Hand hand) {
         auto& hm = ModeFor(hand);
         if (!hm.autoActive || !hm.waitingChargeComplete) return;
 
@@ -284,7 +284,7 @@ namespace IntegratedMagic {
         const auto src =
             IsLeft(hand) ? RE::MagicSystem::CastingSource::kLeftHand : RE::MagicSystem::CastingSource::kRightHand;
 
-        if (auto const* caster = MagicAction::GetCaster(player, src); !IsChargeComplete(caster, spell)) return;
+        if (auto const* caster = GetMagicCaster(player, src); !IsChargeComplete(caster, spell)) return;
 
         MAGIC_DEBUG_LOG("[State] PumpAutomaticHand: hand={} CHARGE COMPLETE - stopping auto attack",
                         IsLeft(hand) ? "Left" : "Right");
@@ -294,7 +294,7 @@ namespace IntegratedMagic {
         StopAutoAttack(hand);
     }
 
-    void MagicState::PumpAutoStartFallback(Slots::Hand hand, float dt) {
+    void MagicState::PumpAutoStartFallback(Domain::Hand hand, float dt) {
         using enum ActivationMode;
         auto& hm = ModeFor(hand);
         if (!_session.active) return;
@@ -355,7 +355,7 @@ namespace IntegratedMagic {
             return;
         }
 
-        auto pumpOne = [&](Slots::Hand h) {
+        auto pumpOne = [&](Domain::Hand h) {
             auto& d = DelayFor(h);
             if (!d.pending) return;
             d.secs += dt > 0.f ? dt : 0.f;
@@ -379,7 +379,7 @@ namespace IntegratedMagic {
             }
         };
 
-        using enum Slots::Hand;
+        using enum Domain::Hand;
         pumpOne(Left);
         pumpOne(Right);
     }
@@ -397,10 +397,8 @@ namespace IntegratedMagic {
             _restore.pendingPowerRestoreDelaySecs = 0.f;
             if (auto* player = GetPlayer()) {
                 RestoreSnapshot(player);
-                if (auto* mgr = RE::ActorEquipManager::GetSingleton()) {
-                    auto idx = BuildInventoryIndex(player);
-                    ReequipPrevExtraEquipped(player, mgr, idx, _restore.prevExtraEquipped);
-                }
+                if (_outbound.reequipPrevExtraEquipped)
+                    _outbound.reequipPrevExtraEquipped(player, _restore.prevExtraEquipped);
             }
             _restore.snapshot = {};
             return;
@@ -413,7 +411,6 @@ namespace IntegratedMagic {
                 const bool giveUp = player->IsInCombat() ||
                                     player->AsActorState()->GetWeaponState() == RE::WEAPON_STATE::kWantToDraw ||
                                     timedOut;
-                ;
                 if (_restore.sheatheAnimComplete || giveUp) {
                     _restore.sheatheWaitSecs = 0.f;
 
@@ -422,10 +419,9 @@ namespace IntegratedMagic {
                     _restore.pendingRestoreAfterSheathe = false;
                     _restore.sheatheAnimComplete = false;
                     RestoreSnapshot(player);
-                    if (auto* mgr = RE::ActorEquipManager::GetSingleton()) {
-                        auto idx = BuildInventoryIndex(player);
-                        ReequipPrevExtraEquipped(player, mgr, idx, _restore.prevExtraEquipped);
-                    }
+                    if (_outbound.reequipPrevExtraEquipped)
+                        _outbound.reequipPrevExtraEquipped(player, _restore.prevExtraEquipped);
+
                     _restore.snapshot = {};
                     ResetSessionState();
                 }
@@ -440,17 +436,15 @@ namespace IntegratedMagic {
             if (auto* player = GetPlayer()) {
                 StopShoutPress();
                 RestoreSnapshot(player);
-                if (auto* mgr = RE::ActorEquipManager::GetSingleton()) {
-                    auto idx = BuildInventoryIndex(player);
-                    ReequipPrevExtraEquipped(player, mgr, idx, _restore.prevExtraEquipped);
-                }
+                if (_outbound.reequipPrevExtraEquipped)
+                    _outbound.reequipPrevExtraEquipped(player, _restore.prevExtraEquipped);
             }
             ResetSessionState();
             _restore.snapshot.valid = false;
             return;
         }
 
-        using enum Slots::Hand;
+        using enum Domain::Hand;
         PumpDelayedStarts(dt);
         PumpAutoStartFallback(Left, dt);
         PumpAutoStartFallback(Right, dt);
@@ -495,7 +489,7 @@ namespace IntegratedMagic {
         }
     }
 
-    void MagicState::OnSpellFired(Slots::Hand hand) {
+    void MagicState::OnSpellFired(Domain::Hand hand) {
         if (!_session.active) return;
 
         auto& hm = ModeFor(hand);
@@ -510,12 +504,13 @@ namespace IntegratedMagic {
             }
 
             if (_session.isDualCasting) {
-                FinishHand(Slots::Hand::Left);
-                FinishHand(Slots::Hand::Right);
+                using enum IntegratedMagic::Domain::Hand;
+                FinishHand(Left);
+                FinishHand(Right);
                 _session.isDualCasting = false;
 
-                ScheduleSpellFireFinalize(Slots::Hand::Left);
-                ScheduleSpellFireFinalize(Slots::Hand::Right);
+                ScheduleSpellFireFinalize(Left);
+                ScheduleSpellFireFinalize(Right);
             } else {
                 FinishHand(hand);
                 ScheduleSpellFireFinalize(hand);
@@ -523,7 +518,7 @@ namespace IntegratedMagic {
         }
     }
 
-    void MagicState::ScheduleSpellFireFinalize(Slots::Hand hand) {
+    void MagicState::ScheduleSpellFireFinalize(Domain::Hand hand) {
         auto& hm = ModeFor(hand);
         hm.waitingSpellFireFinalize = true;
         hm.spellFireFinalizeSecs = 0.f;
@@ -540,7 +535,7 @@ namespace IntegratedMagic {
 
         constexpr float kSpellFireFinalizeDelay = 0.7f;
 
-        auto pumpOne = [&](Slots::Hand hand) {
+        auto pumpOne = [&](Domain::Hand hand) {
             auto& hm = ModeFor(hand);
             if (!hm.waitingSpellFireFinalize) return;
 
@@ -553,7 +548,7 @@ namespace IntegratedMagic {
             TryFinalizeExit();
         };
 
-        using enum Slots::Hand;
+        using enum Domain::Hand;
         pumpOne(Left);
         pumpOne(Right);
     }

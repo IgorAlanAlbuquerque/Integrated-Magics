@@ -1,11 +1,10 @@
 #include <utility>
 
-#include "Action.h"
-#include "Adapters/Outbound/EquipSlots.h"
-#include "InventoryUtil.h"
+#include "Domain/Hand.h"
+#include "Domain/InventoryUtil.h"
+#include "Domain/State.h"
 #include "PCH.h"
 #include "Persistence/SpellSettingsDB.h"
-#include "State.h"
 
 namespace IntegratedMagic {
     namespace {
@@ -28,17 +27,18 @@ namespace IntegratedMagic {
 
         inline RE::SpellItem* AsSpell(RE::MagicItem* m) { return m ? m->As<RE::SpellItem>() : nullptr; }
 
-        void ClearHandSpellIfNoSnapshot(RE::PlayerCharacter* player, RE::SpellItem const* snapSpell,
-                                        RE::SpellItem* modeSpell, Slots::Hand hand) {
+        void ClearHandSpellIfNoSnapshot(RE::SpellItem const* snapSpell, RE::SpellItem* modeSpell, Domain::Hand hand,
+                                        const Domain::OutboundDelegate& outbound) {
             if (snapSpell) return;
-            if (modeSpell)
-                MagicAction::ClearHandSpell(player, modeSpell, hand);
-            else
-                MagicAction::ClearHandSpell(player, hand);
+            if (modeSpell) {
+                if (outbound.clearHandSpellByRef) outbound.clearHandSpellByRef(modeSpell, hand);
+            } else {
+                if (outbound.clearHandSpell) outbound.clearHandSpell(hand);
+            }
         }
 
-        void EquipSpellIfPresent(RE::PlayerCharacter* player, RE::SpellItem* spell, Slots::Hand hand) {
-            if (spell) MagicAction::EquipSpellInHand(player, spell, hand);
+        void EquipSpellIfPresent(RE::SpellItem* spell, Domain::Hand hand, const Domain::OutboundDelegate& outbound) {
+            if (spell && outbound.equipSpellInHand) outbound.equipSpellInHand(spell, hand);
         }
     }
 
@@ -131,7 +131,7 @@ namespace IntegratedMagic {
     }
 
     void MagicState::RestoreSnapshot(RE::PlayerCharacter* player) {
-        using enum Slots::Hand;
+        using enum Domain::Hand;
         if (!player || !_restore.snapshot.valid) return;
 
         auto* mgr = RE::ActorEquipManager::GetSingleton();
@@ -141,11 +141,11 @@ namespace IntegratedMagic {
                         _restore.dirtyLeft, _restore.dirtyRight, _restore.dirtyShout, _restore.snapshot.snapShoutID);
 
         _session.wasHandsDown = false;
-        MagicAction::ApplySkipEquipAnimReturn(player);
+        if (_outbound.applySkipEquipAnimReturn) _outbound.applySkipEquipAnimReturn();
 
         const auto idx = BuildInventoryIndex(player);
-        const auto* rightSlot = EquipUtil::GetHandEquipSlot(Right);
-        const auto* leftSlot = EquipUtil::GetHandEquipSlot(Left);
+        const auto* rightSlot = _outbound.getHandEquipSlot ? _outbound.getHandEquipSlot(Right) : nullptr;
+        const auto* leftSlot = _outbound.getHandEquipSlot ? _outbound.getHandEquipSlot(Left) : nullptr;
         auto& snap = _restore.snapshot;
 
         auto* rightSnapSpell = snap.rightObj.base ? nullptr : AsSpell(snap.rightSpell);
@@ -154,31 +154,32 @@ namespace IntegratedMagic {
         if (_restore.dirtyRight) {
             MAGIC_DEBUG_LOG("[State] RestoreSnapshot: restoring Right hand");
 
-            if (!snap.rightObj.base) ClearHandSpellIfNoSnapshot(player, rightSnapSpell, _session.modeSpellRight, Right);
-            RestoreOneHand(player, mgr, idx, false, snap.rightObj, rightSlot);
-            EquipSpellIfPresent(player, rightSnapSpell, Right);
+            if (!snap.rightObj.base)
+                ClearHandSpellIfNoSnapshot(rightSnapSpell, _session.modeSpellRight, Right, _outbound);
+            if (_outbound.restoreOneHand) _outbound.restoreOneHand(false, idx, snap.rightObj, rightSlot);
+            EquipSpellIfPresent(rightSnapSpell, Right, _outbound);
         }
         if (_restore.dirtyLeft) {
             MAGIC_DEBUG_LOG("[State] RestoreSnapshot: restoring Left hand");
 
-            if (!snap.leftObj.base) ClearHandSpellIfNoSnapshot(player, leftSnapSpell, _session.modeSpellLeft, Left);
-            RestoreOneHand(player, mgr, idx, true, snap.leftObj, leftSlot);
-            EquipSpellIfPresent(player, leftSnapSpell, Left);
+            if (!snap.leftObj.base) ClearHandSpellIfNoSnapshot(leftSnapSpell, _session.modeSpellLeft, Left, _outbound);
+            if (_outbound.restoreOneHand) _outbound.restoreOneHand(true, idx, snap.leftObj, leftSlot);
+            EquipSpellIfPresent(leftSnapSpell, Left, _outbound);
             if (!_restore.dirtyRight && snap.rightObj.base)
-                RestoreOneHand(player, mgr, idx, false, snap.rightObj, rightSlot);
+                if (_outbound.restoreOneHand) _outbound.restoreOneHand(false, idx, snap.rightObj, rightSlot);
         }
+
         if (_restore.dirtyShout) {
             MAGIC_DEBUG_LOG("[State] RestoreSnapshot: restoring shout, snapShoutID={:#010x}", snap.snapShoutID);
 
-            MagicAction::ClearVoiceShout(player);
+            if (_outbound.clearVoiceShout) _outbound.clearVoiceShout();
             if (snap.snapShoutID) {
                 if (auto* form = RE::TESForm::LookupByID(snap.snapShoutID))
-                    MagicAction::EquipShoutInVoice(player, form);
+                    if (_outbound.equipShoutInVoice) _outbound.equipShoutInVoice(form);
             }
         }
 
-        auto idx2 = BuildInventoryIndex(player);
-        ReequipPrevExtraEquipped(player, mgr, idx2, _restore.prevExtraEquipped);
+        if (_outbound.reequipPrevExtraEquipped) _outbound.reequipPrevExtraEquipped(player, _restore.prevExtraEquipped);
 
         snap.valid = false;
         _session.modeSpellLeft = nullptr;
@@ -188,13 +189,13 @@ namespace IntegratedMagic {
         MAGIC_DEBUG_LOG("[State] RestoreSnapshot: done");
     }
 
-    bool MagicState::HandIsRelevant(Slots::Hand h) const {
+    bool MagicState::HandIsRelevant(Domain::Hand h) const {
         if (_shout.modeShoutID != 0) return false;
         return IsLeft(h) ? (_session.modeSpellLeft != nullptr) : (_session.modeSpellRight != nullptr);
     }
 
     bool MagicState::AllRelevantHandsFinished() const {
-        using enum Slots::Hand;
+        using enum Domain::Hand;
         if (_shout.modeShoutID != 0) return _shout.finished;
         const bool needL = HandIsRelevant(Left);
         const bool needR = HandIsRelevant(Right);
@@ -209,7 +210,7 @@ namespace IntegratedMagic {
             const auto settings = SpellSettingsDB::Get().Get(_shout.modeShoutID);
             return settings && settings->mode == Press;
         }
-        using enum Slots::Hand;
+        using enum Domain::Hand;
         const bool needL = (_session.modeSpellLeft != nullptr);
         const bool needR = (_session.modeSpellRight != nullptr);
         if (!needL && !needR) return false;
@@ -238,7 +239,7 @@ namespace IntegratedMagic {
             return true;
 
         if (_session.modeSpellRight) {
-            auto* caster = MagicAction::GetCaster(pc, RE::MagicSystem::CastingSource::kRightHand);
+            auto* caster = GetMagicCaster(pc, RE::MagicSystem::CastingSource::kRightHand);
             if (CasterSpellMismatch(caster, _session.modeSpellRight)) {
                 MAGIC_DEBUG_LOG("[State] ShouldForceInterrupt: TRUE - Right caster spell mismatch");
 
@@ -246,7 +247,7 @@ namespace IntegratedMagic {
             }
         }
         if (_session.modeSpellLeft) {
-            auto* caster = MagicAction::GetCaster(pc, RE::MagicSystem::CastingSource::kLeftHand);
+            auto* caster = GetMagicCaster(pc, RE::MagicSystem::CastingSource::kLeftHand);
             if (CasterSpellMismatch(caster, _session.modeSpellLeft)) {
                 MAGIC_DEBUG_LOG("[State] ShouldForceInterrupt: TRUE - Left caster spell mismatch");
 
@@ -321,9 +322,8 @@ namespace IntegratedMagic {
         MAGIC_DEBUG_LOG("[State] ExitAllNow: immediate RestoreSnapshot");
 
         RestoreSnapshot(player);
-        if (auto* mgr = RE::ActorEquipManager::GetSingleton()) {
-            auto idx = BuildInventoryIndex(player);
-            ReequipPrevExtraEquipped(player, mgr, idx, _restore.prevExtraEquipped);
+        if (_outbound.reequipPrevExtraEquipped) {
+            _outbound.reequipPrevExtraEquipped(player, _restore.prevExtraEquipped);
         }
         ResetSessionState();
     }
@@ -374,4 +374,6 @@ namespace IntegratedMagic {
         _restore.snapshot = {};
         ForceExit();
     }
+
+    void MagicState::SetOutboundDelegate(const Domain::OutboundDelegate& delegate) { _outbound = delegate; }
 }

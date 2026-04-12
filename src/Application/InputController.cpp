@@ -4,7 +4,10 @@
 
 #include <chrono>
 
+#include "Application/AssignService.h"
+#include "Application/SpellSystemController.h"
 #include "Config/ConfigAdapter.h"
+#include "Domain/Hand.h"
 #include "Input/ExclusiveTracker.h"
 #include "Input/HotkeyMatcher.h"
 #include "Input/HudToggle.h"
@@ -12,8 +15,7 @@
 #include "Input/PhysicalReconciler.h"
 #include "Input/ReplaySystem.h"
 #include "PCH.h"
-#include "State/Assign.h"
-#include "State/State.h"
+#include "Domain/State.h"
 #include "UI/HoveredForm.h"
 
 namespace Application {
@@ -37,11 +39,13 @@ namespace Application {
                 Input::detail::ResetReplayState(s, m_replay);
         }
 
-        Input::detail::ReconcilePhysicalKeyState(m_keys, m_slots, m_exclusive, m_replay, m_retained, m_deferred);
+        Input::detail::ReconcilePhysicalKeyState(m_keys, m_slots, m_exclusive, m_replay, m_retained, m_deferred,
+                                                 Application::SpellSystemController::Get().IsSpellSystemActive());
 
         bool wantCapture = m_captureState.captureRequested.load(std::memory_order_relaxed);
         const bool wantCaptureBefore = wantCapture;
         const float dt = CalculateDeltaTime();
+        m_lastDt = dt;
         const bool blocked = Input::detail::IsInputBlockedByMenus();
 
         if (m_prevBlocked && !blocked) {
@@ -59,10 +63,12 @@ namespace Application {
         Input::detail::ProcessButtonEvents(a_evns, m_captureState, wantCapture, m_keys);
         Input::detail::UpdateHudToggleState(m_hotkeys, m_keys);
 
-        if (blocked) TryAssignHoveredToSlotByHotkey();
+        if (blocked) Application::SpellSystemController::Get().TryAssignHoveredToSlotByHotkey();
 
         Input::detail::UpdateSlotsIfAllowed(blocked, dt, m_slots, m_exclusive, m_hotkeys, m_keys, m_retained,
-                                            m_deferred, m_replay);
+                                            m_deferred, m_replay,
+                                            Application::SpellSystemController::Get().IsSpellSystemActive(),
+                                            Application::SpellSystemController::Get().ActiveSlot());
 
         Input::detail::DrainOneDeferredReplayEvent(m_replay, m_deferred);
         Input::detail::FilterMouseForPopup(a_evns);
@@ -86,8 +92,6 @@ namespace Application {
                 cur = next;
             }
         }
-
-        Input::detail::DispatchIfAllowed(blocked, dt, m_slots, m_exclusive, m_slots.pressedMask, m_slots.releasedMask);
     }
 
     void InputController::OnConfigChanged() {
@@ -95,7 +99,7 @@ namespace Application {
         Input::detail::ResetExclusiveState(m_slots, m_exclusive, m_replay, m_retained, m_deferred);
     }
 
-    std::optional<int> InputController::ConsumeBit(std::atomic<std::uint64_t>& mask) {
+    std::optional<int> InputController::ConsumeBit(std::atomic<std::uint64_t>& mask) const {
         while (true) {
             const int n = m_slots.ActiveSlots();
             const std::uint64_t allowed = (n >= 64) ? ~0uLL : ((1uLL << n) - 1uLL);
@@ -120,14 +124,14 @@ namespace Application {
     std::optional<int> InputController::ConsumePressedSlot() { return ConsumeBit(m_slots.pressedMask); }
     std::optional<int> InputController::ConsumeReleasedSlot() { return ConsumeBit(m_slots.releasedMask); }
 
-    std::optional<int> InputController::GetDownSlotForSelection() {
+    std::optional<int> InputController::GetDownSlotForSelection() const {
         const int n = m_slots.ActiveSlots();
         for (int slot = 0; slot < n; ++slot)
             if (Input::detail::SlotComboDown(slot, m_hotkeys, m_keys, m_slots)) return slot;
         return std::nullopt;
     }
 
-    bool InputController::IsSlotHotkeyDown(int slot) {
+    bool InputController::IsSlotHotkeyDown(int slot) const {
         return Input::detail::SlotComboDown(slot, m_hotkeys, m_keys, m_slots);
     }
 
@@ -153,7 +157,9 @@ namespace Application {
         return false;
     }
 
-    bool InputController::ConsumeHudToggle() { return g_hudTogglePending.exchange(false, std::memory_order_relaxed); }
+    bool InputController::ConsumeHudToggle() const {
+        return g_hudTogglePending.exchange(false, std::memory_order_relaxed);
+    }
 
     void InputController::RequestHotkeyCapture() {
         m_captureState.captureRequested.store(true, std::memory_order_relaxed);
@@ -172,7 +178,7 @@ namespace Application {
     }
 
     void InputController::SetCaptureModeActive(bool active) { m_captureModeActive = active; }
-    bool InputController::IsCaptureModeActive() { return m_captureModeActive; }
+    bool InputController::IsCaptureModeActive() const { return m_captureModeActive; }
 
     void InputController::InjectCapturedScancode(int scancode) {
         if (!m_captureState.captureRequested.load(std::memory_order_relaxed)) return;
@@ -197,30 +203,5 @@ namespace Application {
         return dt;
     }
 
-    void InputController::TryAssignHoveredToSlotByHotkey() {
-        auto* ui = RE::UI::GetSingleton();
-        if (!ui) return;
-        static const RE::BSFixedString magicMenu{"MagicMenu"};
-        if (!ui->IsMenuOpen(magicMenu)) return;
-
-        const auto type = IntegratedMagic::HoveredForm::GetHoveredMagicType();
-        if (type == IntegratedMagic::HoveredForm::MagicType::None) return;
-
-        const int n = m_slots.ActiveSlots();
-        for (int slot = 0; slot < n; ++slot) {
-            const auto& hk = m_hotkeys.slots[static_cast<std::size_t>(slot)];
-            const bool comboDown =
-                Input::detail::ComboDown(hk.kb, m_keys.kbDown) || Input::detail::ComboDown(hk.gp, m_keys.gpDown);
-            if (!comboDown) continue;
-
-            using MT = IntegratedMagic::HoveredForm::MagicType;
-            if (type == MT::Shout || type == MT::Power)
-                IntegratedMagic::MagicAssign::TryAssignHoveredShoutToSlot(slot);
-            else if (type == MT::RightOnlySpell)
-                IntegratedMagic::MagicAssign::TryAssignHoveredSpellToSlot(slot, IntegratedMagic::Slots::Hand::Right);
-            else
-                IntegratedMagic::MagicAssign::TryAssignHoveredSpellToSlot(slot, IntegratedMagic::Slots::Hand::Left);
-            break;
-        }
-    }
+    bool InputController::IsInputBlocked() const { return Input::detail::IsInputBlockedByMenus(); }
 }

@@ -7,13 +7,14 @@
 #include <string>
 #include <vector>
 
+#include "Application/AssignService.h"
 #include "Config/StyleConfig.h"
+#include "Domain/Hand.h"
 #include "PCH.h"
 #include "Persistence/Slots.h"
 #include "Persistence/SpellSettingsDB.h"
-#include "State/Assign.h"
-#include "State/SpellClassify.h"
-#include "State/State.h"
+#include "Domain/SpellClassify.h"
+#include "Domain/State.h"
 #include "UI/HoveredForm.h"
 #include "UI/HudState.h"
 #include "UI/HudTextUtil.h"
@@ -360,8 +361,8 @@ namespace IntegratedMagic::HUD::PopupDrawer {
 
             for (int i = 0; i < n; ++i) {
                 const ImVec2 center = {ringCenter.x + relPos[i].x, ringCenter.y + relPos[i].y};
-                const auto rID = Slots::GetSlotSpell(i, Slots::Hand::Right);
-                const auto lID = Slots::GetSlotSpell(i, Slots::Hand::Left);
+                const auto rID = Slots::GetSlotSpell(i, Domain::Hand::Right);
+                const auto lID = Slots::GetSlotSpell(i, Domain::Hand::Left);
                 const auto shoutID = Slots::GetSlotShout(i);
                 auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
                 auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
@@ -399,13 +400,13 @@ namespace IntegratedMagic::HUD::PopupDrawer {
                     if (hovIsFullSlot) {
                         FillSlotShapeHighlight(dl, center, st.popupSlotRadius - 1.f, IM_COL32(255, 200, 80, 40));
                         if (clicked) {
-                            hovIsTwoHanded ? MagicAssign::TryAssignHoveredSpellToSlot(i, Slots::Hand::Left)
+                            hovIsTwoHanded ? MagicAssign::TryAssignHoveredSpellToSlot(i, Domain::Hand::Left)
                                            : MagicAssign::TryAssignHoveredShoutToSlot(i);
                         }
                         if (rightClicked) {
                             shoutID ? MagicAssign::TryClearSlotShout(i)
-                                    : (MagicAssign::TryClearSlotHand(i, Slots::Hand::Right),
-                                       MagicAssign::TryClearSlotHand(i, Slots::Hand::Left));
+                                    : (MagicAssign::TryClearSlotHand(i, Domain::Hand::Right),
+                                       MagicAssign::TryClearSlotHand(i, Domain::Hand::Left));
                         }
                         hintsVisible = true;
                         hintsShout = true;
@@ -416,18 +417,18 @@ namespace IntegratedMagic::HUD::PopupDrawer {
                         hoverRight ? FillSlotHalfHighlight(dl, center, st.popupSlotRadius - 1.f, true, hlCol)
                                    : FillSlotHalfHighlight(dl, center, st.popupSlotRadius - 1.f, false, hlCol);
                         if (clicked) {
-                            hoverRight ? MagicAssign::TryAssignHoveredSpellToSlot(i, Slots::Hand::Right)
-                                       : MagicAssign::TryAssignHoveredSpellToSlot(i, Slots::Hand::Left);
+                            hoverRight ? MagicAssign::TryAssignHoveredSpellToSlot(i, Domain::Hand::Right)
+                                       : MagicAssign::TryAssignHoveredSpellToSlot(i, Domain::Hand::Left);
                         }
                         if (rightClicked) {
                             if (shoutID)
                                 MagicAssign::TryClearSlotShout(i);
                             else if (slotIs2H) {
-                                MagicAssign::TryClearSlotHand(i, Slots::Hand::Right);
-                                MagicAssign::TryClearSlotHand(i, Slots::Hand::Left);
+                                MagicAssign::TryClearSlotHand(i, Domain::Hand::Right);
+                                MagicAssign::TryClearSlotHand(i, Domain::Hand::Left);
                             } else
-                                hoverRight ? MagicAssign::TryClearSlotHand(i, Slots::Hand::Right)
-                                           : MagicAssign::TryClearSlotHand(i, Slots::Hand::Left);
+                                hoverRight ? MagicAssign::TryClearSlotHand(i, Domain::Hand::Right)
+                                           : MagicAssign::TryClearSlotHand(i, Domain::Hand::Left);
                         }
                         hintsVisible = true;
                         hintsShout = false;

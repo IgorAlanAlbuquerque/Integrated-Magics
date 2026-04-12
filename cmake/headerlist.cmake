@@ -38,18 +38,23 @@ set(headers
     src/Input/ExclusiveStore.h
     src/Input/KeyStateStore.h
     src/Input/PhysicalReconciler.h
-    src/State/State.h
-    src/State/Action.h
-    src/State/AnimListener.h
-    src/State/CastGuardEvents.h
-    src/State/InventoryUtil.h
-    src/State/SyntheticInput.h
-    src/State/Assign.h
-    src/State/SpellClassify.h
-    src/State/EquipSink.h
-    src/State/SlotCostUtil.h
+    src/Domain/State.h
+    src/Domain/InventoryUtil.h
+    src/Domain/SpellClassify.h
+    src/Domain/SlotCostUtil.h
+    src/Domain/Hand.h
+    src/Domain/OutboundDelegate.h
+    src/Domain/SpellSettings.h
     src/Application/InputController.h
     src/Application/HudController.h
+    src/Application/AssignService.h
+    src/Application/SpellSystemController.h
     src/Adapters/Inbound/SpellTypeDetector.h
+    src/Adapters/Inbound/AnimEventAdapter.h
+    src/Adapters/Inbound/GameEventAdapter.h
+    src/Adapters/Inbound/EquipEventAdapter.h
     src/Adapters/Outbound/EquipSlots.h
+    src/Adapters/Outbound/SyntheticInput.h
+    src/Adapters/Outbound/MagicEquip.h
+    src/Adapters/Outbound/RestoreEquip.h
 )

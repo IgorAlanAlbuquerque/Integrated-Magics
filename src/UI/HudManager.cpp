@@ -9,7 +9,7 @@
 #include "Persistence/Slots.h"
 #include "PopupDrawer.h"
 #include "SlotDrawer.h"
-#include "State/State.h"
+#include "Domain/State.h"
 
 namespace IntegratedMagic::HUD {
 

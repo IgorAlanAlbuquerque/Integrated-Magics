@@ -34,7 +34,7 @@ namespace Input::detail {
                                RetainedArr& retained, DeferredVec& deferred);
 
     void ClearEdgeStateOnly(SlotEdgeStore& slots, ExclusiveStore& excl, ReplayArr& replay, RetainedArr& retained,
-                            DeferredVec& deferred, KeyStateStore& keys);
+                            DeferredVec& deferred);
 
     void ClearLikelyStuckKeysAfterMenuClose(KeyStateStore& keys, SlotEdgeStore& slots, ExclusiveStore& excl,
                                             const HotkeyCacheStore& cache, ReplayArr& replay, RetainedArr& retained,
@@ -45,7 +45,8 @@ namespace Input::detail {
 
     void RecomputeSlotEdges(float dt, SlotEdgeStore& slots, ExclusiveStore& excl, const HotkeyCacheStore& cache,
                             const KeyStateStore& keys, const IntegratedMagic::Config::IPatchSettings& patches,
-                            ReplayArr& replay, RetainedArr& retained, DeferredVec& deferred);
+                            ReplayArr& replay, RetainedArr& retained, DeferredVec& deferred, bool spellSystemActive,
+                            int activeSlot);
 
     void TickFilterWindows(float dt, ExclusiveStore& excl, SlotEdgeStore& slots, RetainedArr& retained,
                            DeferredVec& deferred);

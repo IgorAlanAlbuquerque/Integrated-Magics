@@ -1,6 +1,6 @@
 #pragma once
 #include "PCH.h"
-#include "Persistence/Slots.h"
+
 namespace IntegratedMagic {
     struct SlotAffordability {
         float totalCost = 0.f;

@@ -22,17 +22,17 @@ namespace Application {
         [[nodiscard]] std::optional<int> ConsumePressedSlot();
         [[nodiscard]] std::optional<int> ConsumeReleasedSlot();
 
-        [[nodiscard]] std::optional<int> GetDownSlotForSelection();
-        [[nodiscard]] bool IsSlotHotkeyDown(int slot);
+        [[nodiscard]] std::optional<int> GetDownSlotForSelection() const;
+        [[nodiscard]] bool IsSlotHotkeyDown(int slot) const;
         [[nodiscard]] bool IsModifierHeld();
-        [[nodiscard]] bool ConsumeHudToggle();
+        [[nodiscard]] bool ConsumeHudToggle() const;
 
         void RequestHotkeyCapture();
         void CancelHotkeyCapture();
         [[nodiscard]] int PollCapturedHotkey();
 
         void SetCaptureModeActive(bool active);
-        [[nodiscard]] bool IsCaptureModeActive();
+        [[nodiscard]] bool IsCaptureModeActive() const;
         void InjectCapturedScancode(int scancode);
         void InjectCapturedGamepad(int buttonIndex);
 
@@ -41,6 +41,8 @@ namespace Application {
         [[nodiscard]] Input::ExclusiveStore& Exclusive() noexcept { return m_exclusive; }
         [[nodiscard]] Input::HotkeyCacheStore& Hotkeys() noexcept { return m_hotkeys; }
         [[nodiscard]] CaptureState& Capture() noexcept { return m_captureState; }
+        [[nodiscard]] float GetDeltaTime() const noexcept { return m_lastDt; }
+        [[nodiscard]] bool IsInputBlocked() const;
 
         void SetSlotDeactivatedThisPress(int slot) noexcept {
             if (slot >= 0 && slot < kInputMaxSlots)
@@ -61,10 +63,10 @@ namespace Application {
         Input::detail::ReplayArr m_replay{};
         Input::detail::RetainedArr m_retained{};
         Input::detail::DeferredVec m_deferred{};
+        float m_lastDt{0.f};
 
-        void TryAssignHoveredToSlotByHotkey();
         static float CalculateDeltaTime();
-        std::optional<int> ConsumeBit(std::atomic<std::uint64_t>& mask);
+        std::optional<int> ConsumeBit(std::atomic<std::uint64_t>& mask) const;
     };
 
 }

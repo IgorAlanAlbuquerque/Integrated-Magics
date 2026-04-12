@@ -8,7 +8,7 @@
 #include "Input/HudToggle.h"
 #include "PCH.h"
 #include "SKSEMenuFramework.h"
-#include "State/State.h"
+#include "Domain/State.h"
 #include "UI/HudManager.h"
 
 namespace Input::detail {
@@ -99,22 +99,6 @@ namespace Input::detail {
             return HasTransformArchetype(rd.selectedPower->As<RE::MagicItem>());
         }
 
-        void HandleSlotPressed(int slot, const SlotEdgeStore& slots, ExclusiveStore& excl) {
-            if (slot < 0 || slot >= slots.ActiveSlots()) return;
-            if (!RE::PlayerCharacter::GetSingleton()) return;
-            MAGIC_DEBUG_LOG("[Input] HandleSlotPressed: slot={}", slot);
-
-            const auto result = IntegratedMagic::MagicState::Get().OnSlotPressed(slot);
-            if (result == IntegratedMagic::SlotPressResult::Deactivated)
-                excl.deactivatedThisPress[static_cast<std::size_t>(slot)] = true;
-        }
-
-        void HandleSlotReleased(int slot, const SlotEdgeStore& slots) {
-            if (slot < 0 || slot >= slots.ActiveSlots()) return;
-            MAGIC_DEBUG_LOG("[Input] HandleSlotReleased: slot={}", slot);
-            IntegratedMagic::MagicState::Get().OnSlotReleased(slot);
-        }
-
         std::optional<int> ConsumeBitLocal(std::atomic<std::uint64_t>& mask, const SlotEdgeStore& slots) {
             while (true) {
                 const int n = slots.ActiveSlots();
@@ -137,25 +121,12 @@ namespace Input::detail {
             }
         }
 
-        void DispatchSlots(const SlotEdgeStore& slots, ExclusiveStore& excl, std::atomic<std::uint64_t>& pressedMask,
-                           std::atomic<std::uint64_t>& releasedMask) {
-            for (auto s = ConsumeBitLocal(pressedMask, slots); s.has_value(); s = ConsumeBitLocal(pressedMask, slots))
-                HandleSlotPressed(*s, slots, excl);  // ← passa excl
-            for (auto s = ConsumeBitLocal(releasedMask, slots); s.has_value(); s = ConsumeBitLocal(releasedMask, slots))
-                HandleSlotReleased(*s, slots);
-        }
-
-        void DrainWhenBlocked(const SlotEdgeStore& slots, ExclusiveStore& excl, std::atomic<std::uint64_t>& pressedMask,
+        void DrainWhenBlocked(const SlotEdgeStore& slots, std::atomic<std::uint64_t>& pressedMask,
                               std::atomic<std::uint64_t>& releasedMask) {
             int drained = 0;
-            for (auto s = ConsumeBitLocal(pressedMask, slots); s.has_value(); s = ConsumeBitLocal(pressedMask, slots))
-                ++drained;
+            while (ConsumeBitLocal(pressedMask, slots).has_value()) ++drained;
             if (drained > 0) MAGIC_DEBUG_LOG("[Input] DrainWhenBlocked: discarded {} pressed slot(s)", drained);
-
-            for (auto ss = ConsumeBitLocal(releasedMask, slots); ss.has_value();
-                 ss = ConsumeBitLocal(releasedMask, slots)) {
-                MAGIC_DEBUG_LOG("[Input] DrainWhenBlocked: releasing slot={} while blocked", *ss);
-                HandleSlotReleased(*ss, slots);
+            while (ConsumeBitLocal(releasedMask, slots).has_value()) {
             }
         }
 
@@ -176,20 +147,15 @@ namespace Input::detail {
                 if (!inKb && !inGp) continue;
 
                 if (slots.slotDown[s].load(std::memory_order_relaxed)) return true;
-
                 if (slots.slotWasAccepted[s]) {
-                    MAGIC_DEBUG_LOG("[Input] ShouldFilterAndSave: slot={} code={} dev={} FILTERED (wasAccepted)", slot,
-                                    effectiveKbCode, static_cast<int>(dev));
-
+                    MAGIC_DEBUG_LOG("[Input] ShouldFilterAndSave: slot={} FILTERED (wasAccepted)", slot);
                     return true;
                 }
-
                 if (inKb && ComboDown(hk.kb, keys.kbDown)) return true;
                 if (inGp && ComboDown(hk.gp, keys.gpDown)) return true;
 
                 if (ReplayMatchesEvent(s, dev, rawIdCode, userEvent, value, replay)) {
-                    MAGIC_DEBUG_LOG("[Input] ShouldFilterAndSave: slot={} code={} replay PASS-THROUGH", slot,
-                                    effectiveKbCode);
+                    MAGIC_DEBUG_LOG("[Input] ShouldFilterAndSave: slot={} replay PASS-THROUGH", slot);
                     ResetReplayState(s, replay);
                     return false;
                 }
@@ -270,15 +236,12 @@ namespace Input::detail {
             }
 
             if (code < 0 || code >= kMaxCode) continue;
-
             (void)TryHandleCapture(btn, cap, wantCapture, dev, code);
             UpdateDownState(dev, code, btn->IsDown(), keys);
 
             if (btn->IsDown() && player && btn->QUserEvent() == "Shout"sv) {
                 if (IsTransformPowerEquipped(player)) {
-                    MAGIC_DEBUG_LOG(
-                        "[Input] ProcessButtonEvents: Shout pressed with transform power -> ForceExitNoRestore");
-
+                    MAGIC_DEBUG_LOG("[Input] Shout pressed with transform -> ForceExitNoRestore");
                     IntegratedMagic::MagicState::Get().ForceExitNoRestore();
                 }
             }
@@ -290,7 +253,6 @@ namespace Input::detail {
 
         RE::InputEvent* prev = nullptr;
         RE::InputEvent* cur = *a_evns;
-
         while (cur) {
             RE::InputEvent* next = cur->next;
             bool remove = false;
@@ -300,7 +262,6 @@ namespace Input::detail {
                 IntegratedMagic::HUD::FeedMouseDelta(static_cast<float>(mm->mouseInputX),
                                                      static_cast<float>(mm->mouseInputY));
                 remove = true;
-
             } else if (cur->eventType == RE::INPUT_EVENT_TYPE::kThumbstick) {
                 auto const* ts = static_cast<RE::ThumbstickEvent*>(cur);
                 if (ts->IsLeft()) {
@@ -312,12 +273,10 @@ namespace Input::detail {
                         IntegratedMagic::HUD::FeedMouseDelta(ax * kSensitivity, -ay * kSensitivity);
                 }
                 remove = true;
-
             } else if (const auto* btn = cur->AsButtonEvent()) {
                 using Key = RE::BSWin32GamepadDevice::Key;
                 const auto btnDev = btn->GetDevice();
                 const auto btnID = btn->GetIDCode();
-
                 if (btnDev == RE::INPUT_DEVICE::kMouse && btnID == 0) {
                     if (btn->IsDown()) IntegratedMagic::HUD::FeedMouseClick();
                     remove = true;
@@ -352,7 +311,6 @@ namespace Input::detail {
                       const HotkeyCacheStore& cache, ExclusiveStore& excl, ReplayArr& replay, RetainedArr& retained) {
         RE::InputEvent* prev = nullptr;
         RE::InputEvent* cur = *a_evns;
-
         while (cur) {
             RE::InputEvent* next = cur->next;
             bool remove = false;
@@ -361,26 +319,24 @@ namespace Input::detail {
                 const auto dev = btn->GetDevice();
                 auto code = static_cast<int>(btn->idCode);
                 const auto rawCode = btn->idCode;
-
                 if (dev == RE::INPUT_DEVICE::kGamepad) code = GamepadIdToIndex(code);
 
                 if (code >= 0 && code < kMaxCode) {
                     remove = ShouldFilterAndSave(dev, code, rawCode, btn->QUserEvent(), btn->Value(),
                                                  btn->HeldDuration(), keys, slots, cache, excl, replay, retained) ||
                              ShouldFilterHudToggle(dev, code, cache);
-
+#ifdef DEBUG
                     if (!remove && (dev == RE::INPUT_DEVICE::kMouse || dev == RE::INPUT_DEVICE::kKeyboard)) {
                         const int effCode = (dev == RE::INPUT_DEVICE::kMouse) ? kMouseButtonBase + code : code;
                         const int n = slots.ActiveSlots();
                         for (int slot = 0; slot < n; ++slot) {
                             if (ComboContains(cache.slots[static_cast<std::size_t>(slot)].kb, effCode)) {
-                                MAGIC_DEBUG_LOG(
-                                    "[Input] FilterEvents: slot={} code={} dev={} value={:.2f} PASSING TO ENGINE", slot,
-                                    effCode, static_cast<int>(dev), btn->Value());
+                                MAGIC_DEBUG_LOG("[Input] FilterEvents: slot={} code={} PASSING", slot, effCode);
                                 break;
                             }
                         }
                     }
+#endif
                 }
             }
 
@@ -398,21 +354,13 @@ namespace Input::detail {
 
     void UpdateSlotsIfAllowed(bool blocked, float dt, SlotEdgeStore& slots, ExclusiveStore& excl,
                               const HotkeyCacheStore& cache, const KeyStateStore& keys, RetainedArr& retained,
-                              DeferredVec& deferred, ReplayArr& replay) {
+                              DeferredVec& deferred, ReplayArr& replay, bool spellSystemActive, int activeSlot) {
         const auto& patches = IntegratedMagic::Config::MagicConfigAdapter::Get();
         if (!blocked)
-            RecomputeSlotEdges(dt, slots, excl, cache, keys, patches, replay, retained, deferred);
+            RecomputeSlotEdges(dt, slots, excl, cache, keys, patches, replay, retained, deferred, spellSystemActive,
+                               activeSlot);
         else
-            DrainWhenBlocked(slots, excl, slots.pressedMask, slots.releasedMask);
-    }
-
-    void DispatchIfAllowed(bool blocked, float dt, const SlotEdgeStore& slots, ExclusiveStore& excl,
-                           std::atomic<std::uint64_t>& pressedMask, std::atomic<std::uint64_t>& releasedMask) {
-        if (!blocked) {
-            DispatchSlots(slots, excl, pressedMask, releasedMask);
-            IntegratedMagic::MagicState::Get().PumpAutoAttack(dt);
-            IntegratedMagic::MagicState::Get().PumpAutomatic(dt);
-        }
+            DrainWhenBlocked(slots, slots.pressedMask, slots.releasedMask);
     }
 
 }

@@ -7,10 +7,7 @@ namespace Application {
     public:
         static HudController& Get();
 
-        // Consultado pelo HudManager no DrawHudFrame
         [[nodiscard]] bool ConsumeHudToggle();
-
-        // Consultado pelo SlotDrawer
         [[nodiscard]] bool IsModifierHeld() const;
 
     private:

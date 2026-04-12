@@ -1,18 +1,19 @@
-#include "Assign.h"
+#include "AssignService.h"
 
 #include "Config/ConfigAdapter.h"
+#include "Domain/Hand.h"
 #include "PCH.h"
 #include "Persistence/Slots.h"
-#include "State/SpellClassify.h"
+#include "Domain/SpellClassify.h"
 #include "UI/HoveredForm.h"
 
 namespace IntegratedMagic::MagicAssign {
 
-    bool TryAssignHoveredSpellToSlot(int slot, Slots::Hand hand) {
+    bool TryAssignHoveredSpellToSlot(int slot, Domain::Hand hand) {
         const auto formID = HoveredForm::GetHoveredFormID();
         if (!formID) {
             MAGIC_DEBUG_LOG("[Assign] TryAssignHoveredSpellToSlot: slot={} hand={} - no hovered formID, abort", slot,
-                            (hand == Slots::Hand::Left) ? "Left" : "Right");
+                            (hand == Domain::Hand::Left) ? "Left" : "Right");
 
             return false;
         }
@@ -22,7 +23,7 @@ namespace IntegratedMagic::MagicAssign {
         if (!spell) {
             MAGIC_DEBUG_LOG(
                 "[Assign] TryAssignHoveredSpellToSlot: slot={} hand={} - formID={:#010x} is not a SpellItem, abort",
-                slot, (hand == Slots::Hand::Left) ? "Left" : "Right", formID);
+                slot, (hand == Domain::Hand::Left) ? "Left" : "Right", formID);
 
             return false;
         }
@@ -33,20 +34,21 @@ namespace IntegratedMagic::MagicAssign {
                 "-> TwoHanded: storing Left, clearing Right",
                 slot, spell->GetFormID(), spell->GetFullName() ? spell->GetFullName() : "<null>");
 
-            Slots::SetSlotSpell(slot, Slots::Hand::Left, spell->GetFormID(), true);
-            Slots::SetSlotSpell(slot, Slots::Hand::Right, 0, true);
+            Slots::SetSlotSpell(slot, Domain::Hand::Left, spell->GetFormID(), true);
+            Slots::SetSlotSpell(slot, Domain::Hand::Right, 0, true);
             Slots::SetSlotShout(slot, 0, true);
             return true;
         }
 
-        const auto existingLeftID = Slots::GetSlotSpell(slot, Slots::Hand::Left);
-        auto* existingLeftSpell = existingLeftID ? RE::TESForm::LookupByID<RE::SpellItem>(existingLeftID) : nullptr;
-        if (hand == Slots::Hand::Right && existingLeftSpell && SpellClassify::IsTwoHandedSpell(existingLeftSpell)) {
-            Slots::SetSlotSpell(slot, Slots::Hand::Left, 0, true);
+        const auto existingLeftID = Slots::GetSlotSpell(slot, Domain::Hand::Left);
+        if (auto const* existingLeftSpell =
+                existingLeftID ? RE::TESForm::LookupByID<RE::SpellItem>(existingLeftID) : nullptr;
+            hand == Domain::Hand::Right && existingLeftSpell && SpellClassify::IsTwoHandedSpell(existingLeftSpell)) {
+            Slots::SetSlotSpell(slot, Domain::Hand::Left, 0, true);
         }
 
         MAGIC_DEBUG_LOG("[Assign] TryAssignHoveredSpellToSlot: slot={} hand={} spellID={:#010x} name='{}'", slot,
-                        (hand == Slots::Hand::Left) ? "Left" : "Right", spell->GetFormID(),
+                        (hand == Domain::Hand::Left) ? "Left" : "Right", spell->GetFormID(),
                         spell->GetFullName() ? spell->GetFullName() : "<null>");
 
         Slots::SetSlotSpell(slot, hand, spell->GetFormID(), true);
@@ -79,8 +81,7 @@ namespace IntegratedMagic::MagicAssign {
 
         if (auto const* spell = form->As<RE::SpellItem>()) {
             using ST = RE::MagicSystem::SpellType;
-            const auto t = spell->GetSpellType();
-            if (t == ST::kPower || t == ST::kLesserPower) {
+            if (const auto t = spell->GetSpellType(); t == ST::kPower || t == ST::kLesserPower) {
                 MAGIC_DEBUG_LOG(
                     "[Assign] TryAssignHoveredShoutToSlot: slot={} formID={:#010x} spellType={} -> assigned as Power",
                     slot, formID, static_cast<int>(t));
@@ -97,12 +98,12 @@ namespace IntegratedMagic::MagicAssign {
         return false;
     }
 
-    bool TryClearSlotHand(int slot, Slots::Hand hand) {
+    bool TryClearSlotHand(int slot, Domain::Hand hand) {
         MAGIC_DEBUG_LOG("[Assign] TryClearSlotHand: slot={} hand={}", slot,
-                        (hand == Slots::Hand::Left) ? "Left" : "Right");
+                        (hand == Domain::Hand::Left) ? "Left" : "Right");
 
         auto& adapter = Config::MagicConfigAdapter::Get();
-        adapter.SetSpell(slot, hand == Slots::Hand::Left, 0u);
+        adapter.SetSpell(slot, hand == Domain::Hand::Left, 0u);
         adapter.Save();
         return true;
     }

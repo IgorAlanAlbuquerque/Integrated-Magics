@@ -10,6 +10,7 @@
 #include "Util/ConfigPath.h"
 #include "Config/Ports/SlotAssignments.h"
 #include "Config/SpellType.h"
+#include "Domain/SpellSettings.h"
 
 namespace IntegratedMagic {
 
@@ -18,11 +19,6 @@ namespace IntegratedMagic {
         std::size_t operator()(std::string_view sv) const noexcept { return std::hash<std::string_view>{}(sv); }
         std::size_t operator()(const std::string& s) const noexcept { return (*this)(std::string_view{s}); }
         std::size_t operator()(const char* s) const noexcept { return (*this)(std::string_view{s}); }
-    };
-
-    struct SpellSettings {
-        ActivationMode mode{ActivationMode::Hold};
-        bool autoAttack{true};
     };
 
     class SpellSettingsDB {

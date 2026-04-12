@@ -9,12 +9,14 @@
 
 #include <utility>
 
+#include "Adapters/Inbound/AnimEventAdapter.h"
+#include "Adapters/Outbound/SyntheticInput.h"
 #include "Application/InputController.h"
+#include "Application/SpellSystemController.h"
 #include "Config/InputConstants.h"
 #include "HookUtil.hpp"
 #include "PCH.h"
-#include "State/AnimListener.h"
-#include "State/State.h"
+#include "Domain/State.h"
 #include "UI/FontLoader.h"
 #include "UI/HudManager.h"
 #include "UI/HudState.h"
@@ -32,7 +34,9 @@ namespace IntegratedMagic::Hooks {
                 if (!a_events) return;
 
                 Application::InputController::Get().ProcessAndFilter(const_cast<RE::InputEvent**>(a_events));
-
+                const float dt = Application::InputController::Get().GetDeltaTime();
+                const bool blocked = Application::InputController::Get().IsInputBlocked();
+                Application::SpellSystemController::Get().OnFrame(dt, blocked);
                 RE::InputEvent* head = IntegratedMagic::detail::FlushSyntheticInput(*a_events);
 
                 if (func == 0) return;
@@ -57,7 +61,7 @@ namespace IntegratedMagic::Hooks {
                                                   RE::BSTEventSource<RE::BSAnimationGraphEvent>* a_src) {
                 const auto ret = _orig ? _orig(a_this, a_ev, a_src) : RE::BSEventNotifyControl::kContinue;
                 if (a_ev) {
-                    AnimListener::HandleAnimEvent(a_ev, a_src);
+                    AnimListener::HandleAnimEvent(a_ev);
                 }
                 return ret;
             }

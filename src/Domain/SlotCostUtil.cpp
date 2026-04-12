@@ -1,7 +1,9 @@
 #include "SlotCostUtil.h"
 
-#include "InventoryUtil.h"
+#include "Domain/Hand.h"
 #include "PCH.h"
+#include "Persistence/Slots.h"
+#include "Domain/InventoryUtil.h"
 
 namespace IntegratedMagic {
 
@@ -11,8 +13,8 @@ namespace IntegratedMagic {
         auto* player = RE::PlayerCharacter::GetSingleton();
         if (!player) return {};
 
-        const auto rID = Slots::GetSlotSpell(slotIndex, Slots::Hand::Right);
-        const auto lID = Slots::GetSlotSpell(slotIndex, Slots::Hand::Left);
+        const auto rID = Slots::GetSlotSpell(slotIndex, Domain::Hand::Right);
+        const auto lID = Slots::GetSlotSpell(slotIndex, Domain::Hand::Left);
         auto* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
         auto* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
 

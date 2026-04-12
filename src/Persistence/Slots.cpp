@@ -12,15 +12,15 @@ namespace IntegratedMagic::Slots {
         return slot < Config::MagicConfigAdapter::Get().SlotCount();
     }
 
-    std::uint32_t GetSlotSpell(int slot, Hand hand) {
-        return Config::MagicConfigAdapter::Get().GetSpell(slot, hand == Hand::Left);
+    std::uint32_t GetSlotSpell(int slot, Domain::Hand hand) {
+        return Config::MagicConfigAdapter::Get().GetSpell(slot, hand == Domain::Hand::Left);
     }
 
-    void SetSlotSpell(int slot, Hand hand, std::uint32_t spellFormID, bool saveNow) {
+    void SetSlotSpell(int slot, Domain::Hand hand, std::uint32_t spellFormID, bool saveNow) {
         auto& adapter = Config::MagicConfigAdapter::Get();
         if (!IsValidSlot(slot)) return;
 
-        adapter.SetSpell(slot, hand == Hand::Left, spellFormID);
+        adapter.SetSpell(slot, hand == Domain::Hand::Left, spellFormID);
 
         if (spellFormID != 0u) {
             auto const* form = RE::TESForm::LookupByID(spellFormID);
@@ -47,7 +47,7 @@ namespace IntegratedMagic::Slots {
 
         if (shoutFormID != 0u) {
             auto const* form = RE::TESForm::LookupByID(shoutFormID);
-            (void)SpellSettingsDB::Get().GetOrCreate(shoutFormID, form, &adapter);  // ← passa adapter
+            (void)SpellSettingsDB::Get().GetOrCreate(shoutFormID, form, &adapter);
         }
 
         if (saveNow) {

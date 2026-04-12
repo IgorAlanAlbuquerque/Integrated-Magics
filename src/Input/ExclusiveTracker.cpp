@@ -5,7 +5,6 @@
 #include "Input/HotkeyMatcher.h"
 #include "Input/ReplaySystem.h"
 #include "PCH.h"
-#include "State/State.h"
 
 namespace Input::detail {
 
@@ -174,11 +173,18 @@ namespace Input::detail {
 
                         return true;
                     }
+                    excl.pendingTimer[s] -= dt;
+                    if (excl.pendingTimer[s] <= 0.0f) {
+                        MAGIC_DEBUG_LOG(
+                            "[Input] ComputeAcceptedExclusive: slot={} single-key timer elapsed -> ACCEPTED (held)",
+                            slot);
+                        ClearExclusivePending(s, ClearReason::Success, excl, replay, retained, deferred);
+                        return true;
+                    }
                     return false;
                 }
             }
 
-            // nenhum pending — tentar iniciar novo
             if (!rawNow) return false;
 
             if (kbNow) {
@@ -218,7 +224,7 @@ namespace Input::detail {
             return false;
         }
 
-    }  // namespace
+    }
 
     void DiscardExclusivePending(std::size_t s, ExclusiveStore& excl, ReplayArr& replay, RetainedArr& retained,
                                  DeferredVec& deferred) {
@@ -274,7 +280,7 @@ namespace Input::detail {
     }
 
     void ClearEdgeStateOnly(SlotEdgeStore& slots, ExclusiveStore& excl, ReplayArr& replay, RetainedArr& retained,
-                            DeferredVec& deferred, KeyStateStore& keys) {
+                            DeferredVec& deferred) {
         MAGIC_DEBUG_LOG(
             "[Input] ClearEdgeStateOnly: clearing edge state without discarding pending or resetting replay state");
 
@@ -314,7 +320,7 @@ namespace Input::detail {
             if (!keepGp[idx]) keys.gpDown[idx].store(false, std::memory_order_relaxed);
         }
         keys.kbDown[static_cast<std::size_t>(kDIK_Escape)].store(false, std::memory_order_relaxed);
-        ClearEdgeStateOnly(slots, excl, replay, retained, deferred, keys);
+        ClearEdgeStateOnly(slots, excl, replay, retained, deferred);
     }
 
     void ResetExclusiveState(SlotEdgeStore& slots, ExclusiveStore& excl, ReplayArr& replay, RetainedArr& retained,
@@ -342,8 +348,9 @@ namespace Input::detail {
 
     void RecomputeSlotEdges(float dt, SlotEdgeStore& slots, ExclusiveStore& excl, const HotkeyCacheStore& cache,
                             const KeyStateStore& keys, const IntegratedMagic::Config::IPatchSettings& patches,
-                            ReplayArr& replay, RetainedArr& retained, DeferredVec& deferred) {
-        TickFilterWindows(dt, excl, slots, retained, deferred);  // ← sem controller
+                            ReplayArr& replay, RetainedArr& retained, DeferredVec& deferred, bool spellSystemActive,
+                            int activeSlot) {
+        TickFilterWindows(dt, excl, slots, retained, deferred);
 
         const int n = slots.ActiveSlots();
         for (int slot = 0; slot < n; ++slot) {
@@ -377,8 +384,7 @@ namespace Input::detail {
             if (accNow)
                 slots.slotWasAccepted[s] = true;
             else if (!rawNow) {
-                const auto& ms = IntegratedMagic::MagicState::Get();
-                if (!ms.IsActive() || ms.ActiveSlot() != slot) slots.slotWasAccepted[s] = false;
+                if (!spellSystemActive || activeSlot != slot) slots.slotWasAccepted[s] = false;
             }
         }
     }

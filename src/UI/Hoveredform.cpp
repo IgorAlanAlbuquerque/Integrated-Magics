@@ -1,8 +1,8 @@
 #include "HoveredForm.h"
 
+#include "Adapters/Inbound/EquipEventAdapter.h"
 #include "PCH.h"
-#include "State/EquipSink.h"
-#include "State/SpellClassify.h"
+#include "Domain/SpellClassify.h"
 
 namespace IntegratedMagic::HoveredForm {
     namespace {

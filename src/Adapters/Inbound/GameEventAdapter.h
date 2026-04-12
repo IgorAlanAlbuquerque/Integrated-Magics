@@ -1,13 +1,13 @@
 #pragma once
+#include "Application/SpellSystemController.h"
 #include "PCH.h"
-#include "State.h"
 
 class CastGuardEvents : public RE::BSTEventSink<RE::TESDeathEvent>,
                         public RE::BSTEventSink<RE::TESLoadGameEvent>,
                         public RE::BSTEventSink<RE::MenuOpenCloseEvent> {
 public:
     static CastGuardEvents& Get() {
-        static CastGuardEvents instance;
+        static CastGuardEvents instance;  // NOSONAR
         return instance;
     }
 
@@ -16,41 +16,26 @@ public:
         if (!holder) return;
         holder->AddEventSink<RE::TESDeathEvent>(this);
         holder->AddEventSink<RE::TESLoadGameEvent>(this);
-
-        if (auto* ui = RE::UI::GetSingleton()) {
-            ui->AddEventSink<RE::MenuOpenCloseEvent>(this);
-        }
+        if (auto* ui = RE::UI::GetSingleton()) ui->AddEventSink<RE::MenuOpenCloseEvent>(this);
     }
 
 protected:
     RE::BSEventNotifyControl ProcessEvent(const RE::TESDeathEvent* ev,
                                           RE::BSTEventSource<RE::TESDeathEvent>*) override {
-        auto* pc = RE::PlayerCharacter::GetSingleton();
-        if (ev && ev->actorDying && ev->actorDying.get() == pc) {
-            IntegratedMagic::MagicState::Get().ForceExit();
-        }
+        if (auto const* pc = RE::PlayerCharacter::GetSingleton(); ev && ev->actorDying && ev->actorDying.get() == pc)
+            Application::SpellSystemController::Get().NotifyPlayerDeath();
         return RE::BSEventNotifyControl::kContinue;
     }
 
     RE::BSEventNotifyControl ProcessEvent(const RE::TESLoadGameEvent*,
                                           RE::BSTEventSource<RE::TESLoadGameEvent>*) override {
-        IntegratedMagic::MagicState::Get().ForceExit();
+        Application::SpellSystemController::Get().NotifyLoadGame();
         return RE::BSEventNotifyControl::kContinue;
     }
 
     RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* ev,
                                           RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override {
-        static constexpr std::array kInterruptMenus = {
-            "ContainerMenu"sv, "InventoryMenu"sv, "MagicMenu"sv, "MapMenu"sv, "Journal Menu"sv, "Dialogue Menu"sv,
-        };
-        if (ev && ev->opening) {
-            for (auto m : kInterruptMenus) {
-                if (ev->menuName == m) {
-                    IntegratedMagic::MagicState::Get().ForceExit();
-                    break;
-                }
-            }
-        }
+        if (ev && ev->opening) Application::SpellSystemController::Get().NotifyMenuOpen(ev->menuName.c_str());
         return RE::BSEventNotifyControl::kContinue;
     }
 };

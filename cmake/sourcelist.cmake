@@ -20,19 +20,21 @@ set(sources
     src/Input/HudToggle.cpp
     src/Input/ReplaySystem.cpp
     src/Input/PhysicalReconciler.cpp
-    src/State/Action.cpp
-    src/State/AnimListener.cpp
-    src/State/InventoryUtil.cpp
-    src/State/SyntheticInput.cpp
-    src/State/MagicStateLifecycle.cpp
-    src/State/MagicStatePump.cpp
-    src/State/MagicStateSlot.cpp
-    src/State/Assign.cpp
-    src/State/EquipSink.cpp
-    src/State/SlotCostUtil.cpp
+    src/Domain/InventoryUtil.cpp
+    src/Domain/MagicStateLifecycle.cpp
+    src/Domain/MagicStatePump.cpp
+    src/Domain/MagicStateSlot.cpp
+    src/Domain/SlotCostUtil.cpp
     src/Application/InputController.cpp
     src/Application/HudController.cpp
+    src/Application/AssignService.cpp
+    src/Application/SpellSystemController.cpp
     src/Adapters/Inbound/SpellTypeDetector.cpp
+    src/Adapters/Inbound/AnimEventAdapter.cpp
+    src/Adapters/Inbound/EquipEventAdapter.cpp
+    src/Adapters/Outbound/SyntheticInput.cpp
+    src/Adapters/Outbound/MagicEquip.cpp
+    src/Adapters/Outbound/RestoreEquip.cpp
     src/Detours/detours.cpp
     src/Detours/disasm.cpp
     src/Detours/disolx64.cpp

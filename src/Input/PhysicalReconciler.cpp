@@ -5,12 +5,11 @@
 #include "Config/InputConstants.h"
 #include "Input/ExclusiveTracker.h"
 #include "PCH.h"
-#include "State/State.h"
 
 namespace Input::detail {
 
     void ReconcilePhysicalKeyState(KeyStateStore& keys, SlotEdgeStore& slots, ExclusiveStore& excl, ReplayArr& replay,
-                                   RetainedArr& retained, DeferredVec& deferred) {
+                                   RetainedArr& retained, DeferredVec& deferred, bool spellSystemActive) {
         static std::uint64_t s_nextRunMs = 0;
         const auto now = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
@@ -18,7 +17,7 @@ namespace Input::detail {
         if (now < s_nextRunMs) return;
         s_nextRunMs = now + 200;
 
-        if (IntegratedMagic::MagicState::Get().IsActive()) return;
+        if (spellSystemActive) return;
         const int n = slots.ActiveSlots();
         for (int i = 0; i < n; ++i)
             if (HasExclusivePending(static_cast<std::size_t>(i), excl)) return;
@@ -93,7 +92,7 @@ namespace Input::detail {
         if (clearedAny) {
             MAGIC_DEBUG_LOG("[Input] ReconcilePhysicalKeyState: cleared stuck keys");
 
-            ClearEdgeStateOnly(slots, excl, replay, retained, deferred, keys);
+            ClearEdgeStateOnly(slots, excl, replay, retained, deferred);
         }
     }
 

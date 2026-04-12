@@ -3,17 +3,14 @@
 #include <vector>
 
 #include "Config/SpellType.h"
-#include "InventoryUtil.h"
+#include "Domain/Hand.h"
+#include "Domain/InventoryUtil.h"
+#include "Domain/OutboundDelegate.h"
+#include "Domain/SpellSettings.h"
 #include "PCH.h"
-#include "Persistence/Slots.h"
-#include "Persistence/SpellSettingsDB.h"
-#include "SyntheticInput.h"
 
 namespace IntegratedMagic {
-    enum class SlotPressResult {
-        None,
-        Deactivated  // ← indica que o slot foi desativado nesse press
-    };
+    enum class SlotPressResult { None, Deactivated };
     struct SpellSettings;
 
     struct HandSnapshot {
@@ -87,8 +84,8 @@ namespace IntegratedMagic {
         float secsLeft{0.f};
         float secsRight{0.f};
 
-        bool& Held(Slots::Hand h) noexcept { return h == Slots::Hand::Left ? heldLeft : heldRight; }
-        float& Secs(Slots::Hand h) noexcept { return h == Slots::Hand::Left ? secsLeft : secsRight; }
+        bool& Held(Domain::Hand h) noexcept { return h == Domain::Hand::Left ? heldLeft : heldRight; }
+        float& Secs(Domain::Hand h) noexcept { return h == Domain::Hand::Left ? secsLeft : secsRight; }
 
         void Reset() { *this = {}; }
     };
@@ -119,7 +116,7 @@ namespace IntegratedMagic {
         [[nodiscard]] SlotPressResult OnSlotPressed(int slot);
         void OnSlotReleased(int slot);
 
-        void OnBeginCast(Slots::Hand hand);
+        void OnBeginCast(Domain::Hand hand);
         void OnCastStop();
         void OnCastInterrupt();
         void OnShoutStop();
@@ -131,8 +128,8 @@ namespace IntegratedMagic {
         void PumpAutoAttack(float dt);
         void TryFinalizeExit();
 
-        void StartAutoAttack(Slots::Hand hand);
-        void StopAutoAttack(Slots::Hand hand);
+        void StartAutoAttack(Domain::Hand hand);
+        void StopAutoAttack(Domain::Hand hand);
         void StopAllAutoAttack();
 
         bool IsActive() const noexcept { return _session.active; }
@@ -145,11 +142,12 @@ namespace IntegratedMagic {
         }
         bool IsPressMode() const noexcept { return _left.pressActive || _right.pressActive; }
         void NotifySheatheComplete() noexcept { _restore.sheatheAnimComplete = true; }
-        void OnSpellFired(Slots::Hand hand);
+        void OnSpellFired(Domain::Hand hand);
         const HandMode& LeftMode() const noexcept { return _left; }
         const HandMode& RightMode() const noexcept { return _right; }
         bool IsInSlotSetup() const noexcept { return _inSlotSetup; }
         [[nodiscard]] bool IsShoutActive() const noexcept { return _shout.modeShoutID != 0; }
+        void SetOutboundDelegate(const Domain::OutboundDelegate& delegate);
 
     private:
         MagicState() = default;
@@ -200,17 +198,17 @@ namespace IntegratedMagic {
             _session.activeSlot = -1;
         }
 
-        DelayedStart& DelayFor(Slots::Hand hand) noexcept {
-            return hand == Slots::Hand::Left ? _delayStartLeft : _delayStartRight;
+        DelayedStart& DelayFor(Domain::Hand hand) noexcept {
+            return hand == Domain::Hand::Left ? _delayStartLeft : _delayStartRight;
         }
 
-        void ScheduleDelayedStart(Slots::Hand hand) {
+        void ScheduleDelayedStart(Domain::Hand hand) {
             auto& d = DelayFor(hand);
             d.pending = true;
             d.secs = 0.f;
         }
 
-        void CancelDelayedStart(Slots::Hand hand) {
+        void CancelDelayedStart(Domain::Hand hand) {
             auto& d = DelayFor(hand);
             d.pending = false;
             d.secs = 0.f;
@@ -223,12 +221,14 @@ namespace IntegratedMagic {
 
         static RE::PlayerCharacter* GetPlayer() { return RE::PlayerCharacter::GetSingleton(); }
 
-        HandMode& ModeFor(Slots::Hand hand) noexcept { return hand == Slots::Hand::Left ? _left : _right; }
-        const HandMode& ModeFor(Slots::Hand hand) const noexcept { return hand == Slots::Hand::Left ? _left : _right; }
+        HandMode& ModeFor(Domain::Hand hand) noexcept { return hand == Domain::Hand::Left ? _left : _right; }
+        const HandMode& ModeFor(Domain::Hand hand) const noexcept {
+            return hand == Domain::Hand::Left ? _left : _right;
+        }
 
-        static bool IsLeft(Slots::Hand h) noexcept { return h == Slots::Hand::Left; }
+        static bool IsLeft(Domain::Hand h) noexcept { return h == Domain::Hand::Left; }
 
-        void MarkDirty(Slots::Hand h) {
+        void MarkDirty(Domain::Hand h) {
             if (IsLeft(h))
                 _restore.dirtyLeft = true;
             else
@@ -239,25 +239,25 @@ namespace IntegratedMagic {
         void CaptureSnapshot(RE::PlayerCharacter const* player);
         void RestoreSnapshot(RE::PlayerCharacter* player);
 
-        bool HandIsRelevant(Slots::Hand h) const;
+        bool HandIsRelevant(Domain::Hand h) const;
         bool AllRelevantHandsFinished() const;
         bool CanOverwriteNow() const;
         bool ShouldForceInterrupt() const;
 
         void ExitAllNow();
         void PrepareForOverwriteToSlot(int newSlot);
-        void DisableHand(Slots::Hand hand);
+        void DisableHand(Domain::Hand hand);
 
         bool PrepareSlotEntry(int slot, SlotEntry& out);
-        void EnterHand(Slots::Hand hand, const SpellSettings& ss);
-        void TogglePressHand(Slots::Hand hand, const SpellSettings& ss);
-        void FinishHand(Slots::Hand hand);
-        void SetModeSpellsFromHand(Slots::Hand hand, RE::SpellItem* spell);
+        void EnterHand(Domain::Hand hand, const SpellSettings& ss);
+        void TogglePressHand(Domain::Hand hand, const SpellSettings& ss);
+        void FinishHand(Domain::Hand hand);
+        void SetModeSpellsFromHand(Domain::Hand hand, RE::SpellItem* spell);
 
         void PumpDelayedStarts(float dt);
-        void PumpAutomaticHand(Slots::Hand hand);
-        void PumpAutoStartFallback(Slots::Hand hand, float dt);
-        void ScheduleSpellFireFinalize(Slots::Hand hand);
+        void PumpAutomaticHand(Domain::Hand hand);
+        void PumpAutoStartFallback(Domain::Hand hand, float dt);
+        void ScheduleSpellFireFinalize(Domain::Hand hand);
         void PumpSpellFireFinalize(float dt);
 
         void StartShoutPress();
@@ -277,6 +277,7 @@ namespace IntegratedMagic {
         ShoutState _shout{};
         CastFlags _cast{};
         bool _inSlotSetup{false};
+        Domain::OutboundDelegate _outbound{};
 
         static constexpr float kDelayedStartSec = 0.050f;
         static constexpr float kMaxActiveTimeoutSecs = 30.f;

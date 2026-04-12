@@ -1,25 +1,25 @@
 #include <utility>
 
 #include "Config/ConfigAdapter.h"
-#include "InventoryUtil.h"
+#include "Domain/Hand.h"
+#include "Domain/InventoryUtil.h"
+#include "Domain/SlotCostUtil.h"
+#include "Domain/SpellClassify.h"
+#include "Domain/State.h"
 #include "PCH.h"
 #include "Persistence/Slots.h"
 #include "Persistence/SpellSettingsDB.h"
-#include "State.h"
-#include "State/Action.h"
-#include "State/SlotCostUtil.h"
-#include "State/SpellClassify.h"
 
 namespace IntegratedMagic {
 
-    void MagicState::SetModeSpellsFromHand(Slots::Hand hand, RE::SpellItem* spell) {
+    void MagicState::SetModeSpellsFromHand(Domain::Hand hand, RE::SpellItem* spell) {
         if (IsLeft(hand))
             _session.modeSpellLeft = spell;
         else
             _session.modeSpellRight = spell;
     }
 
-    void MagicState::DisableHand(Slots::Hand hand) {
+    void MagicState::DisableHand(Domain::Hand hand) {
         MAGIC_DEBUG_LOG("[State] DisableHand: hand={}", IsLeft(hand) ? "Left" : "Right");
 
         StopAutoAttack(hand);
@@ -28,7 +28,7 @@ namespace IntegratedMagic {
         SetModeSpellsFromHand(hand, nullptr);
     }
 
-    void MagicState::FinishHand(Slots::Hand hand) {
+    void MagicState::FinishHand(Domain::Hand hand) {
         MAGIC_DEBUG_LOG("[State] FinishHand: hand={}", IsLeft(hand) ? "Left" : "Right");
 
         auto& hm = ModeFor(hand);
@@ -46,7 +46,7 @@ namespace IntegratedMagic {
         CancelDelayedStart(hand);
     }
 
-    void MagicState::TogglePressHand(Slots::Hand hand, const SpellSettings& ss) {
+    void MagicState::TogglePressHand(Domain::Hand hand, const SpellSettings& ss) {
         auto& hm = ModeFor(hand);
         hm.mode = ss.mode;
         hm.wantAutoAttack = ss.autoAttack;
@@ -54,7 +54,7 @@ namespace IntegratedMagic {
         if (!hm.pressActive) FinishHand(hand);
     }
 
-    void MagicState::EnterHand(Slots::Hand hand, const SpellSettings& ss) {
+    void MagicState::EnterHand(Domain::Hand hand, const SpellSettings& ss) {
         using enum ActivationMode;
         auto& hm = ModeFor(hand);
         hm = {};
@@ -155,7 +155,7 @@ namespace IntegratedMagic {
             return true;
         }
 
-        using enum Slots::Hand;
+        using enum Domain::Hand;
         out.rightID = Slots::GetSlotSpell(slot, Right);
         out.leftID = Slots::GetSlotSpell(slot, Left);
         out.rightSpell = out.rightID ? RE::TESForm::LookupByID<RE::SpellItem>(out.rightID) : nullptr;
@@ -191,7 +191,7 @@ namespace IntegratedMagic {
 
         _shout.held = true;
         _shout.heldSecs = 0.f;
-        detail::DispatchShout(1.0f, 0.0f);
+        if (_outbound.dispatchShout) _outbound.dispatchShout(1.0f, 0.0f);
     }
 
     void MagicState::StopShoutPress() {
@@ -200,7 +200,7 @@ namespace IntegratedMagic {
 
         if (!_shout.held) return;
         const float held = (_shout.heldSecs > 0.f) ? _shout.heldSecs : 0.1f;
-        detail::DispatchShout(0.0f, held);
+        if (_outbound.dispatchShout) _outbound.dispatchShout(0.0f, held);
         _shout.held = false;
         _shout.heldSecs = 0.f;
     }
@@ -209,7 +209,7 @@ namespace IntegratedMagic {
         MAGIC_DEBUG_LOG("[State] OnSlotPressed: slot={} active={} activeSlot={} modeShoutID={:#010x}", slot,
                         _session.active, _session.activeSlot, _shout.modeShoutID);
 
-        using enum Slots::Hand;
+        using enum Domain::Hand;
         using enum ActivationMode;
 
         if (Slots::IsShoutSlot(slot)) {
@@ -244,7 +244,7 @@ namespace IntegratedMagic {
             MAGIC_DEBUG_LOG("[State] OnSlotPressed: EquipShoutInVoice shoutID={:#010x} isPower={} mode={}", e.shoutID,
                             _shout.isPower, static_cast<int>(std::to_underlying(e.shoutSettings.mode)));
 
-            MagicAction::EquipShoutInVoice(e.player, e.shoutForm);
+            if (_outbound.equipShoutInVoice) _outbound.equipShoutInVoice(e.shoutForm);
             _restore.dirtyShout = true;
 
             MAGIC_DEBUG_LOG("[State] OnSlotPressed: calling StartShoutPress (mode={})",
@@ -269,12 +269,12 @@ namespace IntegratedMagic {
                 FinishHand(Left);
                 FinishHand(Right);
                 ExitAllNow();
-                return SlotPressResult::Deactivated;  // ← retorna em vez de chamar controller
+                return SlotPressResult::Deactivated;
             }
             if (pressL) FinishHand(Left);
             if (pressR) FinishHand(Right);
             TryFinalizeExit();
-            return SlotPressResult::Deactivated;  // ← idem
+            return SlotPressResult::Deactivated;
         }
 
         if (_session.active && slot != _session.activeSlot) {
@@ -314,11 +314,11 @@ namespace IntegratedMagic {
         _inSlotSetup = true;
         UpdatePrevExtraEquippedForOverlay([this, player, &e] {
             if (e.hasRight) {
-                MagicAction::EquipSpellInHand(player, e.rightSpell, Right);
+                if (_outbound.equipSpellInHand) _outbound.equipSpellInHand(e.rightSpell, Right);
                 MarkDirty(Right);
             }
             if (e.hasLeft) {
-                MagicAction::EquipSpellInHand(player, e.leftSpell, Left);
+                if (_outbound.equipSpellInHand) _outbound.equipSpellInHand(e.leftSpell, Left);
                 MarkDirty(Left);
                 if (!e.hasRight && SpellClassify::IsTwoHandedSpell(e.leftSpell)) {
                     MarkDirty(Right);
@@ -372,22 +372,20 @@ namespace IntegratedMagic {
             return;
         }
 
-        using enum Slots::Hand;
-        auto handleHoldRelease = [&](Slots::Hand hand) {
+        using enum Domain::Hand;
+        auto handleHoldRelease = [&](Domain::Hand hand) {
             auto& hm = ModeFor(hand);
             if (!hm.holdActive) return;
             hm.holdActive = false;
-
             const auto id = Slots::GetSlotSpell(_session.activeSlot, hand);
             const auto* spell = id ? RE::TESForm::LookupByID<RE::SpellItem>(id) : nullptr;
             if (!spell || spell->GetChargeTime() <= 0.f) {
                 FinishHand(hand);
                 return;
             }
-
             const auto src =
                 IsLeft(hand) ? RE::MagicSystem::CastingSource::kLeftHand : RE::MagicSystem::CastingSource::kRightHand;
-            if (auto const* caster = MagicAction::GetCaster(GetPlayer(), src); !IsChargeComplete(caster, spell)) {
+            if (auto const* caster = GetMagicCaster(GetPlayer(), src); !IsChargeComplete(caster, spell)) {
                 FinishHand(hand);
                 return;
             }
@@ -395,7 +393,6 @@ namespace IntegratedMagic {
                 FinishHand(hand);
                 return;
             }
-
             StopAutoAttack(hand);
             hm.holdFiredAndWaitingCastStop = true;
         };

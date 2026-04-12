@@ -9,6 +9,6 @@
 namespace Input::detail {
 
     void ReconcilePhysicalKeyState(KeyStateStore& keys, SlotEdgeStore& slots, ExclusiveStore& excl, ReplayArr& replay,
-                                   RetainedArr& retained, DeferredVec& deferred);
+                                   RetainedArr& retained, DeferredVec& deferred, bool spellSystemActive);
 
 }

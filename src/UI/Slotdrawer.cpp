@@ -9,11 +9,12 @@
 #include "Application/HudController.h"
 #include "Config/ConfigAdapter.h"
 #include "Config/StyleConfig.h"
+#include "Domain/Hand.h"
 #include "PCH.h"
 #include "Persistence/Slots.h"
-#include "State/SlotCostUtil.h"
-#include "State/SpellClassify.h"
-#include "State/State.h"
+#include "Domain/SlotCostUtil.h"
+#include "Domain/SpellClassify.h"
+#include "Domain/State.h"
 #include "UI/HudState.h"
 #include "UI/HudTextUtil.h"
 #include "UI/PolyFill.h"
@@ -804,8 +805,8 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         auto DrawSlot = [&](int i, bool active) {
             const ImVec2 center = ScaledCenter(i);
             const float slotR = st.slotRadius * SlotAnimator::GetScale(i) * GetManaPulseScale(i);
-            const auto rID = Slots::GetSlotSpell(i, Slots::Hand::Right);
-            const auto lID = Slots::GetSlotSpell(i, Slots::Hand::Left);
+            const auto rID = Slots::GetSlotSpell(i, Domain::Hand::Right);
+            const auto lID = Slots::GetSlotSpell(i, Domain::Hand::Left);
             const auto shID = Slots::GetSlotShout(i);
             auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
             auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;

@@ -1,7 +1,7 @@
 #pragma once
 
+#include "Domain/Hand.h"
 #include "PCH.h"
-#include "Persistence/Slots.h"
 
 namespace IntegratedMagic::detail {
     constexpr std::uint32_t kRightAttackMouseId = 0;
@@ -17,7 +17,7 @@ namespace IntegratedMagic::detail {
 
     RE::InputEvent* FlushSyntheticInput(RE::InputEvent* head);
 
-    void DispatchAttack(Slots::Hand hand, float value, float heldSecs);
+    void DispatchAttack(Domain::Hand hand, float value, float heldSecs);
     void DispatchShout(float value, float heldSecs);
 
 }

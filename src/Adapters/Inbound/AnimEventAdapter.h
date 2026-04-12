@@ -7,5 +7,5 @@ namespace RE {
 }
 
 namespace AnimListener {
-    void HandleAnimEvent(const RE::BSAnimationGraphEvent* ev, RE::BSTEventSource<RE::BSAnimationGraphEvent>* src);
+    void HandleAnimEvent(const RE::BSAnimationGraphEvent* ev);
 }

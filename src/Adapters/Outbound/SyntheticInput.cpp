@@ -3,6 +3,7 @@
 #include <mutex>
 #include <queue>
 
+#include "Domain/Hand.h"
 #include "PCH.h"
 
 namespace IntegratedMagic::detail {
@@ -19,12 +20,12 @@ namespace IntegratedMagic::detail {
     };
 
     static SyntheticInputState& GetSynth() {
-        static SyntheticInputState s;
+        static SyntheticInputState s;  // NOSONAR
         return s;
     }
 
     static SyntheticInputState& GetRetain() {
-        static SyntheticInputState s;
+        static SyntheticInputState s;  // NOSONAR
         return s;
     }
 
@@ -83,8 +84,8 @@ namespace IntegratedMagic::detail {
         return head;
     }
 
-    void DispatchAttack(Slots::Hand hand, float value, float heldSecs) {
-        const bool left = (hand == Slots::Hand::Left);
+    void DispatchAttack(Domain::Hand hand, float value, float heldSecs) {
+        const bool left = (hand == Domain::Hand::Left);
         EnqueueSyntheticAttack(MakeAttackButtonEvent(left, value, heldSecs));
     }
 

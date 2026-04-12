@@ -1,7 +1,5 @@
 #include "SpellTypeDetector.h"
 
-#include "Config/SpellType.h"
-
 IntegratedMagic::SpellType IntegratedMagic::Adapters::DetectSpellType(const RE::TESForm* form) {
     if (!form) return SpellType::Unknown;
 
