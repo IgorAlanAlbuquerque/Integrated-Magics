@@ -1,13 +1,13 @@
 #pragma once
 
-#include "Domain/Hand.h"
 #include "PCH.h"
+#include "Shared/Hand.h"
 
 namespace IntegratedMagic::MagicAssign {
 
-    bool TryAssignHoveredSpellToSlot(int slot, Domain::Hand hand);
+    bool TryAssignHoveredSpellToSlot(int slot, Hand hand);
     bool TryAssignHoveredShoutToSlot(int slot);
-    bool TryClearSlotHand(int slot, Domain::Hand hand);
+    bool TryClearSlotHand(int slot, Hand hand);
     bool TryClearSlotShout(int slot);
 
 }

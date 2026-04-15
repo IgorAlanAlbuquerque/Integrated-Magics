@@ -1,6 +1,6 @@
 #pragma once
-#include "Domain/Hand.h"
 #include "PCH.h"
+#include "Shared/Hand.h"
 
 namespace Application {
 

@@ -7,7 +7,7 @@
 #include "Application/AssignService.h"
 #include "Application/SpellSystemController.h"
 #include "Config/ConfigAdapter.h"
-#include "Domain/Hand.h"
+#include "Domain/State.h"
 #include "Input/ExclusiveTracker.h"
 #include "Input/HotkeyMatcher.h"
 #include "Input/HudToggle.h"
@@ -15,7 +15,7 @@
 #include "Input/PhysicalReconciler.h"
 #include "Input/ReplaySystem.h"
 #include "PCH.h"
-#include "Domain/State.h"
+#include "Shared/Hand.h"
 #include "UI/HoveredForm.h"
 
 namespace Application {

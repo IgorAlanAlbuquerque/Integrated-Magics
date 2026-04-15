@@ -6,8 +6,8 @@
 #include <filesystem>
 #include <utility>
 
-#include "Config/SpellType.h"
 #include "Config/Limits.h"
+#include "Shared/SpellType.h"
 
 namespace IntegratedMagic {
 

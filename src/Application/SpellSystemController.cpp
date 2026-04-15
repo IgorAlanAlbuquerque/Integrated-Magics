@@ -7,11 +7,13 @@
 #include "Application/AssignService.h"
 #include "Application/InputController.h"
 #include "Config/ConfigAdapter.h"
-#include "Domain/Hand.h"
+#include "Domain/State.h"
 #include "Input/HotkeyMatcher.h"
 #include "PCH.h"
 #include "Persistence/Slots.h"
-#include "Domain/State.h"
+#include "Shared/Hand.h"
+#include "Shared/SlotPressAction.h"
+#include "Shared/SlotPressResult.h"
 #include "UI/HoveredForm.h"
 
 namespace Application {
@@ -37,12 +39,19 @@ namespace Application {
     void SpellSystemController::DispatchSlotEvents() const {
         auto& input = InputController::Get();
         auto& state = IntegratedMagic::MagicState::Get();
+        auto* player = RE::PlayerCharacter::GetSingleton();
 
         for (auto s = input.ConsumePressedSlot(); s.has_value(); s = input.ConsumePressedSlot()) {
             if (!RE::PlayerCharacter::GetSingleton()) continue;
             MAGIC_DEBUG_LOG("[SpellSystem] HandleSlotPressed: slot={}", *s);
-            const auto result = state.OnSlotPressed(*s);
-            if (result == IntegratedMagic::SlotPressResult::Deactivated) input.SetSlotDeactivatedThisPress(*s);
+            auto action = state.OnSlotPressed(*s);
+            if (action.result == IntegratedMagic::SlotPressResult::Deactivated) input.SetSlotDeactivatedThisPress(*s);
+            for (auto& intent : action.spellsToEquip)
+                IntegratedMagic::MagicAction::EquipSpellInHand(player, intent.spell, intent.hand, action.skipAnim);
+            if (action.shoutToEquip) IntegratedMagic::MagicAction::EquipShoutInVoice(player, action.shoutToEquip);
+            if (action.startShoutDispatch) IntegratedMagic::detail::DispatchShout(1.0f, 0.0f);
+
+            if (!action.spellsToEquip.empty()) state.OnEquipComplete(action.inventorySnapshotBefore);
         }
 
         for (auto s = input.ConsumeReleasedSlot(); s.has_value(); s = input.ConsumeReleasedSlot()) {
@@ -52,10 +61,18 @@ namespace Application {
     }
 
     void SpellSystemController::NotifyAnimEvent(std::string_view tag) const {
-        using enum IntegratedMagic::Domain::Hand;
+        using enum IntegratedMagic::Hand;
         auto& state = IntegratedMagic::MagicState::Get();
 
-        if (tag == "EnableBumper"sv) state.NotifyAttackEnabled();
+        if (tag == "EnableBumper"sv) {
+            const auto r = state.NotifyAttackEnabled();
+
+            if (auto* p = RE::PlayerCharacter::GetSingleton())
+                IntegratedMagic::MagicAction::DisableSkipEquipVarsNow(p);
+
+            if (r.dispatchLeft) IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 1.0f, 0.0f);
+            if (r.dispatchRight) IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Right, 1.0f, 0.0f);
+        }
         if (tag == "CastStop"sv || tag == "RitualSpellOut"sv) state.OnCastStop();
         if (tag == "InterruptCast"sv) state.OnCastInterrupt();
         if (tag == "BeginCastRight"sv) state.OnBeginCast(Right);
@@ -110,9 +127,9 @@ namespace Application {
             if (type == Shout || type == Power)
                 IntegratedMagic::MagicAssign::TryAssignHoveredShoutToSlot(slot);
             else if (type == RightOnlySpell)
-                IntegratedMagic::MagicAssign::TryAssignHoveredSpellToSlot(slot, IntegratedMagic::Domain::Hand::Right);
+                IntegratedMagic::MagicAssign::TryAssignHoveredSpellToSlot(slot, IntegratedMagic::Hand::Right);
             else
-                IntegratedMagic::MagicAssign::TryAssignHoveredSpellToSlot(slot, IntegratedMagic::Domain::Hand::Left);
+                IntegratedMagic::MagicAssign::TryAssignHoveredSpellToSlot(slot, IntegratedMagic::Hand::Left);
             break;
         }
     }
@@ -120,29 +137,28 @@ namespace Application {
     void SpellSystemController::Initialize() {
         IntegratedMagic::Domain::OutboundDelegate d;
 
-        d.dispatchAttack = [](IntegratedMagic::Domain::Hand hand, float value, float heldSecs) {
+        d.dispatchAttack = [](IntegratedMagic::Hand hand, float value, float heldSecs) {
             IntegratedMagic::detail::DispatchAttack(hand, value, heldSecs);
         };
         d.dispatchShout = [](float value, float heldSecs) { IntegratedMagic::detail::DispatchShout(value, heldSecs); };
         d.disableSkipEquipVarsNow = []() {
-            const bool skip = IntegratedMagic::Config::MagicConfigAdapter::Get().SkipEquipAnimation();
             if (auto* p = RE::PlayerCharacter::GetSingleton())
-                IntegratedMagic::MagicAction::DisableSkipEquipVarsNow(p, skip);
+                IntegratedMagic::MagicAction::DisableSkipEquipVarsNow(p);
         };
         d.applySkipEquipAnimReturn = []() {
             const bool skip = IntegratedMagic::Config::MagicConfigAdapter::Get().SkipEquipAnimationOnReturn();
             if (auto* p = RE::PlayerCharacter::GetSingleton())
                 IntegratedMagic::MagicAction::ApplySkipEquipAnimReturn(p, skip);
         };
-        d.equipSpellInHand = [](RE::SpellItem* spell, IntegratedMagic::Domain::Hand hand) {
+        d.equipSpellInHand = [](RE::SpellItem* spell, IntegratedMagic::Hand hand) {
             const bool skip = IntegratedMagic::Config::MagicConfigAdapter::Get().SkipEquipAnimation();
             if (auto* p = RE::PlayerCharacter::GetSingleton())
                 IntegratedMagic::MagicAction::EquipSpellInHand(p, spell, hand, skip);
         };
-        d.clearHandSpell = [](IntegratedMagic::Domain::Hand hand) {
+        d.clearHandSpell = [](IntegratedMagic::Hand hand) {
             if (auto* p = RE::PlayerCharacter::GetSingleton()) IntegratedMagic::MagicAction::ClearHandSpell(p, hand);
         };
-        d.clearHandSpellByRef = [](RE::SpellItem* spell, IntegratedMagic::Domain::Hand hand) {
+        d.clearHandSpellByRef = [](RE::SpellItem* spell, IntegratedMagic::Hand hand) {
             if (auto* p = RE::PlayerCharacter::GetSingleton())
                 IntegratedMagic::MagicAction::ClearHandSpell(p, spell, hand);
         };
@@ -159,7 +175,7 @@ namespace Application {
             auto idx = IntegratedMagic::BuildInventoryIndex(player);
             IntegratedMagic::Outbound::ReequipPrevExtraEquipped(player, mgr, idx, items);
         };
-        d.getHandEquipSlot = [](IntegratedMagic::Domain::Hand hand) {
+        d.getHandEquipSlot = [](IntegratedMagic::Hand hand) {
             return IntegratedMagic::EquipUtil::GetHandEquipSlot(hand);
         };
         d.restoreOneHand = [](bool leftHand, const IntegratedMagic::InventoryIndex& idx,

@@ -1,10 +1,11 @@
 #include <utility>
 
-#include "Domain/Hand.h"
+#include "Adapters/Outbound/MagicEquip.h"
 #include "Domain/InventoryUtil.h"
 #include "Domain/State.h"
 #include "PCH.h"
 #include "Persistence/SpellSettingsDB.h"
+#include "Shared/Hand.h"
 
 namespace IntegratedMagic {
     namespace {
@@ -27,7 +28,7 @@ namespace IntegratedMagic {
 
         inline RE::SpellItem* AsSpell(RE::MagicItem* m) { return m ? m->As<RE::SpellItem>() : nullptr; }
 
-        void ClearHandSpellIfNoSnapshot(RE::SpellItem const* snapSpell, RE::SpellItem* modeSpell, Domain::Hand hand,
+        void ClearHandSpellIfNoSnapshot(RE::SpellItem const* snapSpell, RE::SpellItem* modeSpell, Hand hand,
                                         const Domain::OutboundDelegate& outbound) {
             if (snapSpell) return;
             if (modeSpell) {
@@ -37,7 +38,7 @@ namespace IntegratedMagic {
             }
         }
 
-        void EquipSpellIfPresent(RE::SpellItem* spell, Domain::Hand hand, const Domain::OutboundDelegate& outbound) {
+        void EquipSpellIfPresent(RE::SpellItem* spell, Hand hand, const Domain::OutboundDelegate& outbound) {
             if (spell && outbound.equipSpellInHand) outbound.equipSpellInHand(spell, hand);
         }
     }
@@ -68,6 +69,7 @@ namespace IntegratedMagic {
                         _session.wasHandsDown, static_cast<int>(std::to_underlying(ws)));
 
         if (_session.wasHandsDown && raiseHandsIfSheathed) {
+            MagicAction::SetSkipEquipVars(pc, true);
             pc->DrawWeaponMagicHands(true);
         }
 
@@ -131,7 +133,7 @@ namespace IntegratedMagic {
     }
 
     void MagicState::RestoreSnapshot(RE::PlayerCharacter* player) {
-        using enum Domain::Hand;
+        using enum Hand;
         if (!player || !_restore.snapshot.valid) return;
 
         auto* mgr = RE::ActorEquipManager::GetSingleton();
@@ -189,13 +191,13 @@ namespace IntegratedMagic {
         MAGIC_DEBUG_LOG("[State] RestoreSnapshot: done");
     }
 
-    bool MagicState::HandIsRelevant(Domain::Hand h) const {
+    bool MagicState::HandIsRelevant(Hand h) const {
         if (_shout.modeShoutID != 0) return false;
         return IsLeft(h) ? (_session.modeSpellLeft != nullptr) : (_session.modeSpellRight != nullptr);
     }
 
     bool MagicState::AllRelevantHandsFinished() const {
-        using enum Domain::Hand;
+        using enum Hand;
         if (_shout.modeShoutID != 0) return _shout.finished;
         const bool needL = HandIsRelevant(Left);
         const bool needR = HandIsRelevant(Right);
@@ -210,7 +212,7 @@ namespace IntegratedMagic {
             const auto settings = SpellSettingsDB::Get().Get(_shout.modeShoutID);
             return settings && settings->mode == Press;
         }
-        using enum Domain::Hand;
+        using enum Hand;
         const bool needL = (_session.modeSpellLeft != nullptr);
         const bool needR = (_session.modeSpellRight != nullptr);
         if (!needL && !needR) return false;
@@ -279,8 +281,34 @@ namespace IntegratedMagic {
 
             _restore.pendingPowerRestore = true;
             _restore.pendingPowerRestoreDelaySecs = RestoreContext::kPowerRestoreDelaySec;
-            StopAllAutoAttack();
-            StopShoutPress();
+            using enum Hand;
+            if (_aa.Held(Left)) {
+                const float held = (_aa.Secs(Left) > 0.f) ? _aa.Secs(Left) : 0.1f;
+
+                MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(Left) ? "Left" : "Right",
+                                held);
+
+                if (_outbound.dispatchAttack) _outbound.dispatchAttack(Left, 0.0f, held);
+                _aa.Held(Left) = false;
+                _aa.Secs(Left) = 0.f;
+            }
+
+            if (_aa.Held(Right)) {
+                const float held = (_aa.Secs(Right) > 0.f) ? _aa.Secs(Right) : 0.1f;
+
+                MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(Right) ? "Left" : "Right",
+                                held);
+
+                if (_outbound.dispatchAttack) _outbound.dispatchAttack(Right, 0.0f, held);
+                _aa.Held(Right) = false;
+                _aa.Secs(Right) = 0.f;
+            }
+            if (_shout.held) {
+                const float held = (_shout.heldSecs > 0.f) ? _shout.heldSecs : 0.1f;
+                if (_outbound.dispatchShout) _outbound.dispatchShout(0.0f, held);
+                _shout.held = false;
+                _shout.heldSecs = 0.f;
+            }
             CancelAllDelayedStarts();
             _session.active = false;
             _session.activeSlot = -1;
@@ -300,8 +328,32 @@ namespace IntegratedMagic {
             return;
         }
 
-        StopAllAutoAttack();
-        StopShoutPress();
+        using enum Hand;
+        if (_aa.Held(Left)) {
+            const float held = (_aa.Secs(Left) > 0.f) ? _aa.Secs(Left) : 0.1f;
+
+            MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(Left) ? "Left" : "Right", held);
+
+            if (_outbound.dispatchAttack) _outbound.dispatchAttack(Left, 0.0f, held);
+            _aa.Held(Left) = false;
+            _aa.Secs(Left) = 0.f;
+        }
+
+        if (_aa.Held(Right)) {
+            const float held = (_aa.Secs(Right) > 0.f) ? _aa.Secs(Right) : 0.1f;
+
+            MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(Right) ? "Left" : "Right", held);
+
+            if (_outbound.dispatchAttack) _outbound.dispatchAttack(Right, 0.0f, held);
+            _aa.Held(Right) = false;
+            _aa.Secs(Right) = 0.f;
+        }
+        if (_shout.held) {
+            const float held = (_shout.heldSecs > 0.f) ? _shout.heldSecs : 0.1f;
+            if (_outbound.dispatchShout) _outbound.dispatchShout(0.0f, held);
+            _shout.held = false;
+            _shout.heldSecs = 0.f;
+        }
         CancelAllDelayedStarts();
 
         if (_session.wasHandsDown && !player->IsInCombat()) {
@@ -331,7 +383,26 @@ namespace IntegratedMagic {
     void MagicState::PrepareForOverwriteToSlot(int newSlot) {
         MAGIC_DEBUG_LOG("[State] PrepareForOverwriteToSlot: newSlot={}", newSlot);
 
-        StopAllAutoAttack();
+        using enum Hand;
+        if (_aa.Held(Left)) {
+            const float held = (_aa.Secs(Left) > 0.f) ? _aa.Secs(Left) : 0.1f;
+
+            MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(Left) ? "Left" : "Right", held);
+
+            if (_outbound.dispatchAttack) _outbound.dispatchAttack(Left, 0.0f, held);
+            _aa.Held(Left) = false;
+            _aa.Secs(Left) = 0.f;
+        }
+
+        if (_aa.Held(Right)) {
+            const float held = (_aa.Secs(Right) > 0.f) ? _aa.Secs(Right) : 0.1f;
+
+            MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(Right) ? "Left" : "Right", held);
+
+            if (_outbound.dispatchAttack) _outbound.dispatchAttack(Right, 0.0f, held);
+            _aa.Held(Right) = false;
+            _aa.Secs(Right) = 0.f;
+        }
         _session.activeSlot = newSlot;
         _session.attackEnabled = false;
         _session.isDualCasting = false;
@@ -353,7 +424,26 @@ namespace IntegratedMagic {
         MAGIC_DEBUG_LOG("[State] ForceExit: slot={} left.autoActive={} right.autoActive={} aaHeldL={} aaHeldR={}",
                         _session.activeSlot, _left.autoActive, _right.autoActive, _aa.heldLeft, _aa.heldRight);
 
-        StopAllAutoAttack();
+        using enum Hand;
+        if (_aa.Held(Left)) {
+            const float held = (_aa.Secs(Left) > 0.f) ? _aa.Secs(Left) : 0.1f;
+
+            MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(Left) ? "Left" : "Right", held);
+
+            if (_outbound.dispatchAttack) _outbound.dispatchAttack(Left, 0.0f, held);
+            _aa.Held(Left) = false;
+            _aa.Secs(Left) = 0.f;
+        }
+
+        if (_aa.Held(Right)) {
+            const float held = (_aa.Secs(Right) > 0.f) ? _aa.Secs(Right) : 0.1f;
+
+            MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(Right) ? "Left" : "Right", held);
+
+            if (_outbound.dispatchAttack) _outbound.dispatchAttack(Right, 0.0f, held);
+            _aa.Held(Right) = false;
+            _aa.Secs(Right) = 0.f;
+        }
         CancelAllDelayedStarts();
         _left = {};
         _right = {};

@@ -1,9 +1,7 @@
 #pragma once
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
 
 #include "PCH.h"
+#include "Shared/InventoryType.h"
 
 namespace IntegratedMagic {
 
@@ -11,11 +9,6 @@ namespace IntegratedMagic {
         RE::TESBoundObject* base{nullptr};
         RE::ExtraDataList* extra{nullptr};
         RE::FormID formID{0};
-    };
-
-    struct InventoryIndex {
-        std::unordered_map<RE::TESBoundObject*, std::vector<RE::ExtraDataList*>> extrasByBase;
-        std::unordered_set<RE::TESBoundObject*> wornBases;
     };
 
     struct ExtraEquippedItem {

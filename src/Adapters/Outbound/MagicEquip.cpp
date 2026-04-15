@@ -5,7 +5,7 @@
 #include <thread>
 
 #include "Adapters/Outbound/EquipSlots.h"
-#include "Domain/Hand.h"
+#include "Shared/Hand.h"
 
 namespace IntegratedMagic::MagicAction {
     namespace {
@@ -18,16 +18,14 @@ namespace IntegratedMagic::MagicAction {
             }
         }
 
-        RE::MagicSystem::CastingSource ToCastingSource(Domain::Hand hand) {
-            return (hand == Domain::Hand::Left) ? RE::MagicSystem::CastingSource::kLeftHand
-                                                : RE::MagicSystem::CastingSource::kRightHand;
+        RE::MagicSystem::CastingSource ToCastingSource(Hand hand) {
+            return (hand == Hand::Left) ? RE::MagicSystem::CastingSource::kLeftHand
+                                        : RE::MagicSystem::CastingSource::kRightHand;
         }
 
-        const RE::BGSEquipSlot* ToEquipSlot(Domain::Hand hand) {
-            return IntegratedMagic::EquipUtil::GetHandEquipSlot(hand);
-        }
+        const RE::BGSEquipSlot* ToEquipSlot(Hand hand) { return IntegratedMagic::EquipUtil::GetHandEquipSlot(hand); }
 
-        int ToUnEquipHandInt(Domain::Hand hand) { return (hand == Domain::Hand::Left) ? 0 : 1; }
+        int ToUnEquipHandInt(Hand hand) { return (hand == Hand::Left) ? 0 : 1; }
 
         void UnEquipSpell(RE::PlayerCharacter* pc, RE::SpellItem* spell, int hand) {
             auto aeMan = RE::ActorEquipManager::GetSingleton();
@@ -54,11 +52,6 @@ namespace IntegratedMagic::MagicAction {
                 return nullptr;
             }
             return caster->currentSpell->As<RE::SpellItem>();
-        }
-
-        inline void SetSkipEquipVars(RE::PlayerCharacter* pc, bool enable) {
-            if (!pc) return;
-            (void)pc->SetGraphVariableBool(kInstantAnim, enable);
         }
 
         inline void ScheduleDisableSkipEquip(std::uint64_t token, int delayMs) {
@@ -103,7 +96,7 @@ namespace IntegratedMagic::MagicAction {
         return mc ? skyrim_cast<RE::ActorMagicCaster*>(mc) : nullptr;
     }
 
-    void EquipSpellInHand(RE::PlayerCharacter* player, RE::SpellItem* spell, Domain::Hand hand, bool skipAnim) {
+    void EquipSpellInHand(RE::PlayerCharacter* player, RE::SpellItem* spell, Hand hand, bool skipAnim) {
         if (!player || !spell) return;
         auto* mgr = RE::ActorEquipManager::GetSingleton();
         if (!mgr) return;
@@ -111,7 +104,7 @@ namespace IntegratedMagic::MagicAction {
         SetCasterDual(caster, false);
 
         MAGIC_DEBUG_LOG("[Action] EquipSpellInHand: hand={} spellID={:#010x} name='{}' | currentCasterSpell={:#010x}",
-                        (hand == Domain::Hand::Left) ? "Left" : "Right", spell->GetFormID(),
+                        (hand == Hand::Left) ? "Left" : "Right", spell->GetFormID(),
                         spell->GetFullName() ? spell->GetFullName() : "<null>",
                         (caster && caster->currentSpell) ? caster->currentSpell->GetFormID() : 0u);
 
@@ -127,8 +120,7 @@ namespace IntegratedMagic::MagicAction {
         mgr->EquipSpell(player, spell, equipSlot);
     }
 
-    void DisableSkipEquipVarsNow(RE::PlayerCharacter* player, bool skipAnim) {
-        if (!skipAnim) return;
+    void DisableSkipEquipVarsNow(RE::PlayerCharacter* player) {
         const std::uint64_t cur = g_skipToken.load(std::memory_order_relaxed);
         if ((cur & 1uLL) == 0) return;
         const std::uint64_t next = (cur + 1uLL) & ~1uLL;
@@ -137,20 +129,25 @@ namespace IntegratedMagic::MagicAction {
         MAGIC_DEBUG_LOG("[Action] DisableSkipEquipVarsNow: InstantEquipAnim = false (token {} -> {})", cur, next);
     }
 
-    void ClearHandSpell(RE::PlayerCharacter* player, RE::SpellItem* spell, Domain::Hand hand) {
+    void SetSkipEquipVars(RE::PlayerCharacter* pc, bool enable) {
+        if (!pc) return;
+        (void)pc->SetGraphVariableBool(kInstantAnim, enable);
+    }
+
+    void ClearHandSpell(RE::PlayerCharacter* player, RE::SpellItem* spell, Hand hand) {
         if (!player || !spell) {
             return;
         }
 
         MAGIC_DEBUG_LOG("[Action] ClearHandSpell(spell): hand={} spellID={:#010x}",
-                        (hand == Domain::Hand::Left) ? "Left" : "Right", spell->GetFormID());
+                        (hand == Hand::Left) ? "Left" : "Right", spell->GetFormID());
 
         auto* caster = GetCaster(player, ToCastingSource(hand));
         SetCasterDual(caster, false);
         UnEquipSpell(player, spell, ToUnEquipHandInt(hand));
     }
 
-    void ClearHandSpell(RE::PlayerCharacter* player, Domain::Hand hand) {
+    void ClearHandSpell(RE::PlayerCharacter* player, Hand hand) {
         if (!player) {
             return;
         }
@@ -158,13 +155,13 @@ namespace IntegratedMagic::MagicAction {
         auto* cur = GetEquippedSpellFromCaster(caster);
         if (!cur) {
             MAGIC_DEBUG_LOG("[Action] ClearHandSpell(no-spell): hand={} - caster has no spell, skipping",
-                            (hand == Domain::Hand::Left) ? "Left" : "Right");
+                            (hand == Hand::Left) ? "Left" : "Right");
 
             return;
         }
 
         MAGIC_DEBUG_LOG("[Action] ClearHandSpell(no-spell): hand={} clearing spellID={:#010x}",
-                        (hand == Domain::Hand::Left) ? "Left" : "Right", cur->GetFormID());
+                        (hand == Hand::Left) ? "Left" : "Right", cur->GetFormID());
 
         ClearHandSpell(player, cur, hand);
     }

@@ -1,5 +1,5 @@
 #pragma once
-#include "Config/SpellType.h"
+#include "Shared/SpellType.h"
 
 namespace IntegratedMagic {
     struct SpellSettings {

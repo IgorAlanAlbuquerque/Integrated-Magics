@@ -1,8 +1,8 @@
 #include "AnimEventAdapter.h"
 
 #include "Application/SpellSystemController.h"
-#include "Domain/Hand.h"
 #include "PCH.h"
+#include "Shared/Hand.h"
 
 void AnimListener::HandleAnimEvent(const RE::BSAnimationGraphEvent* ev) {
     if (!ev || !ev->holder) return;

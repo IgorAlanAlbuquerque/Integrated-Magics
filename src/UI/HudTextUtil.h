@@ -39,26 +39,66 @@ namespace IntegratedMagic::HUD {
                 break;
         }
 
-        const ImVec2 textSize = ImGui::CalcTextSize(text);
+        const float maxW = slotRadius * 2.f;
+        const float lineH = ImGui::GetTextLineHeight();
+
+        std::vector<std::string> lines;
+        {
+            const char* wordStart = text;
+            const char* cur = text;
+            std::string currentLine;
+
+            auto flushWord = [&](const char* end) {
+                std::string word(wordStart, end);
+                if (word.empty()) return;
+                std::string candidate = currentLine.empty() ? word : currentLine + " " + word;
+                if (ImGui::CalcTextSize(candidate.c_str()).x <= maxW) {
+                    currentLine = std::move(candidate);
+                } else {
+                    if (!currentLine.empty()) lines.push_back(currentLine);
+
+                    currentLine = std::move(word);
+                }
+            };
+
+            for (; *cur; ++cur) {
+                if (*cur == ' ') {
+                    flushWord(cur);
+                    wordStart = cur + 1;
+                }
+            }
+            flushWord(cur);
+            if (!currentLine.empty()) lines.push_back(currentLine);
+        }
+
+        if (lines.empty()) return;
+
+        const float totalH = lineH * static_cast<float>(lines.size());
 
         const float anchorX = slotCenter.x + dir.x * (slotRadius + padding);
         const float anchorY = slotCenter.y + dir.y * (slotRadius + padding);
 
-        float x = anchorX - textSize.x * 0.5f;
-        float y = anchorY - textSize.y * 0.5f;
-
+        float blockY = anchorY - totalH * 0.5f;
         if (dir.y < -0.1f)
-            y = anchorY - textSize.y;
+            blockY = anchorY - totalH;
         else if (dir.y > 0.1f)
-            y = anchorY;
-        if (dir.x < -0.1f)
-            x = anchorX - textSize.x;
-        else if (dir.x > 0.1f)
-            x = anchorX;
+            blockY = anchorY;
 
-        if (st.textShadowEnabled) {
-            dl->AddText({x + st.textShadowOffsetX, y + st.textShadowOffsetY}, st.textShadowColor, text);
+        for (const auto& line : lines) {
+            const ImVec2 ts = ImGui::CalcTextSize(line.c_str());
+
+            float x = anchorX - ts.x * 0.5f;
+            if (dir.x < -0.1f)
+                x = anchorX - ts.x;
+            else if (dir.x > 0.1f)
+                x = anchorX;
+
+            if (st.textShadowEnabled)
+                dl->AddText({x + st.textShadowOffsetX, blockY + st.textShadowOffsetY}, st.textShadowColor,
+                            line.c_str());
+            dl->AddText({x, blockY}, st.textColor, line.c_str());
+
+            blockY += lineH;
         }
-        dl->AddText({x, y}, st.textColor, text);
     }
 }

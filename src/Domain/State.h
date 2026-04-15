@@ -2,15 +2,17 @@
 
 #include <vector>
 
-#include "Config/SpellType.h"
-#include "Domain/Hand.h"
 #include "Domain/InventoryUtil.h"
 #include "Domain/OutboundDelegate.h"
-#include "Domain/SpellSettings.h"
 #include "PCH.h"
+#include "Shared/Hand.h"
+#include "Shared/SlotPressAction.h"
+#include "Shared/SlotPressResult.h"
+#include "Shared/SpellSettings.h"
+#include "Shared/SpellType.h"
+#include "Shared/AttackEnabledResult.h"
 
 namespace IntegratedMagic {
-    enum class SlotPressResult { None, Deactivated };
     struct SpellSettings;
 
     struct HandSnapshot {
@@ -84,8 +86,8 @@ namespace IntegratedMagic {
         float secsLeft{0.f};
         float secsRight{0.f};
 
-        bool& Held(Domain::Hand h) noexcept { return h == Domain::Hand::Left ? heldLeft : heldRight; }
-        float& Secs(Domain::Hand h) noexcept { return h == Domain::Hand::Left ? secsLeft : secsRight; }
+        bool& Held(Hand h) noexcept { return h == Hand::Left ? heldLeft : heldRight; }
+        float& Secs(Hand h) noexcept { return h == Hand::Left ? secsLeft : secsRight; }
 
         void Reset() { *this = {}; }
     };
@@ -113,14 +115,14 @@ namespace IntegratedMagic {
     public:
         static MagicState& Get();
 
-        [[nodiscard]] SlotPressResult OnSlotPressed(int slot);
+        [[nodiscard]] SlotPressAction OnSlotPressed(int slot);
+        void OnEquipComplete(const InventoryIndex& snapshotBefore);
         void OnSlotReleased(int slot);
 
-        void OnBeginCast(Domain::Hand hand);
+        void OnBeginCast(Hand hand);
         void OnCastStop();
         void OnCastInterrupt();
         void OnShoutStop();
-        void NotifyAttackEnabled();
         void ForceExit();
         void ForceExitNoRestore();
 
@@ -128,9 +130,7 @@ namespace IntegratedMagic {
         void PumpAutoAttack(float dt);
         void TryFinalizeExit();
 
-        void StartAutoAttack(Domain::Hand hand);
-        void StopAutoAttack(Domain::Hand hand);
-        void StopAllAutoAttack();
+        [[nodiscard]] AttackEnabledResult NotifyAttackEnabled();
 
         bool IsActive() const noexcept { return _session.active; }
         int ActiveSlot() const noexcept { return _session.activeSlot; }
@@ -142,7 +142,7 @@ namespace IntegratedMagic {
         }
         bool IsPressMode() const noexcept { return _left.pressActive || _right.pressActive; }
         void NotifySheatheComplete() noexcept { _restore.sheatheAnimComplete = true; }
-        void OnSpellFired(Domain::Hand hand);
+        void OnSpellFired(Hand hand);
         const HandMode& LeftMode() const noexcept { return _left; }
         const HandMode& RightMode() const noexcept { return _right; }
         bool IsInSlotSetup() const noexcept { return _inSlotSetup; }
@@ -198,17 +198,15 @@ namespace IntegratedMagic {
             _session.activeSlot = -1;
         }
 
-        DelayedStart& DelayFor(Domain::Hand hand) noexcept {
-            return hand == Domain::Hand::Left ? _delayStartLeft : _delayStartRight;
-        }
+        DelayedStart& DelayFor(Hand hand) noexcept { return hand == Hand::Left ? _delayStartLeft : _delayStartRight; }
 
-        void ScheduleDelayedStart(Domain::Hand hand) {
+        void ScheduleDelayedStart(Hand hand) {
             auto& d = DelayFor(hand);
             d.pending = true;
             d.secs = 0.f;
         }
 
-        void CancelDelayedStart(Domain::Hand hand) {
+        void CancelDelayedStart(Hand hand) {
             auto& d = DelayFor(hand);
             d.pending = false;
             d.secs = 0.f;
@@ -221,14 +219,12 @@ namespace IntegratedMagic {
 
         static RE::PlayerCharacter* GetPlayer() { return RE::PlayerCharacter::GetSingleton(); }
 
-        HandMode& ModeFor(Domain::Hand hand) noexcept { return hand == Domain::Hand::Left ? _left : _right; }
-        const HandMode& ModeFor(Domain::Hand hand) const noexcept {
-            return hand == Domain::Hand::Left ? _left : _right;
-        }
+        HandMode& ModeFor(Hand hand) noexcept { return hand == Hand::Left ? _left : _right; }
+        const HandMode& ModeFor(Hand hand) const noexcept { return hand == Hand::Left ? _left : _right; }
 
-        static bool IsLeft(Domain::Hand h) noexcept { return h == Domain::Hand::Left; }
+        static bool IsLeft(Hand h) noexcept { return h == Hand::Left; }
 
-        void MarkDirty(Domain::Hand h) {
+        void MarkDirty(Hand h) {
             if (IsLeft(h))
                 _restore.dirtyLeft = true;
             else
@@ -239,29 +235,26 @@ namespace IntegratedMagic {
         void CaptureSnapshot(RE::PlayerCharacter const* player);
         void RestoreSnapshot(RE::PlayerCharacter* player);
 
-        bool HandIsRelevant(Domain::Hand h) const;
+        bool HandIsRelevant(Hand h) const;
         bool AllRelevantHandsFinished() const;
         bool CanOverwriteNow() const;
         bool ShouldForceInterrupt() const;
 
         void ExitAllNow();
         void PrepareForOverwriteToSlot(int newSlot);
-        void DisableHand(Domain::Hand hand);
+        void DisableHand(Hand hand);
 
         bool PrepareSlotEntry(int slot, SlotEntry& out);
-        void EnterHand(Domain::Hand hand, const SpellSettings& ss);
-        void TogglePressHand(Domain::Hand hand, const SpellSettings& ss);
-        void FinishHand(Domain::Hand hand);
-        void SetModeSpellsFromHand(Domain::Hand hand, RE::SpellItem* spell);
+        void EnterHand(Hand hand, const SpellSettings& ss, bool skipAnim);
+        void TogglePressHand(Hand hand, const SpellSettings& ss);
+        void FinishHand(Hand hand);
+        void SetModeSpellsFromHand(Hand hand, RE::SpellItem* spell);
 
         void PumpDelayedStarts(float dt);
-        void PumpAutomaticHand(Domain::Hand hand);
-        void PumpAutoStartFallback(Domain::Hand hand, float dt);
-        void ScheduleSpellFireFinalize(Domain::Hand hand);
+        void PumpAutomaticHand(Hand hand);
+        void PumpAutoStartFallback(Hand hand, float dt);
+        void ScheduleSpellFireFinalize(Hand hand);
         void PumpSpellFireFinalize(float dt);
-
-        void StartShoutPress();
-        void StopShoutPress();
 
         template <class Fn>
         void UpdatePrevExtraEquippedForOverlay(Fn&& equipFn);

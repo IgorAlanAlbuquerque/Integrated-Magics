@@ -289,6 +289,7 @@ namespace Input::detail {
             const auto s = static_cast<std::size_t>(slot);
             slots.slotDown[s].store(false, std::memory_order_relaxed);
             slots.slotWasAccepted[s] = false;
+            slots.slotWasAccepted[s] = false;
             excl.fullComboSeen[s] = false;
             excl.prevRawKbDown[s] = false;
             excl.prevRawGpDown[s] = false;

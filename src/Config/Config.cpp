@@ -8,7 +8,7 @@
 #include <utility>
 
 #include "PCH.h"
-#include "Util/ConfigPath.h"
+#include "Shared/ConfigPath.h"
 
 using namespace std::string_literals;
 

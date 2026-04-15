@@ -3,8 +3,8 @@
 #include <mutex>
 #include <queue>
 
-#include "Domain/Hand.h"
 #include "PCH.h"
+#include "Shared/Hand.h"
 
 namespace IntegratedMagic::detail {
     static const RE::BSFixedString kRightAttackEvent{"Right Attack/Block"};
@@ -84,8 +84,8 @@ namespace IntegratedMagic::detail {
         return head;
     }
 
-    void DispatchAttack(Domain::Hand hand, float value, float heldSecs) {
-        const bool left = (hand == Domain::Hand::Left);
+    void DispatchAttack(Hand hand, float value, float heldSecs) {
+        const bool left = (hand == Hand::Left);
         EnqueueSyntheticAttack(MakeAttackButtonEvent(left, value, heldSecs));
     }
 

@@ -7,10 +7,10 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "Util/ConfigPath.h"
 #include "Config/Ports/SlotAssignments.h"
-#include "Config/SpellType.h"
-#include "Domain/SpellSettings.h"
+#include "Shared/ConfigPath.h"
+#include "Shared/SpellSettings.h"
+#include "Shared/SpellType.h"
 
 namespace IntegratedMagic {
 

@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "Config/SpellType.h"
+#include "Shared/SpellType.h"
 
 namespace IntegratedMagic::Config {
 

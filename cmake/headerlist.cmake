@@ -1,10 +1,16 @@
 set(headers
     src/Hooks.h
-    src/Util/ConfigPath.h
+    src/Shared/ConfigPath.h
+    src/Shared/SpellType.h
+    src/Shared/Hand.h
+    src/Shared/SpellSettings.h
+    src/Shared/SlotPressResult.h
+    src/Shared/SlotPressAction.h
+    src/Shared/InventoryType.h
+    src/Shared/AttackEnabledResult.h
     src/Config/Config.h
     src/Config/StyleConfig.h
     src/Config/ConfigAdapter.h
-    src/Config/SpellType.h
     src/Config/Limits.h
     src/Config/InputConstants.h
     src/Config/Ports/HudSettings.h
@@ -42,9 +48,7 @@ set(headers
     src/Domain/InventoryUtil.h
     src/Domain/SpellClassify.h
     src/Domain/SlotCostUtil.h
-    src/Domain/Hand.h
     src/Domain/OutboundDelegate.h
-    src/Domain/SpellSettings.h
     src/Application/InputController.h
     src/Application/HudController.h
     src/Application/AssignService.h

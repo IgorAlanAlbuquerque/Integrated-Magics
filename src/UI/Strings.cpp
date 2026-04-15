@@ -4,7 +4,7 @@
 #include <unordered_map>
 
 #include "PCH.h"
-#include "Util/ConfigPath.h"
+#include "Shared/ConfigPath.h"
 
 namespace IntegratedMagic::Strings {
     namespace {

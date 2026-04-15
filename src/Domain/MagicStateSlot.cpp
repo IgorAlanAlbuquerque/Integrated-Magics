@@ -1,7 +1,6 @@
 #include <utility>
 
 #include "Config/ConfigAdapter.h"
-#include "Domain/Hand.h"
 #include "Domain/InventoryUtil.h"
 #include "Domain/SlotCostUtil.h"
 #include "Domain/SpellClassify.h"
@@ -9,26 +8,36 @@
 #include "PCH.h"
 #include "Persistence/Slots.h"
 #include "Persistence/SpellSettingsDB.h"
+#include "Shared/Hand.h"
+#include "Shared/InventoryType.h"
 
 namespace IntegratedMagic {
 
-    void MagicState::SetModeSpellsFromHand(Domain::Hand hand, RE::SpellItem* spell) {
+    void MagicState::SetModeSpellsFromHand(Hand hand, RE::SpellItem* spell) {
         if (IsLeft(hand))
             _session.modeSpellLeft = spell;
         else
             _session.modeSpellRight = spell;
     }
 
-    void MagicState::DisableHand(Domain::Hand hand) {
+    void MagicState::DisableHand(Hand hand) {
         MAGIC_DEBUG_LOG("[State] DisableHand: hand={}", IsLeft(hand) ? "Left" : "Right");
 
-        StopAutoAttack(hand);
+        if (_aa.Held(hand)) {
+            const float held = (_aa.Secs(hand) > 0.f) ? _aa.Secs(hand) : 0.1f;
+
+            MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(hand) ? "Left" : "Right", held);
+
+            if (_outbound.dispatchAttack) _outbound.dispatchAttack(hand, 0.0f, held);
+            _aa.Held(hand) = false;
+            _aa.Secs(hand) = 0.f;
+        }
         ModeFor(hand) = {};
         ModeFor(hand).finished = true;
         SetModeSpellsFromHand(hand, nullptr);
     }
 
-    void MagicState::FinishHand(Domain::Hand hand) {
+    void MagicState::FinishHand(Hand hand) {
         MAGIC_DEBUG_LOG("[State] FinishHand: hand={}", IsLeft(hand) ? "Left" : "Right");
 
         auto& hm = ModeFor(hand);
@@ -42,11 +51,19 @@ namespace IntegratedMagic {
         hm.waitingBeginCast = false;
         hm.beginCastWaitSecs = 0.f;
         hm.beginCastRetries = 0;
-        StopAutoAttack(hand);
+        if (_aa.Held(hand)) {
+            const float held = (_aa.Secs(hand) > 0.f) ? _aa.Secs(hand) : 0.1f;
+
+            MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(hand) ? "Left" : "Right", held);
+
+            if (_outbound.dispatchAttack) _outbound.dispatchAttack(hand, 0.0f, held);
+            _aa.Held(hand) = false;
+            _aa.Secs(hand) = 0.f;
+        }
         CancelDelayedStart(hand);
     }
 
-    void MagicState::TogglePressHand(Domain::Hand hand, const SpellSettings& ss) {
+    void MagicState::TogglePressHand(Hand hand, const SpellSettings& ss) {
         auto& hm = ModeFor(hand);
         hm.mode = ss.mode;
         hm.wantAutoAttack = ss.autoAttack;
@@ -54,16 +71,14 @@ namespace IntegratedMagic {
         if (!hm.pressActive) FinishHand(hand);
     }
 
-    void MagicState::EnterHand(Domain::Hand hand, const SpellSettings& ss) {
+    void MagicState::EnterHand(Hand hand, const SpellSettings& ss, bool skipAnim) {
         using enum ActivationMode;
         auto& hm = ModeFor(hand);
+        const char* handStr = IsLeft(hand) ? "Left" : "Right";
         hm = {};
         hm.mode = ss.mode;
         hm.wantAutoAttack = ss.autoAttack;
 
-        const char* handStr = IsLeft(hand) ? "Left" : "Right";
-
-        const bool skipAnim = IntegratedMagic::Config::MagicConfigAdapter::Get().SkipEquipAnimation();
         switch (ss.mode) {
             case Hold:
                 hm.holdActive = true;
@@ -155,7 +170,7 @@ namespace IntegratedMagic {
             return true;
         }
 
-        using enum Domain::Hand;
+        using enum Hand;
         out.rightID = Slots::GetSlotSpell(slot, Right);
         out.leftID = Slots::GetSlotSpell(slot, Left);
         out.rightSpell = out.rightID ? RE::TESForm::LookupByID<RE::SpellItem>(out.rightID) : nullptr;
@@ -186,116 +201,103 @@ namespace IntegratedMagic {
         return true;
     }
 
-    void MagicState::StartShoutPress() {
-        MAGIC_DEBUG_LOG("[State] StartShoutPress: held={} modeShoutID={:#010x}", _shout.held, _shout.modeShoutID);
-
-        _shout.held = true;
-        _shout.heldSecs = 0.f;
-        if (_outbound.dispatchShout) _outbound.dispatchShout(1.0f, 0.0f);
-    }
-
-    void MagicState::StopShoutPress() {
-        MAGIC_DEBUG_LOG("[State] StopShoutPress: held={} heldSecs={:.3f} modeShoutID={:#010x}", _shout.held,
-                        _shout.heldSecs, _shout.modeShoutID);
-
-        if (!_shout.held) return;
-        const float held = (_shout.heldSecs > 0.f) ? _shout.heldSecs : 0.1f;
-        if (_outbound.dispatchShout) _outbound.dispatchShout(0.0f, held);
-        _shout.held = false;
-        _shout.heldSecs = 0.f;
-    }
-
-    SlotPressResult MagicState::OnSlotPressed(int slot) {
+    SlotPressAction MagicState::OnSlotPressed(int slot) {
         MAGIC_DEBUG_LOG("[State] OnSlotPressed: slot={} active={} activeSlot={} modeShoutID={:#010x}", slot,
                         _session.active, _session.activeSlot, _shout.modeShoutID);
 
-        using enum Domain::Hand;
+        using enum Hand;
         using enum ActivationMode;
 
+        // ── Shout path ────────────────────────────────────────────────────────
         if (Slots::IsShoutSlot(slot)) {
             if (_session.active && slot == _session.activeSlot && _shout.modeShoutID != 0) {
-                if (_shout.finished) return SlotPressResult::None;
+                if (_shout.finished) return {};
                 const auto ss = SpellSettingsDB::Get().Get(_shout.modeShoutID);
                 if (ss && ss->mode == Press) {
                     MAGIC_DEBUG_LOG("[State] OnSlotPressed: shout Press toggle -> StopShoutPress + finish");
-
-                    StopShoutPress();
+                    if (_shout.held) {
+                        const float held = (_shout.heldSecs > 0.f) ? _shout.heldSecs : 0.1f;
+                        if (_outbound.dispatchShout) _outbound.dispatchShout(0.0f, held);
+                        _shout.held = false;
+                        _shout.heldSecs = 0.f;
+                    }
                     _shout.finished = true;
                     TryFinalizeExit();
                 }
-                return SlotPressResult::None;
+                return {};
             }
             if (_session.active && slot != _session.activeSlot) {
-                if (!CanOverwriteNow()) return SlotPressResult::None;
+                if (!CanOverwriteNow()) return {};
                 _session.firstInterrupt = 0;
                 PrepareForOverwriteToSlot(slot);
             }
             SlotEntry e{};
-            if (!PrepareSlotEntry(slot, e)) return SlotPressResult::None;
+            if (!PrepareSlotEntry(slot, e)) return {};
             if ((e.shoutSettings.mode == Hold || e.shoutSettings.mode == Automatic) && !_shout.isPower &&
                 e.player->GetVoiceRecoveryTime() > 0.f) {
                 MAGIC_DEBUG_LOG("[State] OnSlotPressed: shout on cooldown -> early exit");
-
                 _shout.finished = true;
                 TryFinalizeExit();
-                return SlotPressResult::None;
+                return {};
             }
 
-            MAGIC_DEBUG_LOG("[State] OnSlotPressed: EquipShoutInVoice shoutID={:#010x} isPower={} mode={}", e.shoutID,
-                            _shout.isPower, static_cast<int>(std::to_underlying(e.shoutSettings.mode)));
-
-            if (_outbound.equipShoutInVoice) _outbound.equipShoutInVoice(e.shoutForm);
-            _restore.dirtyShout = true;
-
-            MAGIC_DEBUG_LOG("[State] OnSlotPressed: calling StartShoutPress (mode={})",
+            MAGIC_DEBUG_LOG("[State] OnSlotPressed: shoutID={:#010x} isPower={} mode={}", e.shoutID, _shout.isPower,
                             static_cast<int>(std::to_underlying(e.shoutSettings.mode)));
 
-            StartShoutPress();
+            _restore.dirtyShout = true;
+            _shout.held = true;
+            _shout.heldSecs = 0.f;
             if (e.shoutSettings.mode == Automatic) _shout.powerAutoSecs = 0.f;
-            return SlotPressResult::None;
+
+            SlotPressAction action{};
+            action.shoutToEquip = e.shoutForm;
+            action.startShoutDispatch = true;
+            return action;
         }
 
+        // ── Press toggle ──────────────────────────────────────────────────────
         if (_session.active && slot == _session.activeSlot) {
             const bool needL = (_session.modeSpellLeft != nullptr);
             const bool needR = (_session.modeSpellRight != nullptr);
             const bool pressL = needL && _left.mode == Press && _left.pressActive;
             const bool pressR = needR && _right.mode == Press && _right.pressActive;
-            if (!pressL && !pressR) return SlotPressResult::None;
+            if (!pressL && !pressR) return {};
 
-            MAGIC_DEBUG_LOG("[State] OnSlotPressed: active slot pressed again, toggling press -> pressL={} pressR={}",
-                            pressL, pressR);
+            MAGIC_DEBUG_LOG("[State] OnSlotPressed: active slot pressed again -> pressL={} pressR={}", pressL, pressR);
 
             if (pressL && pressR) {
                 FinishHand(Left);
                 FinishHand(Right);
                 ExitAllNow();
-                return SlotPressResult::Deactivated;
+                return {SlotPressResult::Deactivated};
             }
             if (pressL) FinishHand(Left);
             if (pressR) FinishHand(Right);
             TryFinalizeExit();
-            return SlotPressResult::Deactivated;
+            return {SlotPressResult::Deactivated};
         }
 
+        // ── Overwrite ─────────────────────────────────────────────────────────
         if (_session.active && slot != _session.activeSlot) {
-            if (!CanOverwriteNow()) return SlotPressResult::None;
+            if (!CanOverwriteNow()) return {};
             _session.firstInterrupt = 0;
             PrepareForOverwriteToSlot(slot);
         }
 
+        // ── Affordability ─────────────────────────────────────────────────────
         if (const auto afford = ComputeSlotAffordability(slot); afford.hasSpells && !afford.canCast) {
-            ExitAllNow();
-            return SlotPressResult::None;
+            if (_session.active) ExitAllNow();
+            return {};
         }
 
+        // ── Spell path ────────────────────────────────────────────────────────
         SlotEntry e{};
-        if (!PrepareSlotEntry(slot, e)) return SlotPressResult::None;
+        if (!PrepareSlotEntry(slot, e)) return {};
 
         _session.isDualCasting = false;
         if (e.hasRight && e.hasLeft && e.rightSettings.mode == Automatic && e.leftSettings.mode == Automatic &&
-            e.rightID == e.leftID && GetDualCastCostMultiplier(e.player, e.rightSpell) > 2.f) {
+            e.rightID == e.leftID && GetDualCastCostMultiplier(e.player, e.rightSpell) > 2.f)
             _session.isDualCasting = true;
-        }
 
         if (!e.hasRight) {
             DisableHand(Right);
@@ -307,40 +309,56 @@ namespace IntegratedMagic {
         }
         if (!e.hasLeft && !e.hasRight) {
             ExitAllNow();
-            return SlotPressResult::None;
+            return {};
         }
 
-        auto* player = e.player;
-        _inSlotSetup = true;
-        UpdatePrevExtraEquippedForOverlay([this, player, &e] {
-            if (e.hasRight) {
-                if (_outbound.equipSpellInHand) _outbound.equipSpellInHand(e.rightSpell, Right);
-                MarkDirty(Right);
-            }
-            if (e.hasLeft) {
-                if (_outbound.equipSpellInHand) _outbound.equipSpellInHand(e.leftSpell, Left);
-                MarkDirty(Left);
-                if (!e.hasRight && SpellClassify::IsTwoHandedSpell(e.leftSpell)) {
-                    MarkDirty(Right);
-                }
-            }
-        });
-        _inSlotSetup = false;
+        SlotPressAction action{};
+        action.inventorySnapshotBefore = BuildInventoryIndex(e.player);
 
         if (e.hasRight) {
+            action.spellsToEquip.push_back({e.rightSpell, Right});
+            MarkDirty(Right);
+        }
+        if (e.hasLeft) {
+            action.spellsToEquip.push_back({e.leftSpell, Left});
+            MarkDirty(Left);
+            if (!e.hasRight && SpellClassify::IsTwoHandedSpell(e.leftSpell)) MarkDirty(Right);
+        }
+
+        _inSlotSetup = true;
+        action.skipAnim = IntegratedMagic::Config::MagicConfigAdapter::Get().SkipEquipAnimation();
+        if (e.hasRight) {
             SetModeSpellsFromHand(Right, e.rightSpell);
-            EnterHand(Right, e.rightSettings);
+            EnterHand(Right, e.rightSettings, action.skipAnim);
         } else {
             _right = {};
         }
         if (e.hasLeft) {
             SetModeSpellsFromHand(Left, e.leftSpell);
-            EnterHand(Left, e.leftSettings);
+            EnterHand(Left, e.leftSettings, action.skipAnim);
         } else {
             _left = {};
         }
 
-        return SlotPressResult::None;
+        return action;
+    }
+
+    void MagicState::OnEquipComplete(const InventoryIndex& snapshotBefore) {
+        auto* player = GetPlayer();
+        if (!player) {
+            _inSlotSetup = false;
+            return;
+        }
+
+        const auto after = BuildInventoryIndex(player);
+        for (auto* base : snapshotBefore.wornBases) {
+            if (after.wornBases.contains(base)) continue;
+            const bool exists =
+                std::ranges::any_of(_restore.prevExtraEquipped, [&](auto const& e) { return e.base == base; });
+            if (!exists) _restore.prevExtraEquipped.push_back({base, nullptr});
+        }
+
+        _inSlotSetup = false;
     }
 
     void MagicState::OnSlotReleased(int slot) {
@@ -357,7 +375,16 @@ namespace IntegratedMagic {
             MAGIC_DEBUG_LOG("[State] OnSlotReleased: shout path mode={}", static_cast<int>(std::to_underlying(mode)));
 
             if (mode == ActivationMode::Hold) {
-                StopShoutPress();
+                MAGIC_DEBUG_LOG("[State] StopShoutPress: held={} heldSecs={:.3f} modeShoutID={:#010x}", _shout.held,
+                                _shout.heldSecs, _shout.modeShoutID);
+
+                if (_shout.held) {
+                    const float held = (_shout.heldSecs > 0.f) ? _shout.heldSecs : 0.1f;
+                    if (_outbound.dispatchShout) _outbound.dispatchShout(0.0f, held);
+                    _shout.held = false;
+                    _shout.heldSecs = 0.f;
+                }
+
                 if (_shout.isPower) {
                     MAGIC_DEBUG_LOG("[State] OnSlotReleased: power Hold release -> finishing + TryFinalizeExit");
 
@@ -372,8 +399,8 @@ namespace IntegratedMagic {
             return;
         }
 
-        using enum Domain::Hand;
-        auto handleHoldRelease = [&](Domain::Hand hand) {
+        using enum Hand;
+        auto handleHoldRelease = [&](Hand hand) {
             auto& hm = ModeFor(hand);
             if (!hm.holdActive) return;
             hm.holdActive = false;
@@ -393,7 +420,16 @@ namespace IntegratedMagic {
                 FinishHand(hand);
                 return;
             }
-            StopAutoAttack(hand);
+            if (_aa.Held(hand)) {
+                const float held = (_aa.Secs(hand) > 0.f) ? _aa.Secs(hand) : 0.1f;
+
+                MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(hand) ? "Left" : "Right",
+                                held);
+
+                if (_outbound.dispatchAttack) _outbound.dispatchAttack(hand, 0.0f, held);
+                _aa.Held(hand) = false;
+                _aa.Secs(hand) = 0.f;
+            }
             hm.holdFiredAndWaitingCastStop = true;
         };
 

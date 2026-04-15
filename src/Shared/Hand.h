@@ -1,7 +1,5 @@
 #pragma once
 
-namespace IntegratedMagic::Domain {
-
+namespace IntegratedMagic {
     enum class Hand { Left, Right };
-
 }

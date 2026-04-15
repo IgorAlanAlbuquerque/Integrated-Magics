@@ -7,9 +7,9 @@
 #include <array>
 
 #include "Application/SpellSystemController.h"
-#include "Domain/Hand.h"
 #include "PCH.h"
 #include "Persistence/Slots.h"
+#include "Shared/Hand.h"
 
 namespace IntegratedMagic::EquipSink {
 
@@ -19,8 +19,8 @@ namespace IntegratedMagic::EquipSink {
         bool IsAssociatedBoundWeaponOfSlot(RE::FormID weaponFormID, int activeSlot) {
             if (activeSlot < 0 || !weaponFormID) return false;
             const std::array<RE::FormID, 2> slotIDs = {
-                Slots::GetSlotSpell(activeSlot, Domain::Hand::Left),
-                Slots::GetSlotSpell(activeSlot, Domain::Hand::Right),
+                Slots::GetSlotSpell(activeSlot, Hand::Left),
+                Slots::GetSlotSpell(activeSlot, Hand::Right),
             };
             for (const auto spellID : slotIDs) {
                 if (!spellID) continue;
@@ -63,8 +63,8 @@ namespace IntegratedMagic::EquipSink {
                     const int activeSlot = ctrl.ActiveSlot();
                     if (activeSlot < 0 || ctrl.IsInSlotSetup()) return RE::BSEventNotifyControl::kContinue;
 
-                    const auto lID = Slots::GetSlotSpell(activeSlot, Domain::Hand::Left);
-                    const auto rID = Slots::GetSlotSpell(activeSlot, Domain::Hand::Right);
+                    const auto lID = Slots::GetSlotSpell(activeSlot, Hand::Left);
+                    const auto rID = Slots::GetSlotSpell(activeSlot, Hand::Right);
                     const auto sID = Slots::GetSlotShout(activeSlot);
                     if (formID == lID || formID == rID || formID == sID) return RE::BSEventNotifyControl::kContinue;
 
@@ -112,8 +112,8 @@ namespace IntegratedMagic::EquipSink {
                     if (form->As<RE::TESObjectWEAP>() && IsAssociatedBoundWeaponOfSlot(formID, activeSlot))
                         return RE::BSEventNotifyControl::kContinue;
 
-                    const auto lID = Slots::GetSlotSpell(activeSlot, Domain::Hand::Left);
-                    const auto rID = Slots::GetSlotSpell(activeSlot, Domain::Hand::Right);
+                    const auto lID = Slots::GetSlotSpell(activeSlot, Hand::Left);
+                    const auto rID = Slots::GetSlotSpell(activeSlot, Hand::Right);
 
                     if (auto const* armature = form->As<RE::TESObjectARMO>()) {
                         if (const bool isShield = armature->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kShield);

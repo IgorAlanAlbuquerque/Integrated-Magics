@@ -2,7 +2,7 @@
 #include <functional>
 #include <vector>
 
-#include "Domain/Hand.h"
+#include "Shared/Hand.h"
 
 namespace IntegratedMagic::Domain {
 
@@ -21,7 +21,7 @@ namespace IntegratedMagic::Domain {
 
         std::function<void(RE::PlayerCharacter*, std::vector<ExtraEquippedItem>&)> reequipPrevExtraEquipped;
 
-        std::function<const RE::BGSEquipSlot*(Domain::Hand)> getHandEquipSlot;
+        std::function<const RE::BGSEquipSlot*(Hand)> getHandEquipSlot;
         std::function<void(bool leftHand, const InventoryIndex&, const ObjSnapshot&, const RE::BGSEquipSlot*)>
             restoreOneHand;
     };

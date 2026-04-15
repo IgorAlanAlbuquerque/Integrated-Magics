@@ -9,12 +9,12 @@
 #include "Application/HudController.h"
 #include "Config/ConfigAdapter.h"
 #include "Config/StyleConfig.h"
-#include "Domain/Hand.h"
-#include "PCH.h"
-#include "Persistence/Slots.h"
 #include "Domain/SlotCostUtil.h"
 #include "Domain/SpellClassify.h"
 #include "Domain/State.h"
+#include "PCH.h"
+#include "Persistence/Slots.h"
+#include "Shared/Hand.h"
 #include "UI/HudState.h"
 #include "UI/HudTextUtil.h"
 #include "UI/PolyFill.h"
@@ -37,6 +37,91 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             ImU32 fill;
             ImU32 glow;
         };
+
+        inline float Length2D(float x, float y) { return std::sqrt(x * x + y * y); }
+
+        inline void Normalize2D(float& x, float& y) {
+            const float len = Length2D(x, y);
+            if (len > 0.0001f) {
+                x /= len;
+                y /= len;
+            }
+        }
+
+        inline ImVec2 ClampCrackPointToSlotShape(ImVec2 p, float insetScale = 0.86f) {
+            const auto& st = Style();
+
+            if (st.slotShape.useCustomShape && st.slotShape.vertices.size() >= 3) {
+                float dx = p.x;
+                float dy = p.y;
+                const float len = Length2D(dx, dy);
+                if (len <= 0.0001f) return {0.f, 0.f};
+
+                const float ux = dx / len;
+                const float uy = dy / len;
+
+                float bestT = 1.0e9f;
+                const auto& verts = st.slotShape.vertices;
+                const int n = static_cast<int>(verts.size());
+
+                for (int i = 0; i < n; ++i) {
+                    const auto& a = verts[i];
+                    const auto& b = verts[(i + 1) % n];
+
+                    const float ex = b.x - a.x;
+                    const float ey = b.y - a.y;
+
+                    const float det = ex * (-uy) - ey * (-ux);
+                    if (std::abs(det) < 1e-6f) continue;
+
+                    const float rhsx = -a.x;
+                    const float rhsy = -a.y;
+
+                    const float s = (rhsx * (-uy) - rhsy * (-ux)) / det;
+                    const float t = (ex * rhsy - ey * rhsx) / det;
+
+                    if (s >= 0.f && s <= 1.f && t > 0.f) {
+                        bestT = std::min(bestT, t);
+                    }
+                }
+
+                if (bestT < 1.0e8f) {
+                    const float maxLen = bestT * insetScale;
+                    if (len > maxLen) {
+                        dx = ux * maxLen;
+                        dy = uy * maxLen;
+                    }
+                }
+
+                return {dx, dy};
+            }
+
+            switch (st.slotCornerStyle) {
+                using enum IntegratedMagic::CornerStyle;
+
+                case Square: {
+                    const float m = insetScale;
+                    return {std::clamp(p.x, -m, m), std::clamp(p.y, -m, m)};
+                }
+
+                case Notched:
+                case Chamfered: {
+                    const float m = insetScale * 0.82f;
+                    return {std::clamp(p.x, -m, m), std::clamp(p.y, -m, m)};
+                }
+
+                case Round:
+                default: {
+                    const float len = Length2D(p.x, p.y);
+                    const float maxLen = insetScale;
+                    if (len > maxLen && len > 0.0001f) {
+                        const float k = maxLen / len;
+                        return {p.x * k, p.y * k};
+                    }
+                    return p;
+                }
+            }
+        }
 
         Palette SchoolPalette(RE::ActorValue av) {
             const auto& st = Style();
@@ -358,30 +443,143 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         struct CrackPoint {
             float x, y;
         };
+
         struct Crack {
-            CrackPoint pts[4];
+            CrackPoint pts[8];
             int count;
+            float thickness;
+            ImU32 color;
         };
+
+        static constexpr ImU32 kStrong = IM_COL32(255, 255, 255, 95);
+        static constexpr ImU32 kMedium = IM_COL32(255, 255, 255, 72);
+        static constexpr ImU32 kFaint = IM_COL32(255, 255, 255, 42);
 
         static constexpr Crack kCracks[] = {
-            {{{-0.10f, -0.20f}, {-0.28f, -0.42f}, {-0.40f, -0.55f}, {-0.55f, -0.70f}}, 4},
-            {{{-0.10f, -0.20f}, {0.12f, -0.38f}, {0.30f, -0.52f}, {0.45f, -0.65f}}, 4},
-            {{{-0.10f, -0.20f}, {-0.30f, 0.00f}, {-0.45f, 0.15f}, {-0.60f, 0.25f}}, 4},
-            {{{-0.10f, -0.20f}, {0.15f, 0.08f}, {0.35f, 0.25f}, {0.50f, 0.40f}}, 4},
-            {{{-0.10f, -0.20f}, {-0.05f, 0.15f}, {-0.20f, 0.45f}, {-0.15f, 0.75f}}, 4},
-            {{{-0.40f, -0.55f}, {-0.50f, -0.72f}, {-0.30f, -0.88f}}, 3},
-            {{{0.30f, -0.52f}, {0.55f, -0.58f}, {0.70f, -0.40f}}, 3},
+
+            {{{0.00f, 0.00f},
+              {-0.05f, -0.09f},
+              {-0.02f, -0.18f},
+              {0.06f, -0.16f},
+              {0.10f, -0.06f},
+              {0.07f, 0.02f},
+              {0.00f, 0.00f}},
+             7,
+             1.6f,
+             kStrong},
+
+            {{{0.00f, 0.00f}, {-0.09f, -0.02f}, {-0.14f, -0.09f}, {-0.11f, -0.17f}, {-0.04f, -0.19f}},
+             5,
+             1.4f,
+             kStrong},
+
+            {{{0.00f, 0.00f}, {0.10f, -0.02f}, {0.16f, -0.09f}, {0.13f, -0.17f}, {0.06f, -0.19f}}, 5, 1.4f, kStrong},
+
+            {{{0.00f, 0.00f}, {-0.05f, 0.09f}, {-0.03f, 0.18f}, {0.05f, 0.20f}, {0.10f, 0.12f}, {0.07f, 0.04f}},
+             6,
+             1.4f,
+             kStrong},
+
+            {{{0.00f, 0.00f}, {-0.05f, -0.16f}, {-0.12f, -0.32f}, {-0.22f, -0.50f}, {-0.32f, -0.66f}, {-0.41f, -0.82f}},
+             6,
+             1.5f,
+             kStrong},
+
+            {{{0.00f, 0.00f}, {0.08f, -0.16f}, {0.18f, -0.31f}, {0.30f, -0.48f}, {0.41f, -0.64f}, {0.51f, -0.84f}},
+             6,
+             1.5f,
+             kStrong},
+
+            {{{0.00f, 0.00f}, {-0.17f, -0.01f}, {-0.34f, -0.02f}, {-0.53f, -0.05f}, {-0.70f, -0.08f}, {-0.88f, -0.12f}},
+             6,
+             1.5f,
+             kStrong},
+
+            {{{0.00f, 0.00f}, {0.16f, 0.03f}, {0.33f, 0.08f}, {0.51f, 0.15f}, {0.68f, 0.22f}, {0.87f, 0.30f}},
+             6,
+             1.5f,
+             kStrong},
+
+            {{{0.00f, 0.00f}, {-0.03f, 0.16f}, {-0.06f, 0.33f}, {-0.10f, 0.50f}, {-0.13f, 0.68f}, {-0.16f, 0.88f}},
+             6,
+             1.5f,
+             kStrong},
+
+            {{{0.00f, 0.00f}, {0.08f, 0.13f}, {0.17f, 0.26f}, {0.27f, 0.40f}, {0.38f, 0.56f}, {0.49f, 0.73f}},
+             6,
+             1.5f,
+             kStrong},
+
+            {{{0.00f, 0.00f}, {-0.10f, 0.12f}, {-0.21f, 0.25f}, {-0.34f, 0.39f}, {-0.46f, 0.53f}, {-0.58f, 0.69f}},
+             6,
+             1.5f,
+             kStrong},
+
+            {{{0.00f, 0.00f}, {0.03f, -0.17f}, {0.07f, -0.34f}, {0.11f, -0.52f}, {0.16f, -0.69f}, {0.20f, -0.88f}},
+             6,
+             1.5f,
+             kStrong},
+
+            {{{-0.12f, -0.32f}, {-0.22f, -0.35f}, {-0.31f, -0.39f}, {-0.40f, -0.45f}}, 4, 1.2f, kMedium},
+            {{{-0.12f, -0.32f}, {-0.08f, -0.42f}, {-0.04f, -0.51f}, {0.00f, -0.60f}}, 4, 1.1f, kMedium},
+
+            {{{0.18f, -0.31f}, {0.28f, -0.35f}, {0.37f, -0.40f}, {0.46f, -0.47f}}, 4, 1.2f, kMedium},
+            {{{0.18f, -0.31f}, {0.15f, -0.42f}, {0.13f, -0.51f}, {0.12f, -0.60f}}, 4, 1.1f, kMedium},
+
+            {{{-0.34f, -0.02f}, {-0.43f, -0.10f}, {-0.51f, -0.18f}, {-0.60f, -0.25f}}, 4, 1.2f, kMedium},
+            {{{-0.53f, -0.05f}, {-0.62f, 0.02f}, {-0.72f, 0.09f}, {-0.81f, 0.15f}}, 4, 1.1f, kMedium},
+
+            {{{0.33f, 0.08f}, {0.42f, 0.00f}, {0.51f, -0.06f}, {0.61f, -0.12f}}, 4, 1.2f, kMedium},
+            {{{0.51f, 0.15f}, {0.57f, 0.24f}, {0.64f, 0.33f}, {0.72f, 0.41f}}, 4, 1.1f, kMedium},
+
+            {{{-0.06f, 0.33f}, {-0.15f, 0.40f}, {-0.24f, 0.48f}, {-0.33f, 0.56f}}, 4, 1.2f, kMedium},
+            {{{-0.10f, 0.50f}, {-0.05f, 0.60f}, {-0.02f, 0.69f}, {0.02f, 0.79f}}, 4, 1.1f, kMedium},
+
+            {{{0.17f, 0.26f}, {0.28f, 0.24f}, {0.39f, 0.23f}, {0.50f, 0.23f}}, 4, 1.2f, kMedium},
+            {{{0.38f, 0.56f}, {0.35f, 0.65f}, {0.32f, 0.74f}, {0.30f, 0.83f}}, 4, 1.1f, kMedium},
+
+            {{{-0.21f, 0.25f}, {-0.31f, 0.22f}, {-0.40f, 0.17f}, {-0.49f, 0.11f}}, 4, 1.2f, kMedium},
+            {{{-0.34f, 0.39f}, {-0.42f, 0.46f}, {-0.49f, 0.53f}, {-0.56f, 0.62f}}, 4, 1.1f, kMedium},
+
+            {{{0.07f, -0.34f}, {-0.01f, -0.38f}, {-0.09f, -0.42f}, {-0.17f, -0.47f}}, 4, 1.2f, kMedium},
+            {{{0.11f, -0.52f}, {0.19f, -0.58f}, {0.27f, -0.64f}, {0.35f, -0.71f}}, 4, 1.1f, kMedium},
+
+            {{{-0.05f, -0.09f}, {-0.11f, -0.13f}, {-0.16f, -0.18f}}, 3, 1.0f, kMedium},
+            {{{-0.05f, -0.09f}, {-0.06f, -0.16f}, {-0.08f, -0.23f}}, 3, 1.0f, kMedium},
+
+            {{{0.06f, -0.16f}, {0.13f, -0.20f}, {0.19f, -0.25f}}, 3, 1.0f, kMedium},
+            {{{0.06f, -0.16f}, {0.08f, -0.24f}, {0.10f, -0.31f}}, 3, 1.0f, kMedium},
+
+            {{{-0.05f, 0.09f}, {-0.12f, 0.15f}, {-0.18f, 0.21f}}, 3, 1.0f, kMedium},
+            {{{0.05f, 0.20f}, {0.11f, 0.27f}, {0.17f, 0.33f}}, 3, 1.0f, kMedium},
+
+            {{{0.07f, 0.04f}, {0.15f, 0.06f}, {0.23f, 0.09f}}, 3, 1.0f, kMedium},
+            {{{-0.09f, -0.02f}, {-0.16f, -0.04f}, {-0.24f, -0.06f}}, 3, 1.0f, kMedium},
+
+            {{{-0.03f, 0.18f}, {-0.05f, 0.25f}, {-0.07f, 0.32f}}, 3, 1.0f, kMedium},
+            {{{0.10f, 0.12f}, {0.17f, 0.15f}, {0.24f, 0.20f}}, 3, 1.0f, kMedium},
+
+            {{{-0.41f, -0.82f}, {-0.48f, -0.90f}, {-0.54f, -0.98f}}, 3, 0.9f, kFaint},
+            {{{0.51f, -0.84f}, {0.58f, -0.92f}, {0.65f, -1.00f}}, 3, 0.9f, kFaint},
+            {{{-0.88f, -0.12f}, {-0.98f, -0.16f}, {-1.08f, -0.20f}}, 3, 0.9f, kFaint},
+            {{{0.87f, 0.30f}, {0.97f, 0.35f}, {1.08f, 0.40f}}, 3, 0.9f, kFaint},
+            {{{-0.16f, 0.88f}, {-0.18f, 0.98f}, {-0.20f, 1.08f}}, 3, 0.9f, kFaint},
+            {{{0.49f, 0.73f}, {0.56f, 0.82f}, {0.63f, 0.92f}}, 3, 0.9f, kFaint},
+            {{{-0.58f, 0.69f}, {-0.65f, 0.78f}, {-0.72f, 0.88f}}, 3, 0.9f, kFaint},
+            {{{0.20f, -0.88f}, {0.23f, -0.98f}, {0.26f, -1.08f}}, 3, 0.9f, kFaint},
         };
 
-        const ImU32 col = IM_COL32(255, 255, 255, 90);
-        const ImU32 colFaint = IM_COL32(255, 255, 255, 40);
+        for (const auto& crack : kCracks) {
+            ImVec2 pts[8];
 
-        for (int i = 0; i < static_cast<int>(std::size(kCracks)); ++i) {
-            const auto& crack = kCracks[i];
-            ImVec2 pts[4];
-            for (int k = 0; k < crack.count; ++k)
-                pts[k] = {center.x + crack.pts[k].x * r, center.y + crack.pts[k].y * r};
-            dl->AddPolyline(pts, crack.count, i < 5 ? col : colFaint, 0, 1.f);
+            for (int i = 0; i < crack.count; ++i) {
+                ImVec2 local = {crack.pts[i].x, crack.pts[i].y};
+                local = ClampCrackPointToSlotShape(local, 0.84f);
+                pts[i] = {center.x + local.x * r, center.y + local.y * r};
+            }
+
+            const float thicknessScale = std::clamp(r / 32.0f, 0.85f, 1.75f);
+            dl->AddPolyline(pts, crack.count, crack.color, 0, crack.thickness * thicknessScale);
         }
     }
 
@@ -775,15 +973,67 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         LayoutVec2 relPos[SlotLayout::kMaxSlots]{};
         SlotLayout::Compute(st.hudLayout, n, st.slotRadius, st.ringRadius, st.slotSpacing, st.gridColumns, relPos);
 
-        auto ScaledCenter = [&](int idx) -> ImVec2 {
-            const float scale = SlotAnimator::GetScale(idx);
-            const float rx = relPos[idx].x;
-            const float ry = relPos[idx].y;
-            const float len = std::sqrt(rx * rx + ry * ry);
-            if (len <= 0.5f) return {hudOrigin.x + rx, hudOrigin.y + ry};
-            const float scaledLen = len + (scale - 1.f) * st.slotRadius;
-            return {hudOrigin.x + (rx / len) * scaledLen, hudOrigin.y + (ry / len) * scaledLen};
-        };
+        float slotScale[SlotLayout::kMaxSlots]{};
+        float slotRadiusFinal[SlotLayout::kMaxSlots]{};
+        ImVec2 slotCenter[SlotLayout::kMaxSlots]{};
+
+        for (int i = 0; i < n; ++i) {
+            slotScale[i] = SlotAnimator::GetScale(i) * GetManaPulseScale(i);
+            slotRadiusFinal[i] = st.slotRadius * slotScale[i];
+        }
+
+        switch (st.hudLayout) {
+            case HudLayoutType::Horizontal: {
+                float totalW = 0.f;
+                for (int i = 0; i < n; ++i) {
+                    totalW += slotRadiusFinal[i] * 2.f;
+                }
+                totalW += (n - 1) * st.slotSpacing;
+
+                float x = hudOrigin.x - totalW * 0.5f;
+                for (int i = 0; i < n; ++i) {
+                    x += slotRadiusFinal[i];
+                    slotCenter[i] = {x, hudOrigin.y};
+                    x += slotRadiusFinal[i] + st.slotSpacing;
+                }
+                break;
+            }
+
+            case HudLayoutType::Vertical: {
+                float totalH = 0.f;
+                for (int i = 0; i < n; ++i) {
+                    totalH += slotRadiusFinal[i] * 2.f;
+                }
+                totalH += (n - 1) * st.slotSpacing;
+
+                float y = hudOrigin.y - totalH * 0.5f;
+                for (int i = 0; i < n; ++i) {
+                    y += slotRadiusFinal[i];
+                    slotCenter[i] = {hudOrigin.x, y};
+                    y += slotRadiusFinal[i] + st.slotSpacing;
+                }
+                break;
+            }
+
+            case HudLayoutType::Circular:
+            case HudLayoutType::Grid:
+            default: {
+                for (int i = 0; i < n; ++i) {
+                    const float rx = relPos[i].x;
+                    const float ry = relPos[i].y;
+                    const float len = std::sqrt(rx * rx + ry * ry);
+
+                    if (len <= 0.5f) {
+                        slotCenter[i] = {hudOrigin.x + rx, hudOrigin.y + ry};
+                    } else {
+                        const float extra = slotRadiusFinal[i] - st.slotRadius;
+                        const float finalLen = len + extra;
+                        slotCenter[i] = {hudOrigin.x + (rx / len) * finalLen, hudOrigin.y + (ry / len) * finalLen};
+                    }
+                }
+                break;
+            }
+        }
 
         const float winOffsetX = (textPadRight - textPadLeft) * 0.5f;
         const float winOffsetY = (textPadBottom - textPadTop) * 0.5f;
@@ -803,10 +1053,11 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         if (SlotLayout::HasCenter(st.hudLayout)) DrawRingCenter(dl, hudOrigin);
 
         auto DrawSlot = [&](int i, bool active) {
-            const ImVec2 center = ScaledCenter(i);
-            const float slotR = st.slotRadius * SlotAnimator::GetScale(i) * GetManaPulseScale(i);
-            const auto rID = Slots::GetSlotSpell(i, Domain::Hand::Right);
-            const auto lID = Slots::GetSlotSpell(i, Domain::Hand::Left);
+            const ImVec2 center = slotCenter[i];
+            const float slotR = slotRadiusFinal[i];
+
+            const auto rID = Slots::GetSlotSpell(i, Hand::Right);
+            const auto lID = Slots::GetSlotSpell(i, Hand::Left);
             const auto shID = Slots::GetSlotShout(i);
             auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
             auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
@@ -852,11 +1103,11 @@ namespace IntegratedMagic::HUD::SlotDrawer {
 
         for (int i = 0; i < n; ++i)
             if (i != activeSlot)
-                DrawSlotButtonLabel(dl, ScaledCenter(i), st.slotRadius * SlotAnimator::GetScale(i), i, hudOrigin,
-                                    s_labelAlpha[i]);
+                DrawSlotButtonLabel(dl, slotCenter[i], slotRadiusFinal[i], i, hudOrigin, s_labelAlpha[i]);
+
         if (activeSlot >= 0 && activeSlot < n)
-            DrawSlotButtonLabel(dl, ScaledCenter(activeSlot), st.slotRadius * SlotAnimator::GetScale(activeSlot),
-                                activeSlot, hudOrigin, s_labelAlpha[activeSlot]);
+            DrawSlotButtonLabel(dl, slotCenter[activeSlot], slotRadiusFinal[activeSlot], activeSlot, hudOrigin,
+                                s_labelAlpha[activeSlot]);
 
         DrawModifierWidget(dl, hudOrigin,
                            Application::HudController::Get().IsModifierHeld() || MagicState::Get().IsActive());
