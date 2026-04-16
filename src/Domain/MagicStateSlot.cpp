@@ -50,7 +50,10 @@ namespace IntegratedMagic {
         hm.holdFiredAndWaitingCastStop = false;
         hm.waitingBeginCast = false;
         hm.beginCastWaitSecs = 0.f;
+        hm.autoCastPhase = AutoCastPhase::Done;
         hm.beginCastRetries = 0;
+        hm.startRequestSecs = 0.f;
+        hm.stalledCastSecs = 0.f;
         if (_aa.Held(hand)) {
             const float held = (_aa.Secs(hand) > 0.f) ? _aa.Secs(hand) : 0.1f;
 
@@ -88,14 +91,18 @@ namespace IntegratedMagic {
                     hm.waitingBeginCast = true;
                     hm.beginCastWaitSecs = 0.f;
                     hm.beginCastRetries = 0;
+                    hm.autoCastPhase = AutoCastPhase::WaitingAttackEnable;
+                    hm.startRequestSecs = 0.f;
+                    hm.stalledCastSecs = 0.f;
                     _session.attackEnabled = false;
                     _cast.castStopsToSkip = skipAnim ? (_session.wasHandsDown ? 2 : 1) : 0;
                 }
 
                 MAGIC_DEBUG_LOG(
                     "[State] EnterHand: hand={} mode=Hold wantAutoAttack={} "
-                    "waitingAutoAfterEquip={} castStopsToSkip={}",
-                    handStr, hm.wantAutoAttack, hm.waitingAutoAfterEquip, _cast.castStopsToSkip);
+                    "waitingAutoAfterEquip={} castStopsToSkip={} (wasHandsDown={} skipAnim={})",
+                    handStr, hm.wantAutoAttack, hm.waitingAutoAfterEquip, _cast.castStopsToSkip, _session.wasHandsDown,
+                    skipAnim);
 
                 break;
             case Automatic:
@@ -108,12 +115,15 @@ namespace IntegratedMagic {
                 hm.beginCastWaitSecs = 0.f;
                 hm.beginCastRetries = 0;
                 _session.attackEnabled = false;
+                hm.autoCastPhase = AutoCastPhase::WaitingAttackEnable;
+                hm.startRequestSecs = 0.f;
+                hm.stalledCastSecs = 0.f;
                 _cast.castStopsToSkip = skipAnim ? (_session.wasHandsDown ? 2 : 1) : 0;
 
                 MAGIC_DEBUG_LOG(
                     "[State] EnterHand: hand={} mode=Automatic waitingChargeComplete=true "
-                    "waitingAutoAfterEquip=true castStopsToSkip={}",
-                    handStr, _cast.castStopsToSkip);
+                    "waitingAutoAfterEquip=true castStopsToSkip={} (wasHandsDown={} skipAnim={})",
+                    handStr, _cast.castStopsToSkip, _session.wasHandsDown, skipAnim);
 
                 break;
             case Press:
@@ -127,13 +137,18 @@ namespace IntegratedMagic {
                     hm.waitingBeginCast = true;
                     hm.beginCastWaitSecs = 0.f;
                     hm.beginCastRetries = 0;
+                    hm.autoCastPhase = AutoCastPhase::WaitingAttackEnable;
+                    hm.startRequestSecs = 0.f;
+                    hm.stalledCastSecs = 0.f;
                     _session.attackEnabled = false;
                     _cast.castStopsToSkip = skipAnim ? (_session.wasHandsDown ? 2 : 1) : 0;
                 }
 
                 MAGIC_DEBUG_LOG(
-                    "[State] EnterHand: hand={} mode=Press wantAutoAttack={} pressAutocast={} castStopsToSkip={}",
-                    handStr, hm.wantAutoAttack, hm.pressAutocast, _cast.castStopsToSkip);
+                    "[State] EnterHand: hand={} mode=Press wantAutoAttack={} pressAutocast={} castStopsToSkip={} "
+                    "(wasHandsDown={} skipAnim={})",
+                    handStr, hm.wantAutoAttack, hm.pressAutocast, _cast.castStopsToSkip, _session.wasHandsDown,
+                    skipAnim);
 
                 break;
         }
@@ -208,7 +223,6 @@ namespace IntegratedMagic {
         using enum Hand;
         using enum ActivationMode;
 
-        // ── Shout path ────────────────────────────────────────────────────────
         if (Slots::IsShoutSlot(slot)) {
             if (_session.active && slot == _session.activeSlot && _shout.modeShoutID != 0) {
                 if (_shout.finished) return {};
@@ -255,7 +269,6 @@ namespace IntegratedMagic {
             return action;
         }
 
-        // ── Press toggle ──────────────────────────────────────────────────────
         if (_session.active && slot == _session.activeSlot) {
             const bool needL = (_session.modeSpellLeft != nullptr);
             const bool needR = (_session.modeSpellRight != nullptr);
@@ -277,20 +290,17 @@ namespace IntegratedMagic {
             return {SlotPressResult::Deactivated};
         }
 
-        // ── Overwrite ─────────────────────────────────────────────────────────
         if (_session.active && slot != _session.activeSlot) {
             if (!CanOverwriteNow()) return {};
             _session.firstInterrupt = 0;
             PrepareForOverwriteToSlot(slot);
         }
 
-        // ── Affordability ─────────────────────────────────────────────────────
         if (const auto afford = ComputeSlotAffordability(slot); afford.hasSpells && !afford.canCast) {
             if (_session.active) ExitAllNow();
             return {};
         }
 
-        // ── Spell path ────────────────────────────────────────────────────────
         SlotEntry e{};
         if (!PrepareSlotEntry(slot, e)) return {};
 
@@ -324,6 +334,11 @@ namespace IntegratedMagic {
             MarkDirty(Left);
             if (!e.hasRight && SpellClassify::IsTwoHandedSpell(e.leftSpell)) MarkDirty(Right);
         }
+
+        MAGIC_DEBUG_LOG(
+            "[State] OnSlotPressed: preparing equip - hasLeft={} leftID={:#010x} hasRight={} rightID={:#010x} "
+            "isDualCasting={}",
+            e.hasLeft, e.leftID, e.hasRight, e.rightID, _session.isDualCasting);
 
         _inSlotSetup = true;
         action.skipAnim = IntegratedMagic::Config::MagicConfigAdapter::Get().SkipEquipAnimation();

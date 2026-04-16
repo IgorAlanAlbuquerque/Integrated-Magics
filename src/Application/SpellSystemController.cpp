@@ -31,7 +31,16 @@ namespace Application {
         DispatchSlotEvents();
 
         if (!inputBlocked) {
-            IntegratedMagic::MagicState::Get().PumpAutoAttack(dt);
+            const auto aaResult = IntegratedMagic::MagicState::Get().PumpAutoAttack(dt);
+
+            if (aaResult.leftAttack)
+                IntegratedMagic::detail::DispatchAttack(aaResult.leftAttack->hand, aaResult.leftAttack->power,
+                                                        aaResult.leftAttack->secsHeld);
+            if (aaResult.rightAttack)
+                IntegratedMagic::detail::DispatchAttack(aaResult.rightAttack->hand, aaResult.rightAttack->power,
+                                                        aaResult.rightAttack->secsHeld);
+
+            if (aaResult.shout) IntegratedMagic::detail::DispatchShout(aaResult.shout->power, aaResult.shout->secsHeld);
             IntegratedMagic::MagicState::Get().PumpAutomatic(dt);
         }
     }
@@ -67,8 +76,7 @@ namespace Application {
         if (tag == "EnableBumper"sv) {
             const auto r = state.NotifyAttackEnabled();
 
-            if (auto* p = RE::PlayerCharacter::GetSingleton())
-                IntegratedMagic::MagicAction::DisableSkipEquipVarsNow(p);
+            if (auto* p = RE::PlayerCharacter::GetSingleton()) IntegratedMagic::MagicAction::DisableSkipEquipVarsNow(p);
 
             if (r.dispatchLeft) IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 1.0f, 0.0f);
             if (r.dispatchRight) IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Right, 1.0f, 0.0f);
@@ -142,8 +150,7 @@ namespace Application {
         };
         d.dispatchShout = [](float value, float heldSecs) { IntegratedMagic::detail::DispatchShout(value, heldSecs); };
         d.disableSkipEquipVarsNow = []() {
-            if (auto* p = RE::PlayerCharacter::GetSingleton())
-                IntegratedMagic::MagicAction::DisableSkipEquipVarsNow(p);
+            if (auto* p = RE::PlayerCharacter::GetSingleton()) IntegratedMagic::MagicAction::DisableSkipEquipVarsNow(p);
         };
         d.applySkipEquipAnimReturn = []() {
             const bool skip = IntegratedMagic::Config::MagicConfigAdapter::Get().SkipEquipAnimationOnReturn();

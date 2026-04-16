@@ -5,12 +5,12 @@
 #include "Domain/InventoryUtil.h"
 #include "Domain/OutboundDelegate.h"
 #include "PCH.h"
+#include "Shared/AttackEnabledResult.h"
 #include "Shared/Hand.h"
 #include "Shared/SlotPressAction.h"
 #include "Shared/SlotPressResult.h"
 #include "Shared/SpellSettings.h"
 #include "Shared/SpellType.h"
-#include "Shared/AttackEnabledResult.h"
 
 namespace IntegratedMagic {
     struct SpellSettings;
@@ -22,6 +22,15 @@ namespace IntegratedMagic {
         RE::MagicItem* leftSpell{nullptr};
         RE::FormID snapShoutID{0};
         bool valid{false};
+    };
+
+    enum class AutoCastPhase : std::uint8_t {
+        Idle = 0,
+        WaitingAttackEnable,   // equipou / aguardando EnableBumper ou fallback
+        StartRequested,        // já apertou ataque virtual, aguardando BeginCast real
+        Casting,               // cast começou de verdade
+        WaitingChargeRelease,  // aguardando completar charge para soltar
+        Done                   // mão finalizada
     };
 
     struct HandMode {
@@ -42,6 +51,10 @@ namespace IntegratedMagic {
         int beginCastRetries{0};
         bool waitingSpellFireFinalize{false};
         float spellFireFinalizeSecs{0.f};
+        AutoCastPhase autoCastPhase{AutoCastPhase::Idle};
+        float startRequestSecs{0.f};  // tempo desde que pediu start
+        float stalledCastSecs{0.f};
+        bool sawBeginCastEvent{false};
     };
 
     struct SessionState {
@@ -58,6 +71,22 @@ namespace IntegratedMagic {
         RE::SpellItem* modeSpellRight{nullptr};
 
         void Reset() { *this = {}; }
+    };
+
+    struct PumpResult {
+        struct AttackEvent {
+            Hand hand;
+            float power;
+            float secsHeld;
+        };
+        struct ShoutEvent {
+            float power;
+            float secsHeld;
+        };
+
+        std::optional<AttackEvent> leftAttack;
+        std::optional<AttackEvent> rightAttack;
+        std::optional<ShoutEvent> shout;
     };
 
     struct RestoreContext {
@@ -127,7 +156,7 @@ namespace IntegratedMagic {
         void ForceExitNoRestore();
 
         void PumpAutomatic(float dt);
-        void PumpAutoAttack(float dt);
+        PumpResult PumpAutoAttack(float dt);
         void TryFinalizeExit();
 
         [[nodiscard]] AttackEnabledResult NotifyAttackEnabled();
@@ -255,6 +284,11 @@ namespace IntegratedMagic {
         void PumpAutoStartFallback(Hand hand, float dt);
         void ScheduleSpellFireFinalize(Hand hand);
         void PumpSpellFireFinalize(float dt);
+        bool RequestAutoAttackStart(Hand hand, bool clearWaitAfterEquip);
+        void ConfirmAutoCastStarted(Hand hand);
+        void ResetAutoCastStartState(Hand hand);
+        bool HasRealCastStarted(Hand hand, const RE::SpellItem* expectedSpell) const;
+        bool IsCasterIdleForExpectedSpell(Hand hand, const RE::SpellItem* expectedSpell) const;
 
         template <class Fn>
         void UpdatePrevExtraEquippedForOverlay(Fn&& equipFn);

@@ -10,7 +10,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
 
     void DrawSlotVisual(ImDrawList* dl, ImVec2 center, float r, bool isActive, RE::SpellItem const* rSpell,
                         RE::SpellItem const* lSpell, RE::FormID shoutFormID = 0, bool forceOffset = false,
-                        bool canCast = true);
+                        bool canCast = true, bool onCooldown = false, float cooldownProgress = 0.0f);
 
     void DrawRingCenter(ImDrawList* dl, ImVec2 c, float r = 4.f);
     void DrawModifierWidget(ImDrawList* dl, ImVec2 c, bool modHeld);

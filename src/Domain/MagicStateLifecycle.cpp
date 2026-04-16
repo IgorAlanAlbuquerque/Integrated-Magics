@@ -44,7 +44,7 @@ namespace IntegratedMagic {
     }
 
     MagicState& MagicState::Get() {
-        static MagicState inst;  // NOSONAR
+        static MagicState inst;
         return inst;
     }
 
@@ -65,12 +65,27 @@ namespace IntegratedMagic {
         const auto ws = pc->AsActorState()->GetWeaponState();
         _session.wasHandsDown = (ws == RE::WEAPON_STATE::kSheathed);
 
+        const bool snapHasSpells = (_restore.snapshot.rightSpell != nullptr || _restore.snapshot.leftSpell != nullptr);
+
         MAGIC_DEBUG_LOG("[State] EnsureActiveWithSnapshot: ACTIVATING slot={} wasHandsDown={} weaponState={}", slot,
                         _session.wasHandsDown, static_cast<int>(std::to_underlying(ws)));
 
+        MAGIC_DEBUG_LOG("[State] EnsureActiveWithSnapshot: snapHasSpells={} (right={:#010x} left={:#010x})",
+                        snapHasSpells, _restore.snapshot.rightSpell ? _restore.snapshot.rightSpell->GetFormID() : 0u,
+                        _restore.snapshot.leftSpell ? _restore.snapshot.leftSpell->GetFormID() : 0u);
+
         if (_session.wasHandsDown && raiseHandsIfSheathed) {
+            MAGIC_DEBUG_LOG(
+                "[State] EnsureActiveWithSnapshot: calling DrawWeaponMagicHands(true) - wasHandsDown=true "
+                "snapHasSpells={}",
+                snapHasSpells);
             MagicAction::SetSkipEquipVars(pc, true);
             pc->DrawWeaponMagicHands(true);
+        } else {
+            MAGIC_DEBUG_LOG(
+                "[State] EnsureActiveWithSnapshot: skipping DrawWeaponMagicHands - wasHandsDown={} "
+                "raiseHandsIfSheathed={}",
+                _session.wasHandsDown, raiseHandsIfSheathed);
         }
 
         _session.active = true;
@@ -237,8 +252,12 @@ namespace IntegratedMagic {
         if (PlayerIsKnockedOrStaggered(pc) && (!_left.pressActive && !_right.pressActive)) return true;
         if (PlayerIsBlocking(pc) && (!_left.pressActive && !_right.pressActive)) return true;
 
-        if (!_restore.pendingRestoreAfterSheathe && _shout.modeShoutID == 0 && PlayerIsSheathingOrSheathed(pc))
+        const auto ws = pc->AsActorState()->GetWeaponState();
+        if (!_restore.pendingRestoreAfterSheathe && _shout.modeShoutID == 0 && PlayerIsSheathingOrSheathed(pc)) {
+            MAGIC_DEBUG_LOG("[State] ShouldForceInterrupt: TRUE - player sheathing/sheathed weaponState={}",
+                            static_cast<int>(std::to_underlying(ws)));
             return true;
+        }
 
         if (_session.modeSpellRight) {
             auto* caster = GetMagicCaster(pc, RE::MagicSystem::CastingSource::kRightHand);

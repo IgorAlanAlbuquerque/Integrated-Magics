@@ -9,6 +9,7 @@
 #include "Application/HudController.h"
 #include "Config/ConfigAdapter.h"
 #include "Config/StyleConfig.h"
+#include "Domain/SlotCooldownTracker.h"
 #include "Domain/SlotCostUtil.h"
 #include "Domain/SpellClassify.h"
 #include "Domain/State.h"
@@ -583,16 +584,23 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         }
     }
 
-    void DrawSlotVisual(ImDrawList* dl, ImVec2 center, float r, bool isActive, RE::SpellItem const* rSpell,
-                        RE::SpellItem const* lSpell, RE::FormID shoutFormID, bool forceOffset, bool canCast) {
-        const auto rPal = SpellPalette(rSpell);
-        const auto lPal = SpellPalette(lSpell);
+    static ImU32 MulAlpha(ImU32 col, float alphaMul) {
+        alphaMul = std::clamp(alphaMul, 0.0f, 1.0f);
+        const auto a = static_cast<int>(((col >> 24) & 0xFF) * alphaMul);
+        return (col & 0x00FFFFFFu) | (static_cast<ImU32>(a) << 24);
+    }
 
-        if (isActive) {
-            DrawGlowShape(dl, center, r, rPal.glow);
-            DrawGlowShape(dl, center, r, lPal.glow);
-        }
+    void DrawSpellIconTinted(ImDrawList* dl, const RE::SpellItem* spell, float cx, float cy, float iconSize,
+                             ImU32 tint) {
+        const auto& img = TextureManager::GetSpellIcon(spell);
+        if (!img.valid()) return;
+        const float half = iconSize * 0.5f;
+        dl->AddImage(reinterpret_cast<ImTextureID>(img.texture), {cx - half, cy - half}, {cx + half, cy + half},
+                     {0.f, 0.f}, {1.f, 1.f}, tint);
+    }
 
+    static void DrawSlotContent(ImDrawList* dl, ImVec2 center, float r, bool isActive, RE::SpellItem const* rSpell,
+                                RE::SpellItem const* lSpell, RE::FormID shoutFormID, bool forceOffset, float alphaMul) {
         const auto& st = Style();
 
         if (st.useTextureForSlotBg) {
@@ -607,23 +615,27 @@ namespace IntegratedMagic::HUD::SlotDrawer {
                 }
                 return TextureManager::GetUiTexture(UiTextureType::slot_bg);
             }();
-            if (bgImg.valid())
 
+            if (bgImg.valid()) {
                 dl->AddImage(reinterpret_cast<ImTextureID>(bgImg.texture), {center.x - r, center.y - r},
-                             {center.x + r, center.y + r}, {0.f, 0.f}, {1.f, 1.f}, IM_COL32(255, 255, 255, 255));
-            else
-                FillSlotShape(dl, center, r, isActive ? st.slotBgActive : st.slotBgInactive);
+                             {center.x + r, center.y + r}, {0.f, 0.f}, {1.f, 1.f},
+                             IM_COL32(255, 255, 255, static_cast<int>(255.0f * alphaMul)));
+            } else {
+                FillSlotShape(dl, center, r, MulAlpha(isActive ? st.slotBgActive : st.slotBgInactive, alphaMul));
+            }
         } else {
-            FillSlotShape(dl, center, r, isActive ? st.slotBgActive : st.slotBgInactive);
+            FillSlotShape(dl, center, r, MulAlpha(isActive ? st.slotBgActive : st.slotBgInactive, alphaMul));
         }
 
+        const ImU32 iconTint = MulAlpha(ComputeIconTint(), alphaMul);
         const float iconSize = r * st.iconSizeFactor;
+
         if (shoutFormID) {
             const auto& img = TextureManager::GetIconForForm(shoutFormID);
             if (img.valid()) {
                 const float half = iconSize * 0.6f;
                 dl->AddImage(reinterpret_cast<ImTextureID>(img.texture), {center.x - half, center.y - half},
-                             {center.x + half, center.y + half}, {0.f, 0.f}, {1.f, 1.f}, ComputeIconTint());
+                             {center.x + half, center.y + half}, {0.f, 0.f}, {1.f, 1.f}, iconTint);
             }
         } else {
             const float off = r * st.iconOffsetFactor;
@@ -632,12 +644,44 @@ namespace IntegratedMagic::HUD::SlotDrawer {
 
             if (!forceOffset && (sameSpell || onlyOne)) {
                 const RE::SpellItem* sp = rSpell ? rSpell : lSpell;
-                DrawSpellIcon(dl, sp, center.x, center.y, iconSize);
+                DrawSpellIconTinted(dl, sp, center.x, center.y, iconSize, iconTint);
             } else {
-                if (rSpell) DrawSpellIcon(dl, rSpell, center.x + off, center.y, iconSize);
-                if (lSpell) DrawSpellIcon(dl, lSpell, center.x - off, center.y, iconSize);
+                if (rSpell) DrawSpellIconTinted(dl, rSpell, center.x + off, center.y, iconSize, iconTint);
+                if (lSpell) DrawSpellIconTinted(dl, lSpell, center.x - off, center.y, iconSize, iconTint);
             }
         }
+    }
+
+    void DrawSlotVisual(ImDrawList* dl, ImVec2 center, float r, bool isActive, RE::SpellItem const* rSpell,
+                        RE::SpellItem const* lSpell, RE::FormID shoutFormID, bool forceOffset, bool canCast,
+                        bool onCooldown, float cooldownProgress) {
+        const auto rPal = SpellPalette(rSpell);
+        const auto lPal = SpellPalette(lSpell);
+
+        if (isActive) {
+            DrawGlowShape(dl, center, r, rPal.glow);
+            DrawGlowShape(dl, center, r, lPal.glow);
+        }
+
+        if (onCooldown) {
+            const float p = std::clamp(cooldownProgress, 0.0f, 1.0f);
+
+            // parte em cooldown: mais transparente/apagada
+            DrawSlotContent(dl, center, r, isActive, rSpell, lSpell, shoutFormID, forceOffset, 0.25f);
+
+            // parte preenchida: normal
+            const float fillTopY = center.y + r - (2.0f * r * p);
+
+            dl->PushClipRect({center.x - r - 2.0f, fillTopY}, {center.x + r + 2.0f, center.y + r + 2.0f}, true);
+
+            DrawSlotContent(dl, center, r, isActive, rSpell, lSpell, shoutFormID, forceOffset, 1.0f);
+
+            dl->PopClipRect();
+        } else {
+            DrawSlotContent(dl, center, r, isActive, rSpell, lSpell, shoutFormID, forceOffset, 1.0f);
+        }
+
+        const auto& st = Style();
 
         if (isActive) {
             const double t = ImGui::GetTime();
@@ -667,7 +711,9 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             dl->AddLine({center.x + d, center.y - d}, {center.x - d, center.y + d}, xc, 1.f);
         }
 
-        if (!canCast) DrawCrackOverlay(dl, center, r);
+        if (!canCast) {
+            DrawCrackOverlay(dl, center, r);
+        }
     }
 
     void DrawRingCenter(ImDrawList* dl, ImVec2 c, float r) {
@@ -862,6 +908,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         const auto n = static_cast<int>(Slots::GetSlotCount());
         const int activeSlot = MagicState::Get().ActiveSlot();
         const bool modHeld = !MagicState::Get().IsActive() && Application::HudController::Get().IsModifierHeld();
+        IntegratedMagic::SlotCooldownTracker::Get().Update(0.0f);
 
         SlotAnimator::Update(n, activeSlot, modHeld, st.hudLayout, st.gridColumns);
 
@@ -900,6 +947,11 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             bool wasCastable = true;
             float pulseT = -1.f;
         };
+        struct SlotCooldownAnim {
+            bool wasOnCooldown = false;
+            float pulseT = -1.f;
+        };
+        static SlotCooldownAnim s_cooldownAnim[SlotLayout::kMaxSlots]{};
         static SlotManaAnim s_manaAnim[SlotLayout::kMaxSlots]{};
         {
             using clock = std::chrono::steady_clock;
@@ -930,6 +982,44 @@ namespace IntegratedMagic::HUD::SlotDrawer {
 
         auto GetManaPulseScale = [](int i) -> float {
             const float t = s_manaAnim[i].pulseT;
+            if (t < 0.f) return 1.f;
+            return 1.f + 0.28f * std::sin(t * kPI);
+        };
+
+        {
+            using clock = std::chrono::steady_clock;
+            static clock::time_point s_cdLast = clock::now();
+            const auto now = clock::now();
+            float dt = std::chrono::duration<float>(now - s_cdLast).count();
+            s_cdLast = now;
+            if (dt < 0.f || dt > 0.25f) dt = 0.f;
+
+            constexpr float kPulseDuration = 0.30f;
+
+            for (int i = 0; i < n; ++i) {
+                const auto cdInfo = IntegratedMagic::SlotCooldownTracker::Get().GetSlotInfo(i);
+                auto& anim = s_cooldownAnim[i];
+
+                // dispara pulse quando acabou o cooldown
+                if (cdInfo.justFinished && anim.pulseT < 0.f) {
+                    anim.pulseT = 0.f;
+                }
+
+                anim.wasOnCooldown = cdInfo.onCooldown;
+
+                if (anim.pulseT >= 0.f) {
+                    anim.pulseT += dt / kPulseDuration;
+                    if (anim.pulseT >= 1.f) anim.pulseT = -1.f;
+                }
+            }
+
+            for (int i = n; i < SlotLayout::kMaxSlots; ++i) {
+                s_cooldownAnim[i] = {};
+            }
+        }
+
+        auto GetCooldownPulseScale = [](int i) -> float {
+            const float t = s_cooldownAnim[i].pulseT;
             if (t < 0.f) return 1.f;
             return 1.f + 0.28f * std::sin(t * kPI);
         };
@@ -978,7 +1068,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         ImVec2 slotCenter[SlotLayout::kMaxSlots]{};
 
         for (int i = 0; i < n; ++i) {
-            slotScale[i] = SlotAnimator::GetScale(i) * GetManaPulseScale(i);
+            slotScale[i] = SlotAnimator::GetScale(i) * std::max(GetManaPulseScale(i), GetCooldownPulseScale(i));
             slotRadiusFinal[i] = st.slotRadius * slotScale[i];
         }
 
@@ -1064,9 +1154,12 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             const bool is2H = !shID && !rID && lSp && SpellClassify::IsTwoHandedSpell(lSp);
 
             const bool canCast = s_manaAnim[i].wasCastable;
+            const auto cdInfo = IntegratedMagic::SlotCooldownTracker::Get().GetSlotInfo(i);
+            const bool onCooldown = cdInfo.onCooldown;
+            const float cooldownProgress = cdInfo.progress;
 
             DrawSlotVisual(dl, center, slotR, active, is2H ? nullptr : rSp, is2H ? nullptr : lSp, is2H ? lID : shID,
-                           false, canCast);
+                           false, canCast, onCooldown, cooldownProgress);
 
             if (st.showSpellNamesInHud && !MagicState::Get().IsActive()) {
                 const ImVec2 toCenter = [&]() -> ImVec2 {

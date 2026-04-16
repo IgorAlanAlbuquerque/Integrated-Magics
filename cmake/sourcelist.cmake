@@ -25,6 +25,7 @@ set(sources
     src/Domain/MagicStatePump.cpp
     src/Domain/MagicStateSlot.cpp
     src/Domain/SlotCostUtil.cpp
+    src/Domain/SlotCooldownTracker.cpp
     src/Application/InputController.cpp
     src/Application/HudController.cpp
     src/Application/AssignService.cpp
