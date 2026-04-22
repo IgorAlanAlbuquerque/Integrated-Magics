@@ -3,7 +3,6 @@
 #include <vector>
 
 #include "Domain/InventoryUtil.h"
-#include "Domain/OutboundDelegate.h"
 #include "PCH.h"
 #include "Shared/AttackEnabledResult.h"
 #include "Shared/Hand.h"
@@ -73,23 +72,7 @@ namespace IntegratedMagic {
         void Reset() { *this = {}; }
     };
 
-    struct PumpResult {
-        struct AttackEvent {
-            Hand hand;
-            float power;
-            float secsHeld;
-        };
-        struct ShoutEvent {
-            float power;
-            float secsHeld;
-        };
-
-        std::optional<AttackEvent> leftAttack;
-        std::optional<AttackEvent> rightAttack;
-        std::optional<ShoutEvent> shout;
-    };
-
-    struct RestoreContext {
+        struct RestoreContext {
         HandSnapshot snapshot{};
         std::vector<ExtraEquippedItem> prevExtraEquipped;
         bool dirtyLeft{false};
@@ -146,18 +129,18 @@ namespace IntegratedMagic {
 
         [[nodiscard]] SlotPressAction OnSlotPressed(int slot);
         void OnEquipComplete(const InventoryIndex& snapshotBefore);
-        void OnSlotReleased(int slot);
+        ExitAllResult OnSlotReleased(int slot);
 
         void OnBeginCast(Hand hand);
-        void OnCastStop();
-        void OnCastInterrupt();
-        void OnShoutStop();
-        void ForceExit();
-        void ForceExitNoRestore();
+        ExitAllResult OnCastStop();
+        CastInterruptResult OnCastInterrupt();
+        ExitAllResult OnShoutStop();
+        ForceExitResult ForceExit();
+        [[nodiscard]] ForceExitResult ForceExitNoRestore();
 
-        void PumpAutomatic(float dt);
+        PumpAutomaticResult PumpAutomatic(float dt);
         PumpResult PumpAutoAttack(float dt);
-        void TryFinalizeExit();
+        ExitAllResult TryFinalizeExit();
 
         [[nodiscard]] AttackEnabledResult NotifyAttackEnabled();
 
@@ -171,12 +154,14 @@ namespace IntegratedMagic {
         }
         bool IsPressMode() const noexcept { return _left.pressActive || _right.pressActive; }
         void NotifySheatheComplete() noexcept { _restore.sheatheAnimComplete = true; }
-        void OnSpellFired(Hand hand);
+        SpellFiredResult OnSpellFired(Hand hand);
         const HandMode& LeftMode() const noexcept { return _left; }
         const HandMode& RightMode() const noexcept { return _right; }
         bool IsInSlotSetup() const noexcept { return _inSlotSetup; }
         [[nodiscard]] bool IsShoutActive() const noexcept { return _shout.modeShoutID != 0; }
-        void SetOutboundDelegate(const Domain::OutboundDelegate& delegate);
+        void ScheduleSpellFireFinalize(Hand hand);
+        void FinalizeRestoreSnapshotPlan(bool resetShout = false);
+        void ResetShoutState() { _shout.Reset(); }
 
     private:
         MagicState() = default;
@@ -216,8 +201,6 @@ namespace IntegratedMagic {
             _session.modeSpellRight = nullptr;
             CancelAllDelayedStarts();
         }
-
-        void ResetShoutState() { _shout.Reset(); }
 
         void ResetSessionState() {
             ResetHandStates();
@@ -262,28 +245,28 @@ namespace IntegratedMagic {
 
         void EnsureActiveWithSnapshot(RE::PlayerCharacter const* player, int slot, bool raiseHandsIfSheathed = true);
         void CaptureSnapshot(RE::PlayerCharacter const* player);
-        void RestoreSnapshot(RE::PlayerCharacter* player);
+        [[nodiscard]] RestoreSnapshotPlan BuildRestoreSnapshotPlan(RE::PlayerCharacter* player);
+        void FinalizeExitAfterController();
 
         bool HandIsRelevant(Hand h) const;
         bool AllRelevantHandsFinished() const;
         bool CanOverwriteNow() const;
         bool ShouldForceInterrupt() const;
 
-        void ExitAllNow();
-        void PrepareForOverwriteToSlot(int newSlot);
-        void DisableHand(Hand hand);
+        ExitAllResult ExitAllNow();
+        PrepareOverwriteResult PrepareForOverwriteToSlot(int newSlot);
+        DisableHandResult DisableHand(Hand hand);
 
         bool PrepareSlotEntry(int slot, SlotEntry& out);
         void EnterHand(Hand hand, const SpellSettings& ss, bool skipAnim);
         void TogglePressHand(Hand hand, const SpellSettings& ss);
-        void FinishHand(Hand hand);
+        float FinishHand(Hand hand);
         void SetModeSpellsFromHand(Hand hand, RE::SpellItem* spell);
 
-        void PumpDelayedStarts(float dt);
-        void PumpAutomaticHand(Hand hand);
-        void PumpAutoStartFallback(Hand hand, float dt);
-        void ScheduleSpellFireFinalize(Hand hand);
-        void PumpSpellFireFinalize(float dt);
+        DelayedStartsResult PumpDelayedStarts(float dt);
+        PumpAutomaticHandResult PumpAutomaticHand(Hand hand);
+        PumpAutoStartFallbackResult PumpAutoStartFallback(Hand hand, float dt);
+        ExitAllResult PumpSpellFireFinalize(float dt);
         bool RequestAutoAttackStart(Hand hand, bool clearWaitAfterEquip);
         void ConfirmAutoCastStarted(Hand hand);
         void ResetAutoCastStartState(Hand hand);
@@ -304,7 +287,6 @@ namespace IntegratedMagic {
         ShoutState _shout{};
         CastFlags _cast{};
         bool _inSlotSetup{false};
-        Domain::OutboundDelegate _outbound{};
 
         static constexpr float kDelayedStartSec = 0.050f;
         static constexpr float kMaxActiveTimeoutSecs = 30.f;

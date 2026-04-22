@@ -1,13 +1,12 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(IntegratedMagic VERSION 1.3 LANGUAGES CXX)
+project(IntegratedMagic VERSION 1.4.9 LANGUAGES CXX)
 
 if(DEFINED ENV{SKYRIM_MODS_FOLDER} AND IS_DIRECTORY "$ENV{SKYRIM_MODS_FOLDER}")
     set(OUTPUT_FOLDER "$ENV{SKYRIM_MODS_FOLDER}/${PROJECT_NAME}")
 endif()
 
 set(BUILD_TESTS OFF CACHE BOOL "Build unit tests for CommonLibVR." FORCE)
-set(ENABLE_SKYRIM_VR OFF CACHE BOOL "Disable Skyrim VR in CommonLibVR-ng" FORCE)
 
 add_subdirectory(
     ${CMAKE_CURRENT_SOURCE_DIR}/extern/CommonLibVR-ng

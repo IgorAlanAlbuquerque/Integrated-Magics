@@ -27,20 +27,6 @@ namespace IntegratedMagic {
         }
 
         inline RE::SpellItem* AsSpell(RE::MagicItem* m) { return m ? m->As<RE::SpellItem>() : nullptr; }
-
-        void ClearHandSpellIfNoSnapshot(RE::SpellItem const* snapSpell, RE::SpellItem* modeSpell, Hand hand,
-                                        const Domain::OutboundDelegate& outbound) {
-            if (snapSpell) return;
-            if (modeSpell) {
-                if (outbound.clearHandSpellByRef) outbound.clearHandSpellByRef(modeSpell, hand);
-            } else {
-                if (outbound.clearHandSpell) outbound.clearHandSpell(hand);
-            }
-        }
-
-        void EquipSpellIfPresent(RE::SpellItem* spell, Hand hand, const Domain::OutboundDelegate& outbound) {
-            if (spell && outbound.equipSpellInHand) outbound.equipSpellInHand(spell, hand);
-        }
     }
 
     MagicState& MagicState::Get() {
@@ -147,63 +133,110 @@ namespace IntegratedMagic {
                         _restore.snapshot.leftSpell ? _restore.snapshot.leftSpell->GetFormID() : 0u);
     }
 
-    void MagicState::RestoreSnapshot(RE::PlayerCharacter* player) {
+    RestoreSnapshotPlan MagicState::BuildRestoreSnapshotPlan(RE::PlayerCharacter* player) {
         using enum Hand;
-        if (!player || !_restore.snapshot.valid) return;
+
+        RestoreSnapshotPlan plan{};
+
+        if (!player || !_restore.snapshot.valid) return plan;
 
         auto* mgr = RE::ActorEquipManager::GetSingleton();
-        if (!mgr) return;
+        if (!mgr) return plan;
 
-        MAGIC_DEBUG_LOG("[State] RestoreSnapshot: dirtyLeft={} dirtyRight={} dirtyShout={} snapShoutID={:#010x}",
-                        _restore.dirtyLeft, _restore.dirtyRight, _restore.dirtyShout, _restore.snapshot.snapShoutID);
-
-        _session.wasHandsDown = false;
-        if (_outbound.applySkipEquipAnimReturn) _outbound.applySkipEquipAnimReturn();
-
-        const auto idx = BuildInventoryIndex(player);
-        const auto* rightSlot = _outbound.getHandEquipSlot ? _outbound.getHandEquipSlot(Right) : nullptr;
-        const auto* leftSlot = _outbound.getHandEquipSlot ? _outbound.getHandEquipSlot(Left) : nullptr;
         auto& snap = _restore.snapshot;
+
+        MAGIC_DEBUG_LOG(
+            "[State] BuildRestoreSnapshotPlan: dirtyLeft={} dirtyRight={} dirtyShout={} snapShoutID={:#010x}",
+            _restore.dirtyLeft, _restore.dirtyRight, _restore.dirtyShout, snap.snapShoutID);
+
+        plan.valid = true;
+        plan.applySkipEquipAnimReturn = true;
+        plan.inventoryIndex = BuildInventoryIndex(player);
+        plan.prevExtraEquipped = _restore.prevExtraEquipped;
 
         auto* rightSnapSpell = snap.rightObj.base ? nullptr : AsSpell(snap.rightSpell);
         auto* leftSnapSpell = snap.leftObj.base ? nullptr : AsSpell(snap.leftSpell);
 
         if (_restore.dirtyRight) {
-            MAGIC_DEBUG_LOG("[State] RestoreSnapshot: restoring Right hand");
+            plan.restoreRightHand = true;
+            plan.rightObj = snap.rightObj;
 
-            if (!snap.rightObj.base)
-                ClearHandSpellIfNoSnapshot(rightSnapSpell, _session.modeSpellRight, Right, _outbound);
-            if (_outbound.restoreOneHand) _outbound.restoreOneHand(false, idx, snap.rightObj, rightSlot);
-            EquipSpellIfPresent(rightSnapSpell, Right, _outbound);
+            if (!snap.rightObj.base) {
+                if (!rightSnapSpell) {
+                    if (_session.modeSpellRight) {
+                        plan.clearRightHandByRef = _session.modeSpellRight;
+                    } else {
+                        plan.clearRightHand = true;
+                    }
+                }
+            }
+
+            plan.equipRightSpell = rightSnapSpell;
         }
+
         if (_restore.dirtyLeft) {
-            MAGIC_DEBUG_LOG("[State] RestoreSnapshot: restoring Left hand");
+            plan.restoreLeftHand = true;
+            plan.leftObj = snap.leftObj;
 
-            if (!snap.leftObj.base) ClearHandSpellIfNoSnapshot(leftSnapSpell, _session.modeSpellLeft, Left, _outbound);
-            if (_outbound.restoreOneHand) _outbound.restoreOneHand(true, idx, snap.leftObj, leftSlot);
-            EquipSpellIfPresent(leftSnapSpell, Left, _outbound);
-            if (!_restore.dirtyRight && snap.rightObj.base)
-                if (_outbound.restoreOneHand) _outbound.restoreOneHand(false, idx, snap.rightObj, rightSlot);
-        }
+            if (!snap.leftObj.base) {
+                if (!leftSnapSpell) {
+                    if (_session.modeSpellLeft) {
+                        plan.clearLeftHandByRef = _session.modeSpellLeft;
+                    } else {
+                        plan.clearLeftHand = true;
+                    }
+                }
+            }
 
-        if (_restore.dirtyShout) {
-            MAGIC_DEBUG_LOG("[State] RestoreSnapshot: restoring shout, snapShoutID={:#010x}", snap.snapShoutID);
+            plan.equipLeftSpell = leftSnapSpell;
 
-            if (_outbound.clearVoiceShout) _outbound.clearVoiceShout();
-            if (snap.snapShoutID) {
-                if (auto* form = RE::TESForm::LookupByID(snap.snapShoutID))
-                    if (_outbound.equipShoutInVoice) _outbound.equipShoutInVoice(form);
+            if (!_restore.dirtyRight && snap.rightObj.base) {
+                plan.restoreRightAfterLeftOnly = true;
+                plan.rightObj = snap.rightObj;
             }
         }
 
-        if (_outbound.reequipPrevExtraEquipped) _outbound.reequipPrevExtraEquipped(player, _restore.prevExtraEquipped);
+        if (_restore.dirtyShout) {
+            plan.clearVoiceShout = true;
 
-        snap.valid = false;
+            if (snap.snapShoutID) {
+                plan.equipVoiceForm = RE::TESForm::LookupByID(snap.snapShoutID);
+            }
+        }
+
+        return plan;
+    }
+
+    void MagicState::FinalizeRestoreSnapshotPlan(bool resetShout) {
+        MAGIC_DEBUG_LOG("[State] FinalizeImmediateExitAfterController");
+
+        _left = {};
+        _right = {};
+        _aa.Reset();
+        _cast.Reset();
+
+        _session.attackEnabled = false;
+        _session.isDualCasting = false;
+        _session.dualCastSkipCastStops = 0;
+        _session.firstInterrupt = 0;
+        _session.activeTimeoutSecs = 0.f;
         _session.modeSpellLeft = nullptr;
         _session.modeSpellRight = nullptr;
-        _restore.ClearDirty();
 
-        MAGIC_DEBUG_LOG("[State] RestoreSnapshot: done");
+        _delayStartLeft = {};
+        _delayStartRight = {};
+
+        _restore.snapshot = {};
+        _restore.prevExtraEquipped.clear();
+        _restore.ClearDirty();
+        _restore.ClearPending();
+
+        _session.active = false;
+        _session.activeSlot = -1;
+
+        if (resetShout) {
+            _shout.Reset();
+        }
     }
 
     bool MagicState::HandIsRelevant(Hand h) const {
@@ -278,129 +311,118 @@ namespace IntegratedMagic {
         return false;
     }
 
-    void MagicState::TryFinalizeExit() {
-        if (!_session.active) return;
+    void MagicState::FinalizeExitAfterController() {
+        _left = {};
+        _right = {};
+        _aa.Reset();
+        _cast.Reset();
+
+        _session.attackEnabled = false;
+        _session.isDualCasting = false;
+        _session.dualCastSkipCastStops = 0;
+        _session.firstInterrupt = 0;
+        _session.activeTimeoutSecs = 0.f;
+
+        _session.modeSpellLeft = nullptr;
+        _session.modeSpellRight = nullptr;
+
+        _delayStartLeft = {};
+        _delayStartRight = {};
+
+        _restore.snapshot.valid = false;
+        _restore.prevExtraEquipped.clear();
+        _restore.ClearDirty();
+
+        _session.active = false;
+        _session.activeSlot = -1;
+    }
+
+    ExitAllResult MagicState::TryFinalizeExit() {
+        if (!_session.active) return {};
         const bool allFinished = AllRelevantHandsFinished();
 
         MAGIC_DEBUG_LOG("[State] TryFinalizeExit: allFinished={} left.finished={} right.finished={} shoutFinished={}",
                         allFinished, _left.finished, _right.finished, _shout.finished);
 
-        if (allFinished) ExitAllNow();
+        if (allFinished) {
+            return ExitAllNow();
+        }
+        return {};
     }
 
-    void MagicState::ExitAllNow() {
-        MAGIC_DEBUG_LOG(
-            "[State] ExitAllNow: modeShoutID={:#010x} shoutIsPower={} shoutFinished={} "
-            "firstInterrupt={} active={} wasHandsDown={} pendingRestore={}",
-            _shout.modeShoutID, _shout.isPower, _shout.finished, _session.firstInterrupt, _session.active,
-            _session.wasHandsDown, _restore.pendingRestore);
+    ExitAllResult MagicState::ExitAllNow() {
+        ExitAllResult result{};
+
+        using enum Hand;
+
+        auto stopAttack = [&](Hand hand) -> std::optional<ExitAllResult::StopEvent> {
+            if (!_aa.Held(hand)) return std::nullopt;
+            const float held = (_aa.Secs(hand) > 0.f) ? _aa.Secs(hand) : 0.1f;
+            _aa.Held(hand) = false;
+            _aa.Secs(hand) = 0.f;
+            return ExitAllResult::StopEvent{held};
+        };
+
+        auto stopShout = [&]() -> std::optional<ExitAllResult::StopEvent> {
+            if (!_shout.held) return std::nullopt;
+            const float held = (_shout.heldSecs > 0.f) ? _shout.heldSecs : 0.1f;
+            _shout.held = false;
+            _shout.heldSecs = 0.f;
+            return ExitAllResult::StopEvent{held};
+        };
+
+        result.leftAttack = stopAttack(Left);
+        result.rightAttack = stopAttack(Right);
+        result.shout = stopShout();
+
+        CancelAllDelayedStarts();
 
         if (_shout.modeShoutID != 0 && _shout.isPower && _shout.finished) {
-            MAGIC_DEBUG_LOG("[State] ExitAllNow: power path -> pendingPowerRestore, dispatching StopShoutPress");
-
             _restore.pendingPowerRestore = true;
             _restore.pendingPowerRestoreDelaySecs = RestoreContext::kPowerRestoreDelaySec;
-            using enum Hand;
-            if (_aa.Held(Left)) {
-                const float held = (_aa.Secs(Left) > 0.f) ? _aa.Secs(Left) : 0.1f;
 
-                MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(Left) ? "Left" : "Right",
-                                held);
+            _shout.modeShoutID = 0;
+            _shout.finished = false;
+            _shout.held = false;
 
-                if (_outbound.dispatchAttack) _outbound.dispatchAttack(Left, 0.0f, held);
-                _aa.Held(Left) = false;
-                _aa.Secs(Left) = 0.f;
-            }
-
-            if (_aa.Held(Right)) {
-                const float held = (_aa.Secs(Right) > 0.f) ? _aa.Secs(Right) : 0.1f;
-
-                MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(Right) ? "Left" : "Right",
-                                held);
-
-                if (_outbound.dispatchAttack) _outbound.dispatchAttack(Right, 0.0f, held);
-                _aa.Held(Right) = false;
-                _aa.Secs(Right) = 0.f;
-            }
-            if (_shout.held) {
-                const float held = (_shout.heldSecs > 0.f) ? _shout.heldSecs : 0.1f;
-                if (_outbound.dispatchShout) _outbound.dispatchShout(0.0f, held);
-                _shout.held = false;
-                _shout.heldSecs = 0.f;
-            }
-            CancelAllDelayedStarts();
             _session.active = false;
             _session.activeSlot = -1;
             _left = {};
             _right = {};
+
             _restore.dirtyShout = true;
-            _shout.modeShoutID = 0;
-            _shout.finished = false;
-            _shout.held = false;
-            return;
+            result.waitForPowerRestore = true;
+            return result;
         }
 
         auto* player = GetPlayer();
         if (!player) {
-            ResetSessionState();
-            _restore.snapshot.valid = false;
-            return;
+            FinalizeExitAfterController();
+            return result;
         }
-
-        using enum Hand;
-        if (_aa.Held(Left)) {
-            const float held = (_aa.Secs(Left) > 0.f) ? _aa.Secs(Left) : 0.1f;
-
-            MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(Left) ? "Left" : "Right", held);
-
-            if (_outbound.dispatchAttack) _outbound.dispatchAttack(Left, 0.0f, held);
-            _aa.Held(Left) = false;
-            _aa.Secs(Left) = 0.f;
-        }
-
-        if (_aa.Held(Right)) {
-            const float held = (_aa.Secs(Right) > 0.f) ? _aa.Secs(Right) : 0.1f;
-
-            MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(Right) ? "Left" : "Right", held);
-
-            if (_outbound.dispatchAttack) _outbound.dispatchAttack(Right, 0.0f, held);
-            _aa.Held(Right) = false;
-            _aa.Secs(Right) = 0.f;
-        }
-        if (_shout.held) {
-            const float held = (_shout.heldSecs > 0.f) ? _shout.heldSecs : 0.1f;
-            if (_outbound.dispatchShout) _outbound.dispatchShout(0.0f, held);
-            _shout.held = false;
-            _shout.heldSecs = 0.f;
-        }
-        CancelAllDelayedStarts();
 
         if (_session.wasHandsDown && !player->IsInCombat()) {
-            MAGIC_DEBUG_LOG("[State] ExitAllNow: hands were down -> sheathing before restore");
-
             player->DrawWeaponMagicHands(false);
             _restore.pendingRestoreAfterSheathe = true;
-            return;
+            result.waitForSheatheRestore = true;
+            return result;
         }
 
         if (_session.firstInterrupt > 1) {
-            MAGIC_DEBUG_LOG("[State] ExitAllNow: firstInterrupt={} > 1 -> pendingRestore", _session.firstInterrupt);
-
             _restore.pendingRestore = true;
-            return;
+            result.waitForPendingRestore = true;
+            return result;
         }
 
-        MAGIC_DEBUG_LOG("[State] ExitAllNow: immediate RestoreSnapshot");
-
-        RestoreSnapshot(player);
-        if (_outbound.reequipPrevExtraEquipped) {
-            _outbound.reequipPrevExtraEquipped(player, _restore.prevExtraEquipped);
-        }
-        ResetSessionState();
+        result.restorePlan = BuildRestoreSnapshotPlan(player);
+        result.finalizeExitAfterController = true;
+        return result;
     }
 
-    void MagicState::PrepareForOverwriteToSlot(int newSlot) {
+    PrepareOverwriteResult MagicState::PrepareForOverwriteToSlot(int newSlot) {
         MAGIC_DEBUG_LOG("[State] PrepareForOverwriteToSlot: newSlot={}", newSlot);
+
+        PrepareOverwriteResult result{};
 
         using enum Hand;
         if (_aa.Held(Left)) {
@@ -408,7 +430,7 @@ namespace IntegratedMagic {
 
             MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(Left) ? "Left" : "Right", held);
 
-            if (_outbound.dispatchAttack) _outbound.dispatchAttack(Left, 0.0f, held);
+            result.leftAttack = PrepareOverwriteResult::StopEvent{held};
             _aa.Held(Left) = false;
             _aa.Secs(Left) = 0.f;
         }
@@ -418,10 +440,11 @@ namespace IntegratedMagic {
 
             MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(Right) ? "Left" : "Right", held);
 
-            if (_outbound.dispatchAttack) _outbound.dispatchAttack(Right, 0.0f, held);
+            result.rightAttack = PrepareOverwriteResult::StopEvent{held};
             _aa.Held(Right) = false;
             _aa.Secs(Right) = 0.f;
         }
+
         _session.activeSlot = newSlot;
         _session.attackEnabled = false;
         _session.isDualCasting = false;
@@ -435,54 +458,56 @@ namespace IntegratedMagic {
         _restore.pendingPowerRestore = false;
         _restore.pendingPowerRestoreDelaySecs = 0.f;
         _restore.pendingRestoreAfterSheathe = false;
+
+        return result;
     }
 
-    void MagicState::ForceExit() {
-        if (!_session.active) return;
+    ForceExitResult MagicState::ForceExit() {
+        ForceExitResult result{};
+
+        if (!_session.active) return result;
 
         MAGIC_DEBUG_LOG("[State] ForceExit: slot={} left.autoActive={} right.autoActive={} aaHeldL={} aaHeldR={}",
                         _session.activeSlot, _left.autoActive, _right.autoActive, _aa.heldLeft, _aa.heldRight);
 
         using enum Hand;
-        if (_aa.Held(Left)) {
-            const float held = (_aa.Secs(Left) > 0.f) ? _aa.Secs(Left) : 0.1f;
 
-            MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(Left) ? "Left" : "Right", held);
+        auto stopAttack = [&](Hand hand) -> std::optional<ForceExitResult::StopEvent> {
+            if (!_aa.Held(hand)) return std::nullopt;
 
-            if (_outbound.dispatchAttack) _outbound.dispatchAttack(Left, 0.0f, held);
-            _aa.Held(Left) = false;
-            _aa.Secs(Left) = 0.f;
-        }
+            const float held = (_aa.Secs(hand) > 0.f) ? _aa.Secs(hand) : 0.1f;
 
-        if (_aa.Held(Right)) {
-            const float held = (_aa.Secs(Right) > 0.f) ? _aa.Secs(Right) : 0.1f;
+            MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(hand) ? "Left" : "Right", held);
 
-            MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(Right) ? "Left" : "Right", held);
+            _aa.Held(hand) = false;
+            _aa.Secs(hand) = 0.f;
+            return ForceExitResult::StopEvent{held};
+        };
 
-            if (_outbound.dispatchAttack) _outbound.dispatchAttack(Right, 0.0f, held);
-            _aa.Held(Right) = false;
-            _aa.Secs(Right) = 0.f;
-        }
+        result.leftAttack = stopAttack(Left);
+        result.rightAttack = stopAttack(Right);
+
         CancelAllDelayedStarts();
-        _left = {};
-        _right = {};
 
-        if (auto* pc = GetPlayer(); pc && !pc->IsDead() && _restore.snapshot.valid) RestoreSnapshot(pc);
+        if (auto* pc = GetPlayer(); pc && !pc->IsDead() && _restore.snapshot.valid) {
+            auto plan = BuildRestoreSnapshotPlan(pc);
+            if (plan.valid) {
+                result.restorePlan = std::move(plan);
+            }
+        }
 
-        _restore.snapshot = {};
-        _restore.ClearPending();
-        _cast.Reset();
-        ResetSessionState();
+        result.finalizeAfterController = true;
+        result.resetShoutAfterController = true;
+
+        return result;
     }
 
-    void MagicState::ForceExitNoRestore() {
-        if (!_session.active) return;
+    ForceExitResult MagicState::ForceExitNoRestore() {
+        if (!_session.active) return {};
 
         MAGIC_DEBUG_LOG("[State] ForceExitNoRestore: discarding snapshot and forcing exit");
 
         _restore.snapshot = {};
-        ForceExit();
+        return ForceExit();
     }
-
-    void MagicState::SetOutboundDelegate(const Domain::OutboundDelegate& delegate) { _outbound = delegate; }
 }

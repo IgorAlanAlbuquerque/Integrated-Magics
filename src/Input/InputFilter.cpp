@@ -3,12 +3,12 @@
 #include <ranges>
 
 #include "Config/ConfigAdapter.h"
+#include "Domain/State.h"
 #include "Input/ExclusiveTracker.h"
 #include "Input/HotkeyMatcher.h"
 #include "Input/HudToggle.h"
 #include "PCH.h"
 #include "SKSEMenuFramework.h"
-#include "Domain/State.h"
 #include "UI/HudManager.h"
 
 namespace Input::detail {
@@ -155,7 +155,6 @@ namespace Input::detail {
                 if (inGp && ComboDown(hk.gp, keys.gpDown)) return true;
 
                 if (ReplayMatchesEvent(s, dev, rawIdCode, userEvent, value, replay)) {
-                    MAGIC_DEBUG_LOG("[Input] ShouldFilterAndSave: slot={} replay PASS-THROUGH", slot);
                     ResetReplayState(s, replay);
                     return false;
                 }
@@ -215,7 +214,10 @@ namespace Input::detail {
                ui->IsMenuOpen(ostim);
     }
 
-    void ProcessButtonEvents(RE::InputEvent** a_evns, CaptureState& cap, bool& wantCapture, KeyStateStore& keys) {
+    IntegratedMagic::ProcessButtonEventsResult ProcessButtonEvents(RE::InputEvent** a_evns, CaptureState& cap,
+                                                                 bool& wantCapture, KeyStateStore& keys) {
+        IntegratedMagic::ProcessButtonEventsResult result{};
+
         auto* player = RE::PlayerCharacter::GetSingleton();
         for (auto* e = *a_evns; e; e = e->next) {
             const auto* btn = e->AsButtonEvent();
@@ -242,10 +244,12 @@ namespace Input::detail {
             if (btn->IsDown() && player && btn->QUserEvent() == "Shout"sv) {
                 if (IsTransformPowerEquipped(player)) {
                     MAGIC_DEBUG_LOG("[Input] Shout pressed with transform -> ForceExitNoRestore");
-                    IntegratedMagic::MagicState::Get().ForceExitNoRestore();
+                    result.forceExit = IntegratedMagic::MagicState::Get().ForceExitNoRestore();
                 }
             }
         }
+
+        return result;
     }
 
     void FilterMouseForPopup(RE::InputEvent** a_evns) {

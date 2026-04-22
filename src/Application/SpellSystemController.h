@@ -1,6 +1,7 @@
 #pragma once
 #include "PCH.h"
 #include "Shared/Hand.h"
+#include "Domain/State.h"
 
 namespace Application {
 
@@ -20,11 +21,14 @@ namespace Application {
         [[nodiscard]] int ActiveSlot() const;
         [[nodiscard]] bool IsInSlotSetup() const;
         [[nodiscard]] bool IsShoutActive() const;
+        void ConsumeForceExitResult(IntegratedMagic::ForceExitResult result) const;
 
     private:
         SpellSystemController() = default;
         void DispatchSlotEvents() const;
-        void Initialize();
+        void HandleExitAllResult(IntegratedMagic::ExitAllResult result) const;
+        void ExecuteRestoreSnapshotPlan(const IntegratedMagic::RestoreSnapshotPlan& plan) const;
+        void HandleForceExitResult(IntegratedMagic::ForceExitResult result) const;
     };
 
 }

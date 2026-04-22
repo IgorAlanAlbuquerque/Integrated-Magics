@@ -1,6 +1,5 @@
 #include "ReplaySystem.h"
 
-#include "Adapters/Outbound/SyntheticInput.h"
 #include "PCH.h"
 
 namespace Input::detail {
@@ -11,7 +10,7 @@ namespace Input::detail {
         return std::ranges::any_of(deferred, [s](const DeferredReplayEvent& item) { return item.slot == s; });
     }
 
-    void QueueDeferredReplayEvent(std::size_t s, const RetainedEvent& ev, DeferredVec& deferred) {
+    void QueueDeferredReplayEvent(std::size_t s, const IntegratedMagic::RetainedEvent& ev, DeferredVec& deferred) {
         deferred.emplace_back(s, ev);
     }
 
@@ -29,8 +28,10 @@ namespace Input::detail {
         return (value > 0.5f) == rp.valueAboveHalf;
     }
 
-    void DrainOneDeferredReplayEvent(ReplayArr& replay, DeferredVec& deferred) {
-        if (deferred.empty()) return;
+    IntegratedMagic::DrainDeferredReplayResult DrainOneDeferredReplayEvent(ReplayArr& replay, DeferredVec& deferred) {
+        IntegratedMagic::DrainDeferredReplayResult result{};
+
+        if (deferred.empty()) return result;
 
         const auto item = deferred.front();
         deferred.erase(deferred.begin());
@@ -42,11 +43,8 @@ namespace Input::detail {
         rp.userEvent = item.ev.userEvent;
         rp.valueAboveHalf = item.ev.value > 0.5f;
 
-        MAGIC_DEBUG_LOG("[Input] Replay: slot={} dequeue dev={} value={:.2f} heldSecs={:.3f}", item.slot,
-                        static_cast<int>(item.ev.dev), item.ev.value, item.ev.heldSecs);
-
-        IntegratedMagic::detail::EnqueueRetainedEvent(item.ev.dev, item.ev.rawIdCode, item.ev.userEvent, item.ev.value,
-                                                      item.ev.heldSecs);
+        result.replayEvent = item.ev;
+        return result;
     }
 
 }

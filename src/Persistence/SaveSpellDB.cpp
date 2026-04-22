@@ -157,8 +157,6 @@ namespace IntegratedMagic {
                     continue;
                 }
 
-                MAGIC_DEBUG_LOG("[SaveSpellDB] LoadFromDisk: loaded key='{}' slots={}", key, slots.Size());
-
                 _bySave.insert_or_assign(key, std::move(slots));
             } catch (const nlohmann::json::exception& e) {
                 spdlog::error("[SaveSpellDB] LoadFromDisk: JSON exception key='{}': {}", it.key(), e.what());

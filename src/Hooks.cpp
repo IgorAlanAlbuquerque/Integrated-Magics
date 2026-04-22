@@ -45,7 +45,7 @@ namespace IntegratedMagic::Hooks {
             }
 
             static void Install() {
-                Hook::stl::write_call<PollInputDevicesHook>(REL::RelocationID(67315, 68617),
+                Hook::stl::write_call<PollInputDevicesHook>(REL::RelocationID(67315, 68617, 0xC519E0),
                                                             REL::VariantOffset(0x7B, 0x7B, 0x81));
             }
         };
@@ -150,8 +150,8 @@ namespace IntegratedMagic::Hooks {
         struct D3DInitHook {
             using FuncType = void (*)();
             static inline REL::Relocation<FuncType> func;
-            static constexpr auto id = REL::RelocationID(75595, 77226);
-            static constexpr auto offset = REL::VariantOffset(0x9, 0x275, 0x00);
+            static constexpr auto id = REL::RelocationID(75595, 77226, 0xDC5530);
+            static constexpr auto offset = REL::VariantOffset(0x9, 0x275, 0x9);
 
             static void thunk() {
                 func();
@@ -256,8 +256,8 @@ namespace IntegratedMagic::Hooks {
         struct DXGIPresentHook {
             using FuncType = void (*)(std::uint32_t);
             static inline REL::Relocation<FuncType> func;
-            static constexpr auto id = REL::RelocationID(75461, 77246);
-            static constexpr auto offset = REL::VariantOffset(0x9, 0x9, 0x9);
+            static constexpr auto id = REL::RelocationID(75461, 77246, 0xDBBDD0);
+            static constexpr auto offset = REL::VariantOffset(0x9, 0x9, 0x15);
 
             static inline float s_bbWidth = 0.f;
             static inline float s_bbHeight = 0.f;

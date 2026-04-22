@@ -48,7 +48,6 @@ set(headers
     src/Domain/InventoryUtil.h
     src/Domain/SpellClassify.h
     src/Domain/SlotCostUtil.h
-    src/Domain/OutboundDelegate.h
     src/Domain/SlotCooldownTracker.h
     src/Application/InputController.h
     src/Application/HudController.h

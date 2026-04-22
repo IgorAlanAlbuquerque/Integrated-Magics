@@ -20,24 +20,29 @@ namespace IntegratedMagic {
             _session.modeSpellRight = spell;
     }
 
-    void MagicState::DisableHand(Hand hand) {
+    DisableHandResult MagicState::DisableHand(Hand hand) {
         MAGIC_DEBUG_LOG("[State] DisableHand: hand={}", IsLeft(hand) ? "Left" : "Right");
+
+        DisableHandResult result{};
 
         if (_aa.Held(hand)) {
             const float held = (_aa.Secs(hand) > 0.f) ? _aa.Secs(hand) : 0.1f;
 
             MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(hand) ? "Left" : "Right", held);
 
-            if (_outbound.dispatchAttack) _outbound.dispatchAttack(hand, 0.0f, held);
+            result.attack = DisableHandResult::StopEvent{held};
             _aa.Held(hand) = false;
             _aa.Secs(hand) = 0.f;
         }
+
         ModeFor(hand) = {};
         ModeFor(hand).finished = true;
         SetModeSpellsFromHand(hand, nullptr);
+
+        return result;
     }
 
-    void MagicState::FinishHand(Hand hand) {
+    float MagicState::FinishHand(Hand hand) {
         MAGIC_DEBUG_LOG("[State] FinishHand: hand={}", IsLeft(hand) ? "Left" : "Right");
 
         auto& hm = ModeFor(hand);
@@ -54,16 +59,17 @@ namespace IntegratedMagic {
         hm.beginCastRetries = 0;
         hm.startRequestSecs = 0.f;
         hm.stalledCastSecs = 0.f;
+        float held = -1;
         if (_aa.Held(hand)) {
-            const float held = (_aa.Secs(hand) > 0.f) ? _aa.Secs(hand) : 0.1f;
+            held = (_aa.Secs(hand) > 0.f) ? _aa.Secs(hand) : 0.1f;
 
             MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(hand) ? "Left" : "Right", held);
 
-            if (_outbound.dispatchAttack) _outbound.dispatchAttack(hand, 0.0f, held);
             _aa.Held(hand) = false;
             _aa.Secs(hand) = 0.f;
         }
         CancelDelayedStart(hand);
+        return held;
     }
 
     void MagicState::TogglePressHand(Hand hand, const SpellSettings& ss) {
@@ -220,39 +226,82 @@ namespace IntegratedMagic {
         MAGIC_DEBUG_LOG("[State] OnSlotPressed: slot={} active={} activeSlot={} modeShoutID={:#010x}", slot,
                         _session.active, _session.activeSlot, _shout.modeShoutID);
 
+        SlotPressAction action{};
+
         using enum Hand;
         using enum ActivationMode;
 
+        auto mergeExitIntoAction = [&](ExitAllResult&& src) {
+            if (!action.leftAttack) action.leftAttack = src.leftAttack;
+            if (!action.rightAttack) action.rightAttack = src.rightAttack;
+            if (!action.shout) action.shout = src.shout;
+
+            if (!action.restorePlan && src.restorePlan) {
+                action.restorePlan = std::move(src.restorePlan);
+            }
+
+            action.finalizeAfterController = action.finalizeAfterController || src.finalizeExitAfterController;
+        };
+
+        auto mergeOverwriteIntoAction = [&](const PrepareOverwriteResult& src) {
+            if (!action.leftAttack && src.leftAttack) {
+                action.leftAttack = ExitAllResult::StopEvent{src.leftAttack->heldSecs};
+            }
+            if (!action.rightAttack && src.rightAttack) {
+                action.rightAttack = ExitAllResult::StopEvent{src.rightAttack->heldSecs};
+            }
+        };
+
+        auto mergeDisableIntoAction = [&](Hand hand, const DisableHandResult& src) {
+            if (!src.attack) return;
+
+            if (IsLeft(hand)) {
+                if (!action.leftAttack) {
+                    action.leftAttack = ExitAllResult::StopEvent{src.attack->heldSecs};
+                }
+            } else {
+                if (!action.rightAttack) {
+                    action.rightAttack = ExitAllResult::StopEvent{src.attack->heldSecs};
+                }
+            }
+        };
         if (Slots::IsShoutSlot(slot)) {
             if (_session.active && slot == _session.activeSlot && _shout.modeShoutID != 0) {
-                if (_shout.finished) return {};
+                if (_shout.finished) return action;
+
                 const auto ss = SpellSettingsDB::Get().Get(_shout.modeShoutID);
                 if (ss && ss->mode == Press) {
                     MAGIC_DEBUG_LOG("[State] OnSlotPressed: shout Press toggle -> StopShoutPress + finish");
+
                     if (_shout.held) {
                         const float held = (_shout.heldSecs > 0.f) ? _shout.heldSecs : 0.1f;
-                        if (_outbound.dispatchShout) _outbound.dispatchShout(0.0f, held);
+                        action.shout = ExitAllResult::StopEvent{held};
                         _shout.held = false;
                         _shout.heldSecs = 0.f;
                     }
+
                     _shout.finished = true;
-                    TryFinalizeExit();
+                    mergeExitIntoAction(TryFinalizeExit());
                 }
-                return {};
+                return action;
             }
+
             if (_session.active && slot != _session.activeSlot) {
-                if (!CanOverwriteNow()) return {};
+                if (!CanOverwriteNow()) return action;
+
                 _session.firstInterrupt = 0;
-                PrepareForOverwriteToSlot(slot);
+                mergeOverwriteIntoAction(PrepareForOverwriteToSlot(slot));
             }
+
             SlotEntry e{};
-            if (!PrepareSlotEntry(slot, e)) return {};
+            if (!PrepareSlotEntry(slot, e)) return action;
+
             if ((e.shoutSettings.mode == Hold || e.shoutSettings.mode == Automatic) && !_shout.isPower &&
                 e.player->GetVoiceRecoveryTime() > 0.f) {
                 MAGIC_DEBUG_LOG("[State] OnSlotPressed: shout on cooldown -> early exit");
                 _shout.finished = true;
-                TryFinalizeExit();
-                return {};
+                mergeExitIntoAction(TryFinalizeExit());
+                return action;
             }
 
             MAGIC_DEBUG_LOG("[State] OnSlotPressed: shoutID={:#010x} isPower={} mode={}", e.shoutID, _shout.isPower,
@@ -263,7 +312,6 @@ namespace IntegratedMagic {
             _shout.heldSecs = 0.f;
             if (e.shoutSettings.mode == Automatic) _shout.powerAutoSecs = 0.f;
 
-            SlotPressAction action{};
             action.shoutToEquip = e.shoutForm;
             action.startShoutDispatch = true;
             return action;
@@ -274,65 +322,89 @@ namespace IntegratedMagic {
             const bool needR = (_session.modeSpellRight != nullptr);
             const bool pressL = needL && _left.mode == Press && _left.pressActive;
             const bool pressR = needR && _right.mode == Press && _right.pressActive;
-            if (!pressL && !pressR) return {};
+
+            if (!pressL && !pressR) return action;
 
             MAGIC_DEBUG_LOG("[State] OnSlotPressed: active slot pressed again -> pressL={} pressR={}", pressL, pressR);
 
+            action.result = SlotPressResult::Deactivated;
+
             if (pressL && pressR) {
-                FinishHand(Left);
-                FinishHand(Right);
-                ExitAllNow();
-                return {SlotPressResult::Deactivated};
+                const float finishedL = FinishHand(Left);
+                const float finishedR = FinishHand(Right);
+
+                if (finishedL != -1.f) action.leftAttack = ExitAllResult::StopEvent{finishedL};
+                if (finishedR != -1.f) action.rightAttack = ExitAllResult::StopEvent{finishedR};
+
+                mergeExitIntoAction(ExitAllNow());
+                return action;
             }
-            if (pressL) FinishHand(Left);
-            if (pressR) FinishHand(Right);
-            TryFinalizeExit();
-            return {SlotPressResult::Deactivated};
+
+            if (pressL) {
+                const float finishedL = FinishHand(Left);
+                if (finishedL != -1.f) action.leftAttack = ExitAllResult::StopEvent{finishedL};
+            }
+
+            if (pressR) {
+                const float finishedR = FinishHand(Right);
+                if (finishedR != -1.f) action.rightAttack = ExitAllResult::StopEvent{finishedR};
+            }
+
+            mergeExitIntoAction(TryFinalizeExit());
+            return action;
         }
 
         if (_session.active && slot != _session.activeSlot) {
-            if (!CanOverwriteNow()) return {};
+            if (!CanOverwriteNow()) return action;
+
             _session.firstInterrupt = 0;
-            PrepareForOverwriteToSlot(slot);
+            mergeOverwriteIntoAction(PrepareForOverwriteToSlot(slot));
         }
 
         if (const auto afford = ComputeSlotAffordability(slot); afford.hasSpells && !afford.canCast) {
-            if (_session.active) ExitAllNow();
-            return {};
+            if (_session.active) {
+                mergeExitIntoAction(ExitAllNow());
+            }
+            return action;
         }
 
         SlotEntry e{};
-        if (!PrepareSlotEntry(slot, e)) return {};
+        if (!PrepareSlotEntry(slot, e)) return action;
 
         _session.isDualCasting = false;
         if (e.hasRight && e.hasLeft && e.rightSettings.mode == Automatic && e.leftSettings.mode == Automatic &&
-            e.rightID == e.leftID && GetDualCastCostMultiplier(e.player, e.rightSpell) > 2.f)
+            e.rightID == e.leftID && GetDualCastCostMultiplier(e.player, e.rightSpell) > 2.f) {
             _session.isDualCasting = true;
+        }
 
         if (!e.hasRight) {
-            DisableHand(Right);
+            mergeDisableIntoAction(Right, DisableHand(Right));
             SetModeSpellsFromHand(Right, nullptr);
         }
+
         if (!e.hasLeft) {
-            DisableHand(Left);
+            mergeDisableIntoAction(Left, DisableHand(Left));
             SetModeSpellsFromHand(Left, nullptr);
         }
+
         if (!e.hasLeft && !e.hasRight) {
-            ExitAllNow();
-            return {};
+            mergeExitIntoAction(ExitAllNow());
+            return action;
         }
 
-        SlotPressAction action{};
         action.inventorySnapshotBefore = BuildInventoryIndex(e.player);
 
         if (e.hasRight) {
             action.spellsToEquip.push_back({e.rightSpell, Right});
             MarkDirty(Right);
         }
+
         if (e.hasLeft) {
             action.spellsToEquip.push_back({e.leftSpell, Left});
             MarkDirty(Left);
-            if (!e.hasRight && SpellClassify::IsTwoHandedSpell(e.leftSpell)) MarkDirty(Right);
+            if (!e.hasRight && SpellClassify::IsTwoHandedSpell(e.leftSpell)) {
+                MarkDirty(Right);
+            }
         }
 
         MAGIC_DEBUG_LOG(
@@ -342,17 +414,42 @@ namespace IntegratedMagic {
 
         _inSlotSetup = true;
         action.skipAnim = IntegratedMagic::Config::MagicConfigAdapter::Get().SkipEquipAnimation();
+
         if (e.hasRight) {
             SetModeSpellsFromHand(Right, e.rightSpell);
             EnterHand(Right, e.rightSettings, action.skipAnim);
         } else {
             _right = {};
         }
+
         if (e.hasLeft) {
             SetModeSpellsFromHand(Left, e.leftSpell);
             EnterHand(Left, e.leftSettings, action.skipAnim);
         } else {
             _left = {};
+        }
+
+        if (action.skipAnim && _cast.castStopsToSkip > 0) {
+            auto currentCasterSpell = [](Hand h) -> RE::SpellItem* {
+                auto* pc = RE::PlayerCharacter::GetSingleton();
+                if (!pc) return nullptr;
+                const auto src = (h == Hand::Left) ? RE::MagicSystem::CastingSource::kLeftHand
+                                                   : RE::MagicSystem::CastingSource::kRightHand;
+                auto* caster = GetMagicCaster(pc, src);
+                if (!caster || !caster->currentSpell) return nullptr;
+                return caster->currentSpell->As<RE::SpellItem>();
+            };
+
+            const bool rightNoOp = !e.hasRight || (currentCasterSpell(Right) == e.rightSpell);
+            const bool leftNoOp = !e.hasLeft || (currentCasterSpell(Left) == e.leftSpell);
+
+            if (rightNoOp && leftNoOp) {
+                --_cast.castStopsToSkip;
+                MAGIC_DEBUG_LOG(
+                    "[State] OnSlotPressed: no-op equip detected (spells already on casters) "
+                    "-> castStopsToSkip={} (wasHandsDown={})",
+                    _cast.castStopsToSkip, _session.wasHandsDown);
+            }
         }
 
         return action;
@@ -376,12 +473,29 @@ namespace IntegratedMagic {
         _inSlotSetup = false;
     }
 
-    void MagicState::OnSlotReleased(int slot) {
+    ExitAllResult MagicState::OnSlotReleased(int slot) {
+        ExitAllResult result{};
+
         MAGIC_DEBUG_LOG(
             "[State] OnSlotReleased: slot={} active={} activeSlot={} modeShoutID={:#010x} isPower={} held={}", slot,
             _session.active, _session.activeSlot, _shout.modeShoutID, _shout.isPower, _shout.held);
 
-        if (!_session.active || slot != _session.activeSlot) return;
+        if (!_session.active || slot != _session.activeSlot) return result;
+
+        auto merge = [&](ExitAllResult&& src) {
+            if (!result.leftAttack) result.leftAttack = src.leftAttack;
+            if (!result.rightAttack) result.rightAttack = src.rightAttack;
+            if (!result.shout) result.shout = src.shout;
+
+            if (!result.restorePlan && src.restorePlan) {
+                result.restorePlan = std::move(src.restorePlan);
+            }
+
+            result.waitForSheatheRestore = result.waitForSheatheRestore || src.waitForSheatheRestore;
+            result.waitForPendingRestore = result.waitForPendingRestore || src.waitForPendingRestore;
+            result.waitForPowerRestore = result.waitForPowerRestore || src.waitForPowerRestore;
+            result.finalizeExitAfterController = result.finalizeExitAfterController || src.finalizeExitAfterController;
+        };
 
         if (_shout.modeShoutID != 0) {
             const auto ss = SpellSettingsDB::Get().Get(_shout.modeShoutID);
@@ -395,7 +509,7 @@ namespace IntegratedMagic {
 
                 if (_shout.held) {
                     const float held = (_shout.heldSecs > 0.f) ? _shout.heldSecs : 0.1f;
-                    if (_outbound.dispatchShout) _outbound.dispatchShout(0.0f, held);
+                    result.shout = ExitAllResult::StopEvent{held};
                     _shout.held = false;
                     _shout.heldSecs = 0.f;
                 }
@@ -404,52 +518,83 @@ namespace IntegratedMagic {
                     MAGIC_DEBUG_LOG("[State] OnSlotReleased: power Hold release -> finishing + TryFinalizeExit");
 
                     _shout.finished = true;
-                    TryFinalizeExit();
+                    merge(TryFinalizeExit());
                 } else {
                     MAGIC_DEBUG_LOG("[State] OnSlotReleased: shout Hold release -> waitingStopEvent");
-
                     _shout.waitingStopEvent = true;
                 }
             }
-            return;
+            return result;
         }
 
         using enum Hand;
         auto handleHoldRelease = [&](Hand hand) {
             auto& hm = ModeFor(hand);
             if (!hm.holdActive) return;
+
             hm.holdActive = false;
+
             const auto id = Slots::GetSlotSpell(_session.activeSlot, hand);
             const auto* spell = id ? RE::TESForm::LookupByID<RE::SpellItem>(id) : nullptr;
+
             if (!spell || spell->GetChargeTime() <= 0.f) {
-                FinishHand(hand);
+                const float finished = FinishHand(hand);
+                if (finished != -1.f) {
+                    if (IsLeft(hand))
+                        result.leftAttack = ExitAllResult::StopEvent{finished};
+                    else
+                        result.rightAttack = ExitAllResult::StopEvent{finished};
+                }
                 return;
             }
+
             const auto src =
                 IsLeft(hand) ? RE::MagicSystem::CastingSource::kLeftHand : RE::MagicSystem::CastingSource::kRightHand;
+
             if (auto const* caster = GetMagicCaster(GetPlayer(), src); !IsChargeComplete(caster, spell)) {
-                FinishHand(hand);
+                const float finished = FinishHand(hand);
+                if (finished != -1.f) {
+                    if (IsLeft(hand))
+                        result.leftAttack = ExitAllResult::StopEvent{finished};
+                    else
+                        result.rightAttack = ExitAllResult::StopEvent{finished};
+                }
                 return;
             }
+
             if (!hm.wantAutoAttack) {
-                FinishHand(hand);
+                const float finished = FinishHand(hand);
+                if (finished != -1.f) {
+                    if (IsLeft(hand))
+                        result.leftAttack = ExitAllResult::StopEvent{finished};
+                    else
+                        result.rightAttack = ExitAllResult::StopEvent{finished};
+                }
                 return;
             }
+
             if (_aa.Held(hand)) {
                 const float held = (_aa.Secs(hand) > 0.f) ? _aa.Secs(hand) : 0.1f;
 
                 MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(hand) ? "Left" : "Right",
                                 held);
 
-                if (_outbound.dispatchAttack) _outbound.dispatchAttack(hand, 0.0f, held);
+                if (IsLeft(hand))
+                    result.leftAttack = ExitAllResult::StopEvent{held};
+                else
+                    result.rightAttack = ExitAllResult::StopEvent{held};
+
                 _aa.Held(hand) = false;
                 _aa.Secs(hand) = 0.f;
             }
+
             hm.holdFiredAndWaitingCastStop = true;
         };
 
         handleHoldRelease(Left);
         handleHoldRelease(Right);
-        TryFinalizeExit();
+
+        merge(TryFinalizeExit());
+        return result;
     }
 }

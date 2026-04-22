@@ -402,9 +402,6 @@ namespace Input::detail {
             excl.filterWindowActive[s] = false;
             for (auto const& ev : retained[s]) QueueDeferredReplayEvent(s, ev, deferred);
             retained[s].clear();
-
-            MAGIC_DEBUG_LOG("[Input] TickFilterWindows: slot={} filter expired, flushed {} events to replay", slot,
-                            deferred.size());
         }
     }
 

@@ -5,17 +5,6 @@
 
 namespace IntegratedMagic {
 
-    struct ObjSnapshot {
-        RE::TESBoundObject* base{nullptr};
-        RE::ExtraDataList* extra{nullptr};
-        RE::FormID formID{0};
-    };
-
-    struct ExtraEquippedItem {
-        RE::TESBoundObject* base{nullptr};
-        RE::ExtraDataList* extra{nullptr};
-    };
-
     InventoryIndex BuildInventoryIndex(RE::PlayerCharacter* player);
 
     [[nodiscard]] RE::ExtraDataList* GetWornExtraForHand(RE::InventoryEntryData const* entry, bool leftHand);

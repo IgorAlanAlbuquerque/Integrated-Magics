@@ -47,15 +47,11 @@ namespace IntegratedMagic::HoveredForm {
     MagicType GetHoveredMagicType() {
         const auto formID = GetHoveredFormID();
         if (!formID) {
-            MAGIC_DEBUG_LOG("[HoveredForm] GetHoveredMagicType: no hovered formID -> None");
-
             return MagicType::None;
         }
 
         auto* form = RE::TESForm::LookupByID(formID);
         if (!form) {
-            MAGIC_DEBUG_LOG("[HoveredForm] GetHoveredMagicType: formID={:#010x} not found -> None", formID);
-
             return MagicType::None;
         }
 
@@ -72,9 +68,6 @@ namespace IntegratedMagic::HoveredForm {
             if (IsLeftHandOnlySpell(spell)) return MagicType::LeftOnlySpell;
             return MagicType::Spell;
         }
-
-        MAGIC_DEBUG_LOG("[HoveredForm] GetHoveredMagicType: formID={:#010x} unrecognised form type -> None", formID);
-
         return MagicType::None;
     }
 

@@ -14,6 +14,7 @@
 #include "Input/InputFilter.h"
 #include "Input/PhysicalReconciler.h"
 #include "Input/ReplaySystem.h"
+#include "Adapters/Outbound/SyntheticInput.h"
 #include "PCH.h"
 #include "Shared/Hand.h"
 #include "UI/HoveredForm.h"
@@ -60,7 +61,11 @@ namespace Application {
         }
         m_prevBlocked = blocked;
 
-        Input::detail::ProcessButtonEvents(a_evns, m_captureState, wantCapture, m_keys);
+        const auto buttonResult = Input::detail::ProcessButtonEvents(a_evns, m_captureState, wantCapture, m_keys);
+
+        if (buttonResult.forceExit) {
+            Application::SpellSystemController::Get().ConsumeForceExitResult(std::move(*buttonResult.forceExit));
+        }
         Input::detail::UpdateHudToggleState(m_hotkeys, m_keys);
 
         if (blocked) Application::SpellSystemController::Get().TryAssignHoveredToSlotByHotkey();
@@ -70,7 +75,11 @@ namespace Application {
                                             Application::SpellSystemController::Get().IsSpellSystemActive(),
                                             Application::SpellSystemController::Get().ActiveSlot());
 
-        Input::detail::DrainOneDeferredReplayEvent(m_replay, m_deferred);
+        const auto replayResult = Input::detail::DrainOneDeferredReplayEvent(m_replay, m_deferred);
+        if (replayResult.replayEvent) {
+            const auto& ev = *replayResult.replayEvent;
+            IntegratedMagic::detail::EnqueueRetainedEvent(ev.dev, ev.rawIdCode, ev.userEvent, ev.value, ev.heldSecs);
+        }
         Input::detail::FilterMouseForPopup(a_evns);
 
         if (!blocked)
