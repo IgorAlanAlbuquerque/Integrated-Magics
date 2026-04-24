@@ -1,4 +1,4 @@
-#include "MagicEquip.h"
+#include "Adapters/Outbound/MagicEquip.h"
 
 #include <atomic>
 #include <chrono>

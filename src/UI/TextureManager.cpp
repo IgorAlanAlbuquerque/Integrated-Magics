@@ -1,4 +1,4 @@
-#include "TextureManager.h"
+#include "UI/TextureManager.h"
 
 #include <format>
 #include <utility>
@@ -7,9 +7,9 @@
 
 #define NANOSVG_IMPLEMENTATION
 #define NANOSVG_ALL_COLOR_KEYWORDS
-#include "lib/nanosvg.h"
+#include "nanosvg.h"
 #define NANOSVGRAST_IMPLEMENTATION
-#include "lib/nanosvgrast.h"
+#include "nanosvgrast.h"
 namespace IntegratedMagic {
     void TextureManager::Init() {
         if (!std::filesystem::exists(icon_dir_)) {

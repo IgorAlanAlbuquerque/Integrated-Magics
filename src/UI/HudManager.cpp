@@ -1,14 +1,14 @@
-#include "HudManager.h"
+#include "UI/HudManager.h"
 
 #include <imgui.h>
 
 #include "Application/HudController.h"
 #include "Config/ConfigAdapter.h"
-#include "HudState.h"
+#include "UI/HudState.h"
 #include "PCH.h"
 #include "Persistence/Slots.h"
-#include "PopupDrawer.h"
-#include "SlotDrawer.h"
+#include "UI/PopupDrawer.h"
+#include "UI/SlotDrawer.h"
 #include "Domain/State.h"
 
 namespace IntegratedMagic::HUD {

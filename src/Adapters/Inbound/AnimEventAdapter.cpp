@@ -1,4 +1,4 @@
-#include "AnimEventAdapter.h"
+#include "Adapters/Inbound/AnimEventAdapter.h"
 
 #include "Application/SpellSystemController.h"
 #include "PCH.h"

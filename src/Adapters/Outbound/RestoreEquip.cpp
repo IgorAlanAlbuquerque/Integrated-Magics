@@ -2,7 +2,7 @@
     #undef GetObject
 #endif
 
-#include "RestoreEquip.h"
+#include "Adapters/Outbound/RestoreEquip.h"
 
 #include "PCH.h"
 

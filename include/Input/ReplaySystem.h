@@ -5,7 +5,7 @@
 
 #include "Config/InputConstants.h"
 #include "PCH.h"
-#include "Shared/SlotPressAction.h"
+#include "Shared/ReplayTypes.h"
 
 struct ReplayState {
     bool armed{false};
@@ -15,28 +15,23 @@ struct ReplayState {
     bool valueAboveHalf{false};
 };
 
-struct DeferredReplayEvent {
-    std::size_t slot{0};
-    IntegratedMagic::RetainedEvent ev{};
-};
-
 namespace Input::detail {
 
     using ReplayArr = std::array<ReplayState, kInputMaxSlots>;
-    using RetainedArr = std::array<std::vector<IntegratedMagic::RetainedEvent>, kInputMaxSlots>;
+    using RetainedArr = std::array<std::vector<RetainedEvent>, kInputMaxSlots>;
     using DeferredVec = std::vector<DeferredReplayEvent>;
 
     void ResetReplayState(std::size_t s, ReplayArr& replay);
 
     [[nodiscard]] bool HasDeferredReplayForSlot(std::size_t s, const DeferredVec& deferred);
 
-    void QueueDeferredReplayEvent(std::size_t s, const IntegratedMagic::RetainedEvent& ev, DeferredVec& deferred);
+    void QueueDeferredReplayEvent(std::size_t s, const RetainedEvent& ev, DeferredVec& deferred);
 
     void ClearDeferredReplayEventsForSlot(std::size_t s, DeferredVec& deferred);
 
     [[nodiscard]] bool ReplayMatchesEvent(std::size_t s, RE::INPUT_DEVICE dev, std::uint32_t rawIdCode,
                                           const RE::BSFixedString& userEvent, float value, const ReplayArr& replay);
 
-    [[nodiscard]] IntegratedMagic::DrainDeferredReplayResult DrainOneDeferredReplayEvent(ReplayArr& replay,
+    [[nodiscard]] DrainDeferredReplayResult DrainOneDeferredReplayEvent(ReplayArr& replay,
                                                                                          DeferredVec& deferred);
 }

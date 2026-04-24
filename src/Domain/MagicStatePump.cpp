@@ -17,10 +17,16 @@ namespace IntegratedMagic {
         if (_aa.heldLeft) {
             _aa.secsLeft += add;
             result.leftAttack = {Left, 1.0f, _aa.secsLeft};
+            static int leftTick = 0;
+            if ((++leftTick % 30) == 0)  // log a cada ~30 ticks pra não poluir
+                MAGIC_DEBUG_LOG("[FLOW] PumpAutoAttack: continuous press Left heldSecs={:.2f}", _aa.secsLeft);
         }
         if (_aa.heldRight) {
             _aa.secsRight += add;
             result.rightAttack = {Right, 1.0f, _aa.secsRight};
+            static int rightTick = 0;
+            if ((++rightTick % 30) == 0)
+                MAGIC_DEBUG_LOG("[FLOW] PumpAutoAttack: continuous press Right heldSecs={:.2f}", _aa.secsRight);
         }
         if (_shout.held) {
             _shout.heldSecs += add;
@@ -59,14 +65,12 @@ namespace IntegratedMagic {
     void MagicState::ConfirmAutoCastStarted(Hand hand) {
         auto& hm = ModeFor(hand);
 
-        // 🚨 NOVO: não confirmar durante delayed restart
         if (DelayFor(hand).pending) {
             MAGIC_DEBUG_LOG("[State] ConfirmAutoCastStarted: hand={} ignored - delayed start pending",
                             IsLeft(hand) ? "Left" : "Right");
             return;
         }
 
-        // 🚨 NOVO: não confirmar se não está segurando ataque
         if (!_aa.Held(hand)) {
             MAGIC_DEBUG_LOG("[State] ConfirmAutoCastStarted: hand={} ignored - aaHeld=false",
                             IsLeft(hand) ? "Left" : "Right");
@@ -100,6 +104,11 @@ namespace IntegratedMagic {
         const auto* current = caster->currentSpell;
         const auto state = std::to_underlying(caster->state.get());
 
+        MAGIC_DEBUG_LOG(
+            "[State] HasRealCastStarted probe: hand={} caster={} current={:#010x} state={} expected={:#010x}",
+            IsLeft(hand) ? "L" : "R", caster != nullptr, current ? current->GetFormID() : 0u, state,
+            expectedSpell ? expectedSpell->GetFormID() : 0u);
+
         if (current == expectedSpell) return true;
 
         if (current != nullptr && state != 0) return true;
@@ -107,25 +116,51 @@ namespace IntegratedMagic {
         return false;
     }
 
+    bool MagicState::HasDualCastStarted(const RE::SpellItem* expectedSpell) const {
+        auto* player = GetPlayer();
+        if (!player || !expectedSpell) return false;
+
+        auto* leftCaster = GetMagicCaster(player, RE::MagicSystem::CastingSource::kLeftHand);
+        auto* rightCaster = GetMagicCaster(player, RE::MagicSystem::CastingSource::kRightHand);
+
+        auto started = [&](const RE::MagicCaster* caster) {
+            if (!caster) return false;
+            const auto* current = caster->currentSpell;
+            const auto state = std::to_underlying(caster->state.get());
+
+            if (current == expectedSpell) return true;
+            if (current != nullptr && state != 0) return true;
+
+            return false;
+        };
+
+        return started(leftCaster) || started(rightCaster);
+    }
+
     bool MagicState::RequestAutoAttackStart(Hand hand, bool clearWaitAfterEquip) {
         auto& hm = ModeFor(hand);
+        const char* handStr = IsLeft(hand) ? "Left" : "Right";
+
+        MAGIC_DEBUG_LOG(
+            "[FLOW] RequestAutoAttackStart: hand={} ENTRY clearWaitAfterEquip={} | "
+            "autoActive={} holdActive={} wantAutoAttack={} finished={} aaHeld={} phase={}",
+            handStr, clearWaitAfterEquip, hm.autoActive, hm.holdActive, hm.wantAutoAttack, hm.finished, _aa.Held(hand),
+            static_cast<int>(hm.autoCastPhase));
 
         if (!(hm.autoActive || (hm.holdActive && hm.wantAutoAttack)) || hm.finished) {
             MAGIC_DEBUG_LOG(
-                "[State] RequestAutoAttackStart: hand={} skipped autoActive={} holdActive={} wantAutoAttack={} "
-                "finished={}",
-                IsLeft(hand) ? "Left" : "Right", hm.autoActive, hm.holdActive, hm.wantAutoAttack, hm.finished);
+                "[FLOW] RequestAutoAttackStart: hand={} REJECT - neither auto nor (hold+want) or already finished",
+                handStr);
             return false;
         }
 
         if (_aa.Held(hand)) {
-            MAGIC_DEBUG_LOG("[State] RequestAutoAttackStart: hand={} skipped aaHeld=true",
-                            IsLeft(hand) ? "Left" : "Right");
+            MAGIC_DEBUG_LOG("[FLOW] RequestAutoAttackStart: hand={} REJECT - aaHeld already true", handStr);
             return false;
         }
 
-        MAGIC_DEBUG_LOG("[State] RequestAutoAttackStart: hand={} clearWaitAfterEquip={}",
-                        IsLeft(hand) ? "Left" : "Right", clearWaitAfterEquip);
+        MAGIC_DEBUG_LOG("[FLOW] RequestAutoAttackStart: hand={} ACCEPTED, setting aaHeld=true and phase=StartRequested",
+                        handStr);
 
         _aa.Held(hand) = true;
         _aa.Secs(hand) = 0.f;
@@ -139,6 +174,14 @@ namespace IntegratedMagic {
         hm.startRequestSecs = 0.f;
         hm.stalledCastSecs = 0.f;
         hm.autoCastPhase = AutoCastPhase::StartRequested;
+        hm.sawBeginCastEvent = false;
+        hm.casterInterruptPending = false;
+
+        MAGIC_DEBUG_LOG(
+            "[FLOW] RequestAutoAttackStart: hand={} EXIT - "
+            "aaHeld={} phase={} waitingBeginCast={} sawBeginCast={} stalledSecs={:.3f} retries={}",
+            handStr, _aa.Held(hand), static_cast<int>(hm.autoCastPhase), hm.waitingBeginCast, hm.sawBeginCastEvent,
+            hm.stalledCastSecs, hm.beginCastRetries);
 
         return true;
     }
@@ -201,9 +244,10 @@ namespace IntegratedMagic {
                         IsLeft(hand) ? "Left" : "Right");
     }
 
-    ExitAllResult MagicState::OnCastStop() {
+    StateExitResult MagicState::OnCastStop() {
         using enum Hand;
-        ExitAllResult result;
+
+        StateExitResult result{};
         if (!_session.active) {
             MAGIC_DEBUG_LOG("[State] OnCastStop: ignored - not active");
             return result;
@@ -218,7 +262,7 @@ namespace IntegratedMagic {
             _right.autoActive, _right.chargeComplete, _right.finished, _left.holdFiredAndWaitingCastStop,
             _right.holdFiredAndWaitingCastStop);
 
-        auto merge = [&](ExitAllResult&& src) {
+        auto merge = [&](StateExitResult&& src) {
             if (!result.leftAttack) result.leftAttack = src.leftAttack;
             if (!result.rightAttack) result.rightAttack = src.rightAttack;
             if (!result.shout) result.shout = src.shout;
@@ -230,7 +274,8 @@ namespace IntegratedMagic {
             result.waitForSheatheRestore = result.waitForSheatheRestore || src.waitForSheatheRestore;
             result.waitForPendingRestore = result.waitForPendingRestore || src.waitForPendingRestore;
             result.waitForPowerRestore = result.waitForPowerRestore || src.waitForPowerRestore;
-            result.finalizeExitAfterController = result.finalizeExitAfterController || src.finalizeExitAfterController;
+            result.finalizeAfterController = result.finalizeAfterController || src.finalizeAfterController;
+            result.resetShoutAfterController = result.resetShoutAfterController || src.resetShoutAfterController;
         };
 
         if (_cast.castStopsToSkip > 0) {
@@ -254,16 +299,18 @@ namespace IntegratedMagic {
                     auto& hm = ModeFor(h);
                     if ((hm.autoActive || (hm.holdActive && hm.wantAutoAttack)) && !hm.finished) {
                         CancelDelayedStart(h);
+
                         if (_aa.Held(h)) {
                             const float held = (_aa.Secs(h) > 0.f) ? _aa.Secs(h) : 0.1f;
 
                             MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}",
                                             IsLeft(h) ? "Left" : "Right", held);
 
-                            (IsLeft(h) ? result.leftAttack : result.rightAttack) = {held};
+                            (IsLeft(h) ? result.leftAttack : result.rightAttack) = StopDispatchIntent{held};
                             _aa.Held(h) = false;
                             _aa.Secs(h) = 0.f;
                         }
+
                         hm.waitingBeginCast = true;
                         hm.beginCastWaitSecs = 0.f;
                         hm.beginCastRetries = 0;
@@ -273,9 +320,11 @@ namespace IntegratedMagic {
                                         IsLeft(h) ? "Left" : "Right");
                     }
                 };
+
                 stopAndDelay(Left);
                 stopAndDelay(Right);
             }
+
             return result;
         }
 
@@ -284,12 +333,14 @@ namespace IntegratedMagic {
                 --_session.dualCastSkipCastStops;
                 return result;
             }
+
             if (!_left.chargeComplete && !_right.chargeComplete) return result;
 
             const float finishedL = FinishHand(Left);
-            if (finishedL != -1.f) result.leftAttack = {finishedL};
+            if (finishedL != -1.f) result.leftAttack = StopDispatchIntent{finishedL};
+
             const float finishedR = FinishHand(Right);
-            if (finishedR != -1.f) result.rightAttack = {finishedR};
+            if (finishedR != -1.f) result.rightAttack = StopDispatchIntent{finishedR};
 
             _session.isDualCasting = false;
             merge(TryFinalizeExit());
@@ -304,13 +355,14 @@ namespace IntegratedMagic {
                 _left.pressAutocast = false;
             } else {
                 const float finishedL = FinishHand(Left);
-                if (finishedL != -1.f) result.leftAttack = {finishedL};
+                if (finishedL != -1.f) result.leftAttack = StopDispatchIntent{finishedL};
             }
         } else if (_left.autoActive && !_left.finished && !_left.chargeComplete) {
             MAGIC_DEBUG_LOG(
                 "[State] OnCastStop: Left autoActive but chargeComplete=false - waitingChargeComplete={} aaHeld={}",
                 _left.waitingChargeComplete, _aa.heldLeft);
         }
+
         if (_right.autoActive && !_right.finished && _right.chargeComplete) {
             if (_right.pressAutocast) {
                 _right.autoActive = false;
@@ -319,21 +371,24 @@ namespace IntegratedMagic {
                 _right.pressAutocast = false;
             } else {
                 const float finishedR = FinishHand(Right);
-                if (finishedR != -1.f) result.rightAttack = {finishedR};
+                if (finishedR != -1.f) result.rightAttack = StopDispatchIntent{finishedR};
             }
         } else if (_right.autoActive && !_right.finished && !_right.chargeComplete) {
             MAGIC_DEBUG_LOG(
                 "[State] OnCastStop: Right autoActive but chargeComplete=false - waitingChargeComplete={} aaHeld={}",
                 _right.waitingChargeComplete, _aa.heldRight);
         }
+
         if (_left.holdFiredAndWaitingCastStop && !_left.finished) {
             const float finishedL = FinishHand(Left);
-            if (finishedL != -1.f) result.leftAttack = {finishedL};
+            if (finishedL != -1.f) result.leftAttack = StopDispatchIntent{finishedL};
         }
+
         if (_right.holdFiredAndWaitingCastStop && !_right.finished) {
             const float finishedR = FinishHand(Right);
-            if (finishedR != -1.f) result.rightAttack = {finishedR};
+            if (finishedR != -1.f) result.rightAttack = StopDispatchIntent{finishedR};
         }
+
         merge(TryFinalizeExit());
         return result;
     }
@@ -374,8 +429,8 @@ namespace IntegratedMagic {
         return result;
     }
 
-    ExitAllResult MagicState::OnShoutStop() {
-        ExitAllResult result{};
+    StateExitResult MagicState::OnShoutStop() {
+        StateExitResult result{};
 
         if (!_session.active || _shout.modeShoutID == 0 || _shout.finished) return result;
         if (_shout.isPower) return result;
@@ -389,7 +444,7 @@ namespace IntegratedMagic {
         const bool isHold = (ss->mode == ActivationMode::Hold);
         const bool isAuto = (ss->mode == ActivationMode::Automatic);
 
-        auto merge = [&](ExitAllResult&& src) {
+        auto merge = [&](StateExitResult&& src) {
             if (!result.leftAttack) result.leftAttack = src.leftAttack;
             if (!result.rightAttack) result.rightAttack = src.rightAttack;
             if (!result.shout) result.shout = src.shout;
@@ -401,14 +456,15 @@ namespace IntegratedMagic {
             result.waitForSheatheRestore = result.waitForSheatheRestore || src.waitForSheatheRestore;
             result.waitForPendingRestore = result.waitForPendingRestore || src.waitForPendingRestore;
             result.waitForPowerRestore = result.waitForPowerRestore || src.waitForPowerRestore;
-            result.finalizeExitAfterController = result.finalizeExitAfterController || src.finalizeExitAfterController;
+            result.finalizeAfterController = result.finalizeAfterController || src.finalizeAfterController;
+            result.resetShoutAfterController = result.resetShoutAfterController || src.resetShoutAfterController;
         };
 
         if (isAuto || _shout.waitingStopEvent || isHold) {
             if (isHold && !_shout.waitingStopEvent) {
                 if (_shout.held) {
                     const float held = (_shout.heldSecs > 0.f) ? _shout.heldSecs : 0.1f;
-                    result.shout = ExitAllResult::StopEvent{held};
+                    result.shout = StopDispatchIntent{held};
                     _shout.held = false;
                     _shout.heldSecs = 0.f;
                 }
@@ -427,32 +483,34 @@ namespace IntegratedMagic {
         PumpAutomaticHandResult result{};
 
         auto& hm = ModeFor(hand);
-        if (!hm.autoActive || !hm.waitingChargeComplete) return result;
+        const char* handStr = IsLeft(hand) ? "Left" : "Right";
+
+        if (!hm.autoActive || !hm.waitingChargeComplete) {
+            // silencioso — estado normal de "não tenho nada a fazer"
+            return result;
+        }
 
         auto* player = GetPlayer();
         if (!player || !_session.active || _session.activeSlot < 0) {
-            MAGIC_DEBUG_LOG("[State] PumpAutomaticHand: hand={} no player/session - finishing",
-                            IsLeft(hand) ? "Left" : "Right");
+            MAGIC_DEBUG_LOG("[FLOW] PumpAutomaticHand hand={} no player/session -> FinishHand", handStr);
             const float finished = FinishHand(hand);
-            if (finished != -1.f) result.attack = PumpAutomaticHandResult::StopEvent{finished};
+            if (finished != -1.f) result.attack = StopDispatchIntent{finished};
             return result;
         }
 
         const auto id = Slots::GetSlotSpell(_session.activeSlot, hand);
         if (id == 0) {
-            MAGIC_DEBUG_LOG("[State] PumpAutomaticHand: hand={} spell id=0 - finishing",
-                            IsLeft(hand) ? "Left" : "Right");
+            MAGIC_DEBUG_LOG("[FLOW] PumpAutomaticHand hand={} spell id=0 -> FinishHand", handStr);
             const float finished = FinishHand(hand);
-            if (finished != -1.f) result.attack = PumpAutomaticHandResult::StopEvent{finished};
+            if (finished != -1.f) result.attack = StopDispatchIntent{finished};
             return result;
         }
 
         const auto* spell = RE::TESForm::LookupByID<RE::SpellItem>(id);
         if (!spell) {
-            MAGIC_DEBUG_LOG("[State] PumpAutomaticHand: hand={} spell lookup failed id={:#010x} - finishing",
-                            IsLeft(hand) ? "Left" : "Right", id);
+            MAGIC_DEBUG_LOG("[FLOW] PumpAutomaticHand hand={} spell lookup failed -> FinishHand", handStr);
             const float finished = FinishHand(hand);
-            if (finished != -1.f) result.attack = PumpAutomaticHandResult::StopEvent{finished};
+            if (finished != -1.f) result.attack = StopDispatchIntent{finished};
             return result;
         }
 
@@ -460,45 +518,71 @@ namespace IntegratedMagic {
             IsLeft(hand) ? RE::MagicSystem::CastingSource::kLeftHand : RE::MagicSystem::CastingSource::kRightHand;
 
         const auto* caster = GetMagicCaster(player, src);
+        const auto casterCurrent = caster && caster->currentSpell ? caster->currentSpell->GetFormID() : 0u;
+        const auto casterState = caster ? std::to_underlying(caster->state.get()) : -1;
+
+        MAGIC_DEBUG_LOG(
+            "[FLOW] PumpAutomaticHand hand={} phase={} aaHeld={} secs={:.2f} | "
+            "spell={:#010x} | casterCurrent={:#010x} casterState={}",
+            handStr, static_cast<int>(hm.autoCastPhase), _aa.Held(hand), _aa.Secs(hand), id, casterCurrent,
+            casterState);
+
         if (hm.autoCastPhase == AutoCastPhase::StartRequested) {
-            const bool casterStarted = spell && HasRealCastStarted(hand, spell);
-            if (casterStarted) {
-                MAGIC_DEBUG_LOG("[State] PumpAutomaticHand: hand={} confirmed by caster probe",
-                                IsLeft(hand) ? "Left" : "Right");
-                ConfirmAutoCastStarted(hand);
+            if (_session.isDualCasting) {
+                const auto* expected = _session.modeSpellLeft ? _session.modeSpellLeft : _session.modeSpellRight;
+
+                if (HasDualCastStarted(expected)) {
+                    MAGIC_DEBUG_LOG(
+                        "[FLOW] PumpAutomaticHand hand={} StartRequested -> dual cast confirmed via shared caster",
+                        handStr);
+
+                    ConfirmAutoCastStarted(Hand::Left);
+                    ConfirmAutoCastStarted(Hand::Right);
+                } else {
+                    MAGIC_DEBUG_LOG("[FLOW] PumpAutomaticHand hand={} StartRequested -> dual caster NOT started yet",
+                                    handStr);
+                }
+            } else {
+                const bool casterStarted = spell && HasRealCastStarted(hand, spell);
+                if (casterStarted) {
+                    MAGIC_DEBUG_LOG("[FLOW] PumpAutomaticHand hand={} StartRequested -> confirmed via caster probe",
+                                    handStr);
+                    ConfirmAutoCastStarted(hand);
+                } else {
+                    MAGIC_DEBUG_LOG("[FLOW] PumpAutomaticHand hand={} StartRequested -> caster NOT started yet",
+                                    handStr);
+                }
             }
         }
 
+        if (hm.autoCastPhase == AutoCastPhase::Casting && hm.casterInterruptPending) {
+            MAGIC_DEBUG_LOG("[FLOW] PumpAutomaticHand hand={} Casting + interruptPending -> FinishHand", handStr);
+            hm.casterInterruptPending = false;
+            const float finished = FinishHand(hand);
+            if (finished != -1.f) result.attack = StopDispatchIntent{finished};
+            return result;
+        }
+
         if (!IsChargeComplete(caster, spell)) {
-            if (_aa.Held(hand) && (static_cast<int>(_aa.Secs(hand) * 10.f) % 10 == 0)) {
-                const auto* currentCasterSpell = caster ? caster->currentSpell : nullptr;
-                const auto casterState = caster ? static_cast<int>(caster->state.get()) : -1;
-                MAGIC_DEBUG_LOG(
-                    "[State] PumpAutomaticHand: hand={} charge NOT complete - "
-                    "spellID={:#010x} chargeTime={:.3f} "
-                    "caster={} casterSpell={:#010x} casterState={} aaHeld={} heldSecs={:.1f}",
-                    IsLeft(hand) ? "Left" : "Right", id, spell->GetChargeTime(), caster != nullptr,
-                    currentCasterSpell ? currentCasterSpell->GetFormID() : 0u, casterState, _aa.Held(hand),
-                    _aa.Secs(hand));
-            }
+            MAGIC_DEBUG_LOG("[FLOW] PumpAutomaticHand hand={} charge NOT complete - chargeTime={:.3f}", handStr,
+                            spell->GetChargeTime());
             return result;
         }
 
         hm.autoCastPhase = AutoCastPhase::WaitingChargeRelease;
 
-        MAGIC_DEBUG_LOG("[State] PumpAutomaticHand: hand={} CHARGE COMPLETE - stopping auto attack",
-                        IsLeft(hand) ? "Left" : "Right");
+        MAGIC_DEBUG_LOG(
+            "[FLOW] PumpAutomaticHand hand={} CHARGE COMPLETE -> phase=WaitingChargeRelease, stopping press", handStr);
 
         hm.waitingChargeComplete = false;
         hm.chargeComplete = true;
-        hm.autoCastPhase = AutoCastPhase::WaitingChargeRelease;
 
         if (_aa.Held(hand)) {
             const float held = (_aa.Secs(hand) > 0.f) ? _aa.Secs(hand) : 0.1f;
 
-            MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(hand) ? "Left" : "Right", held);
+            MAGIC_DEBUG_LOG("[FLOW] PumpAutomaticHand hand={} emitting stopAttack heldSecs={:.3f}", handStr, held);
 
-            result.attack = PumpAutomaticHandResult::StopEvent{held};
+            result.attack = StopDispatchIntent{held};
             _aa.Held(hand) = false;
             _aa.Secs(hand) = 0.f;
         }
@@ -542,14 +626,67 @@ namespace IntegratedMagic {
             case AutoCastPhase::StartRequested: {
                 hm.startRequestSecs += add;
 
+                MAGIC_DEBUG_LOG(
+                    "[FLOW] PumpAutoStartFallback[StartRequested] hand={} aaHeld={} startRequestSecs={:.3f} "
+                    "stalledCastSecs={:.3f} retries={} sawBeginCast={} casterInterruptPending={}",
+                    handStr, _aa.Held(hand), hm.startRequestSecs, hm.stalledCastSecs, hm.beginCastRetries,
+                    hm.sawBeginCastEvent, hm.casterInterruptPending);
+
+                if (_session.isDualCasting) {
+                    const auto* expected = _session.modeSpellLeft ? _session.modeSpellLeft : _session.modeSpellRight;
+
+                    if (HasDualCastStarted(expected)) {
+                        MAGIC_DEBUG_LOG(
+                            "[FLOW] PumpAutoStartFallback[StartRequested] dual cast started -> confirming both hands");
+
+                        ConfirmAutoCastStarted(Hand::Left);
+                        ConfirmAutoCastStarted(Hand::Right);
+
+                        return result;
+                    }
+                }
+
+                if (hm.casterInterruptPending) {
+                    MAGIC_DEBUG_LOG(
+                        "[FLOW] PumpAutoStartFallback[StartRequested] hand={} caster interrupt pending -> FinishHand",
+                        handStr);
+                    hm.casterInterruptPending = false;
+                    hm.autoCastPhase = AutoCastPhase::Done;
+
+                    if (_aa.Held(hand)) {
+                        const float held = (_aa.Secs(hand) > 0.f) ? _aa.Secs(hand) : 0.1f;
+                        result.stopAttack = StopDispatchIntent{held};
+                        _aa.Held(hand) = false;
+                        _aa.Secs(hand) = 0.f;
+                    }
+                    (void)FinishHand(hand);
+                    return result;
+                }
+
                 if (expectedSpell && HasRealCastStarted(hand, expectedSpell)) {
+                    MAGIC_DEBUG_LOG(
+                        "[FLOW] PumpAutoStartFallback[StartRequested] hand={} HasRealCastStarted=true -> Confirm",
+                        handStr);
                     ConfirmAutoCastStarted(hand);
                     return result;
                 }
 
-                if (_aa.Held(hand) && expectedSpell && IsCasterIdleForExpectedSpell(hand, expectedSpell)) {
+                const bool casterIdle =
+                    _aa.Held(hand) && expectedSpell && IsCasterIdleForExpectedSpell(hand, expectedSpell);
+                if (casterIdle) {
+                    const float prevStall = hm.stalledCastSecs;
                     hm.stalledCastSecs += add;
+                    MAGIC_DEBUG_LOG(
+                        "[FLOW] PumpAutoStartFallback[StartRequested] hand={} caster IDLE -> stalledCastSecs {:.3f} -> "
+                        "{:.3f}",
+                        handStr, prevStall, hm.stalledCastSecs);
                 } else {
+                    if (hm.stalledCastSecs > 0.f) {
+                        MAGIC_DEBUG_LOG(
+                            "[FLOW] PumpAutoStartFallback[StartRequested] hand={} caster NOT idle -> stalledCastSecs "
+                            "reset (was {:.3f})",
+                            handStr, hm.stalledCastSecs);
+                    }
                     hm.stalledCastSecs = 0.f;
                 }
 
@@ -561,35 +698,46 @@ namespace IntegratedMagic {
                 }
 
                 MAGIC_DEBUG_LOG(
-                    "[State] PumpAutoStartFallback: hand={} stalled in StartRequested retries={}/{} "
-                    "sawBeginCastEvent={}",
-                    handStr, hm.beginCastRetries, kMaxRetries, hm.sawBeginCastEvent);
+                    "[FLOW] PumpAutoStartFallback[StartRequested] hand={} STALL TIMEOUT ({:.3f} >= {:.3f}) "
+                    "retries={}/{}",
+                    handStr, hm.stalledCastSecs, kStallTimeout, hm.beginCastRetries, kMaxRetries);
 
                 hm.stalledCastSecs = 0.f;
                 hm.startRequestSecs = 0.f;
 
                 if (hm.beginCastRetries >= kMaxRetries) {
-                    MAGIC_DEBUG_LOG("[State] PumpAutoStartFallback: hand={} MAX RETRIES -> FinishHand", handStr);
+                    MAGIC_DEBUG_LOG("[FLOW] PumpAutoStartFallback[StartRequested] hand={} MAX RETRIES -> FinishHand",
+                                    handStr);
                     hm.autoCastPhase = AutoCastPhase::Done;
 
                     const float finished = FinishHand(hand);
                     if (finished != -1.f) {
-                        result.stopAttack = PumpAutoStartFallbackResult::StopEvent{finished};
+                        result.stopAttack = StopDispatchIntent{finished};
                     }
                     return result;
                 }
 
                 ++hm.beginCastRetries;
+                MAGIC_DEBUG_LOG("[FLOW] PumpAutoStartFallback[StartRequested] hand={} RETRY {} - stop+reschedule",
+                                handStr, hm.beginCastRetries);
 
                 if (_aa.Held(hand)) {
                     const float held = (_aa.Secs(hand) > 0.f) ? _aa.Secs(hand) : 0.1f;
-                    result.stopAttack = PumpAutoStartFallbackResult::StopEvent{held};
+                    result.stopAttack = StopDispatchIntent{held};
+                    MAGIC_DEBUG_LOG(
+                        "[FLOW] PumpAutoStartFallback[StartRequested] hand={} emitting stopAttack heldSecs={:.3f}",
+                        handStr, held);
                     _aa.Held(hand) = false;
                     _aa.Secs(hand) = 0.f;
                 }
 
                 hm.sawBeginCastEvent = false;
                 ScheduleDelayedStart(hand);
+
+                MAGIC_DEBUG_LOG(
+                    "[FLOW] PumpAutoStartFallback[StartRequested] hand={} scheduled new delayed start (retries now={})",
+                    handStr, hm.beginCastRetries);
+
                 return result;
             }
         }
@@ -607,10 +755,28 @@ namespace IntegratedMagic {
 
         auto pumpOne = [&](Hand h, bool& dispatchFlag) {
             auto& d = DelayFor(h);
-            if (!d.pending) return;
+            const char* handStr = IsLeft(h) ? "Left" : "Right";
 
+            if (!d.pending) {
+                // NÃO logar aqui (seria ruído) — só se quiser ver TODOS frames
+                return;
+            }
+
+            const float prevSecs = d.secs;
             d.secs += dt > 0.f ? dt : 0.f;
-            if (d.secs < kDelayedStartSec) return;
+
+            MAGIC_DEBUG_LOG(
+                "[FLOW] PumpDelayedStarts::pumpOne hand={} pending=true secs_prev={:.3f} secs_now={:.3f} "
+                "threshold={:.3f} dt={:.3f}",
+                handStr, prevSecs, d.secs, kDelayedStartSec, dt);
+
+            if (d.secs < kDelayedStartSec) {
+                MAGIC_DEBUG_LOG("[FLOW] PumpDelayedStarts::pumpOne hand={} NOT elapsed yet, waiting", handStr);
+                return;
+            }
+
+            MAGIC_DEBUG_LOG("[FLOW] PumpDelayedStarts::pumpOne hand={} DELAY ELAPSED, clearing flags and dispatching",
+                            handStr);
 
             d.pending = false;
             d.secs = 0.f;
@@ -618,16 +784,28 @@ namespace IntegratedMagic {
             auto& hm = ModeFor(h);
 
             MAGIC_DEBUG_LOG(
-                "[State] PumpDelayedStarts: hand={} delay elapsed! autoActive={} holdActive={} wantAutoAttack={} "
-                "finished={}",
-                IsLeft(h) ? "Left" : "Right", hm.autoActive, hm.holdActive, hm.wantAutoAttack, hm.finished);
+                "[FLOW] PumpDelayedStarts: hand={} state before RequestAutoAttackStart: "
+                "autoActive={} holdActive={} wantAutoAttack={} finished={} "
+                "aaHeld={} phase={} waitingBeginCast={} sawBeginCast={}",
+                handStr, hm.autoActive, hm.holdActive, hm.wantAutoAttack, hm.finished, _aa.Held(h),
+                static_cast<int>(hm.autoCastPhase), hm.waitingBeginCast, hm.sawBeginCastEvent);
 
             dispatchFlag = RequestAutoAttackStart(h, false);
+
+            MAGIC_DEBUG_LOG(
+                "[FLOW] PumpDelayedStarts: hand={} after RequestAutoAttackStart: dispatchFlag={} "
+                "aaHeld={} phase={} secs={:.3f}",
+                handStr, dispatchFlag, _aa.Held(h), static_cast<int>(hm.autoCastPhase), _aa.Secs(h));
         };
 
         using enum Hand;
         pumpOne(Left, result.dispatchLeft);
         pumpOne(Right, result.dispatchRight);
+
+        if (result.dispatchLeft || result.dispatchRight) {
+            MAGIC_DEBUG_LOG("[FLOW] PumpDelayedStarts: returning dispatchLeft={} dispatchRight={}", result.dispatchLeft,
+                            result.dispatchRight);
+        }
 
         return result;
     }
@@ -635,27 +813,35 @@ namespace IntegratedMagic {
     PumpAutomaticResult MagicState::PumpAutomatic(float dt) {
         PumpAutomaticResult result{};
 
-        auto mergeExit = [&](ExitAllResult&& src) {
+        auto mergeExit = [&](StateExitResult&& src) {
             if (src.leftAttack && !result.stopLeftAttack)
-                result.stopLeftAttack = PumpAutomaticResult::StopEvent{src.leftAttack->heldSecs};
+                result.stopLeftAttack = StopDispatchIntent{src.leftAttack->heldSecs};
+
             if (src.rightAttack && !result.stopRightAttack)
-                result.stopRightAttack = PumpAutomaticResult::StopEvent{src.rightAttack->heldSecs};
-            if (src.shout && !result.stopShout) result.stopShout = PumpAutomaticResult::StopEvent{src.shout->heldSecs};
+                result.stopRightAttack = StopDispatchIntent{src.rightAttack->heldSecs};
 
-            if (!result.restorePlan && src.restorePlan) result.restorePlan = std::move(src.restorePlan);
-
-            result.finalizeAfterExecution = result.finalizeAfterExecution || src.finalizeExitAfterController;
-        };
-
-        auto mergeForceExit = [&](ForceExitResult&& src) {
-            if (src.leftAttack && !result.stopLeftAttack)
-                result.stopLeftAttack = PumpAutomaticResult::StopEvent{src.leftAttack->heldSecs};
-            if (src.rightAttack && !result.stopRightAttack)
-                result.stopRightAttack = PumpAutomaticResult::StopEvent{src.rightAttack->heldSecs};
+            if (src.shout && !result.stopShout) result.stopShout = StopDispatchIntent{src.shout->heldSecs};
 
             if (!result.restorePlan && src.restorePlan) result.restorePlan = std::move(src.restorePlan);
 
             result.finalizeAfterExecution = result.finalizeAfterExecution || src.finalizeAfterController;
+
+            result.resetShoutAfterExecution = result.resetShoutAfterExecution || src.resetShoutAfterController;
+        };
+
+        auto mergeForceExit = [&](StateExitResult&& src) {
+            if (src.leftAttack && !result.stopLeftAttack)
+                result.stopLeftAttack = StopDispatchIntent{src.leftAttack->heldSecs};
+
+            if (src.rightAttack && !result.stopRightAttack)
+                result.stopRightAttack = StopDispatchIntent{src.rightAttack->heldSecs};
+
+            if (src.shout && !result.stopShout) result.stopShout = StopDispatchIntent{src.shout->heldSecs};
+
+            if (!result.restorePlan && src.restorePlan) result.restorePlan = std::move(src.restorePlan);
+
+            result.finalizeAfterExecution = result.finalizeAfterExecution || src.finalizeAfterController;
+
             result.resetShoutAfterExecution = result.resetShoutAfterExecution || src.resetShoutAfterController;
         };
 
@@ -674,11 +860,9 @@ namespace IntegratedMagic {
 
             if (src.stopAttack) {
                 if (IsLeft(hand)) {
-                    if (!result.stopLeftAttack)
-                        result.stopLeftAttack = PumpAutomaticResult::StopEvent{src.stopAttack->heldSecs};
+                    if (!result.stopLeftAttack) result.stopLeftAttack = StopDispatchIntent{src.stopAttack->heldSecs};
                 } else {
-                    if (!result.stopRightAttack)
-                        result.stopRightAttack = PumpAutomaticResult::StopEvent{src.stopAttack->heldSecs};
+                    if (!result.stopRightAttack) result.stopRightAttack = StopDispatchIntent{src.stopAttack->heldSecs};
                 }
             }
         };
@@ -687,11 +871,9 @@ namespace IntegratedMagic {
             if (!src.attack) return;
 
             if (IsLeft(hand)) {
-                if (!result.stopLeftAttack)
-                    result.stopLeftAttack = PumpAutomaticResult::StopEvent{src.attack->heldSecs};
+                if (!result.stopLeftAttack) result.stopLeftAttack = StopDispatchIntent{src.attack->heldSecs};
             } else {
-                if (!result.stopRightAttack)
-                    result.stopRightAttack = PumpAutomaticResult::StopEvent{src.attack->heldSecs};
+                if (!result.stopRightAttack) result.stopRightAttack = StopDispatchIntent{src.attack->heldSecs};
             }
         };
 
@@ -705,6 +887,7 @@ namespace IntegratedMagic {
 
             _restore.pendingPowerRestore = false;
             _restore.pendingPowerRestoreDelaySecs = 0.f;
+
             if (auto* player = GetPlayer()) {
                 auto plan = BuildRestoreSnapshotPlan(player);
                 if (plan.valid) {
@@ -712,6 +895,7 @@ namespace IntegratedMagic {
                     result.finalizeAfterExecution = true;
                 }
             }
+
             return result;
         }
 
@@ -722,6 +906,7 @@ namespace IntegratedMagic {
                 const bool giveUp = player->IsInCombat() ||
                                     player->AsActorState()->GetWeaponState() == RE::WEAPON_STATE::kWantToDraw ||
                                     timedOut;
+
                 if (_restore.sheatheAnimComplete || giveUp) {
                     _restore.sheatheWaitSecs = 0.f;
 
@@ -753,6 +938,7 @@ namespace IntegratedMagic {
                     _session.activeSlot = -1;
                 }
             }
+
             return result;
         }
 
@@ -760,10 +946,11 @@ namespace IntegratedMagic {
             MAGIC_DEBUG_LOG("[State] PumpAutomatic: pendingRestore -> RestoreSnapshot + deactivate");
 
             _restore.pendingRestore = false;
+
             if (auto* player = GetPlayer()) {
                 if (_shout.held) {
                     const float held = (_shout.heldSecs > 0.f) ? _shout.heldSecs : 0.1f;
-                    result.stopShout = PumpAutomaticResult::StopEvent{held};
+                    result.stopShout = StopDispatchIntent{held};
                     _shout.held = false;
                     _shout.heldSecs = 0.f;
                 }
@@ -774,6 +961,7 @@ namespace IntegratedMagic {
                     result.finalizeAfterExecution = true;
                 }
             }
+
             _left = {};
             _right = {};
             _aa.Reset();
@@ -850,10 +1038,11 @@ namespace IntegratedMagic {
 
                     if (_shout.held) {
                         const float held = (_shout.heldSecs > 0.f) ? _shout.heldSecs : 0.1f;
-                        result.stopShout = PumpAutomaticResult::StopEvent{held};
+                        result.stopShout = StopDispatchIntent{held};
                         _shout.held = false;
                         _shout.heldSecs = 0.f;
                     }
+
                     _shout.finished = true;
                     mergeExit(TryFinalizeExit());
                 }
@@ -885,12 +1074,12 @@ namespace IntegratedMagic {
 
             const float finishedL = FinishHand(Left);
             if (finishedL != -1.f) {
-                result.leftAttack = SpellFiredResult::StopEvent{Left, finishedL};
+                result.leftAttack = SpellFiredResult::StopHandDispatchIntent{Left, finishedL};
             }
 
             const float finishedR = FinishHand(Right);
             if (finishedR != -1.f) {
-                result.rightAttack = SpellFiredResult::StopEvent{Right, finishedR};
+                result.rightAttack = SpellFiredResult::StopHandDispatchIntent{Right, finishedR};
             }
 
             _session.isDualCasting = false;
@@ -901,9 +1090,9 @@ namespace IntegratedMagic {
             const float finished = FinishHand(hand);
             if (finished != -1.f) {
                 if (IsLeft(hand))
-                    result.leftAttack = SpellFiredResult::StopEvent{hand, finished};
+                    result.leftAttack = SpellFiredResult::StopHandDispatchIntent{hand, finished};
                 else
-                    result.rightAttack = SpellFiredResult::StopEvent{hand, finished};
+                    result.rightAttack = SpellFiredResult::StopHandDispatchIntent{hand, finished};
             }
 
             if (IsLeft(hand))
@@ -921,8 +1110,8 @@ namespace IntegratedMagic {
         hm.spellFireFinalizeSecs = 0.f;
     }
 
-    ExitAllResult MagicState::PumpSpellFireFinalize(float dt) {
-        ExitAllResult result{};
+    StateExitResult MagicState::PumpSpellFireFinalize(float dt) {
+        StateExitResult result{};
 
         if (!_session.active) {
             _left.waitingSpellFireFinalize = false;
@@ -932,7 +1121,7 @@ namespace IntegratedMagic {
             return result;
         }
 
-        auto merge = [&](ExitAllResult&& src) {
+        auto merge = [&](StateExitResult&& src) {
             if (!result.leftAttack) result.leftAttack = src.leftAttack;
             if (!result.rightAttack) result.rightAttack = src.rightAttack;
             if (!result.shout) result.shout = src.shout;
@@ -944,7 +1133,8 @@ namespace IntegratedMagic {
             result.waitForSheatheRestore = result.waitForSheatheRestore || src.waitForSheatheRestore;
             result.waitForPendingRestore = result.waitForPendingRestore || src.waitForPendingRestore;
             result.waitForPowerRestore = result.waitForPowerRestore || src.waitForPowerRestore;
-            result.finalizeExitAfterController = result.finalizeExitAfterController || src.finalizeExitAfterController;
+            result.finalizeAfterController = result.finalizeAfterController || src.finalizeAfterController;
+            result.resetShoutAfterController = result.resetShoutAfterController || src.resetShoutAfterController;
         };
 
         constexpr float kSpellFireFinalizeDelay = 0.7f;
@@ -967,5 +1157,52 @@ namespace IntegratedMagic {
         pumpOne(Right);
 
         return result;
+    }
+
+    void MagicState::OnCasterStartCast(Hand hand, const RE::MagicItem* spell, RE::MagicSystem::CastingType type) {
+        if (!_session.active) return;
+
+        auto& hm = ModeFor(hand);
+        const auto* expected = IsLeft(hand) ? _session.modeSpellLeft : _session.modeSpellRight;
+        if (!expected || spell != expected) return;
+
+        if (!(hm.autoActive || (hm.holdActive && hm.wantAutoAttack))) return;
+        if (hm.finished) return;
+
+        MAGIC_DEBUG_LOG("[State] OnCasterStartCast: hand={} phase={} type={} spell={:#010x}",
+                        IsLeft(hand) ? "Left" : "Right", static_cast<int>(hm.autoCastPhase), static_cast<int>(type),
+                        spell ? spell->GetFormID() : 0u);
+
+        if (hm.autoCastPhase == AutoCastPhase::StartRequested) {
+            ConfirmAutoCastStarted(hand);
+        }
+    }
+
+    void MagicState::OnCasterInterrupt(Hand hand, const RE::MagicItem* spell, bool depleteEnergy) {
+        if (!_session.active) return;
+
+        auto& hm = ModeFor(hand);
+        const auto* expected = IsLeft(hand) ? _session.modeSpellLeft : _session.modeSpellRight;
+        if (!expected) return;
+        if (spell && spell != expected) return;
+
+        if (!(hm.autoActive || (hm.holdActive && hm.wantAutoAttack))) return;
+        if (hm.finished) return;
+
+        if (!hm.sawBeginCastEvent) {
+            MAGIC_DEBUG_LOG("[State] OnCasterInterrupt: hand={} ignored - pre-BeginCast settling",
+                            IsLeft(hand) ? "Left" : "Right");
+            return;
+        }
+
+        if (hm.autoCastPhase == AutoCastPhase::WaitingChargeRelease) {
+            MAGIC_DEBUG_LOG("[State] OnCasterInterrupt: hand={} ignored - charge release phase",
+                            IsLeft(hand) ? "Left" : "Right");
+            return;
+        }
+        MAGIC_DEBUG_LOG("[State] OnCasterInterrupt: hand={} phase={} depleteEnergy={}", IsLeft(hand) ? "Left" : "Right",
+                        static_cast<int>(hm.autoCastPhase), depleteEnergy);
+
+        hm.casterInterruptPending = true;
     }
 }

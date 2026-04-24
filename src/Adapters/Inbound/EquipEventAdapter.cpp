@@ -2,7 +2,7 @@
     #undef GetObject
 #endif
 
-#include "EquipEventAdapter.h"
+#include "Adapters/Inbound/EquipEventAdapter.h"
 
 #include <array>
 

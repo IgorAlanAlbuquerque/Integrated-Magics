@@ -117,7 +117,6 @@ namespace IntegratedMagic {
         const bool justStarted = !wasCoolingDown && isCoolingDown;
         const bool justFinishedGlobal = wasCoolingDown && !isCoolingDown;
 
-        // limpa o flag one-shot a cada frame
         for (auto& s : _slots) {
             s.justFinished = false;
         }
@@ -142,7 +141,6 @@ namespace IntegratedMagic {
             }
         }
 
-        // atualiza todos os slots que estejam rastreando cooldown
         for (int i = 0; i < kMaxTrackedSlots; ++i) {
             auto& st = _slots[i];
 
@@ -171,11 +169,7 @@ namespace IntegratedMagic {
             }
         }
 
-        // se o cooldown global acabou, limpamos apenas o estado ativo,
-        // mas mantemos trackedFormID/total por mais um frame para o pulse.
         if (justFinishedGlobal) {
-            // opcionalmente, poderia limpar tudo logo aqui.
-            // deixei sem limpar totalCooldown para o UI ainda conseguir ler progress=1 e justFinished.
         }
 
         _prevRemainingCooldown = currentRemaining;
@@ -198,4 +192,4 @@ namespace IntegratedMagic {
         return out;
     }
 
-}  // namespace IntegratedMagic
+}

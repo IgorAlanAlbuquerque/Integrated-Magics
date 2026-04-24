@@ -7,6 +7,7 @@ if(DEFINED ENV{SKYRIM_MODS_FOLDER} AND IS_DIRECTORY "$ENV{SKYRIM_MODS_FOLDER}")
 endif()
 
 set(BUILD_TESTS OFF CACHE BOOL "Build unit tests for CommonLibVR." FORCE)
+set(ENABLE_SKYRIM_VR OFF CACHE BOOL "Disable Skyrim VR in CommonLibVR-ng" FORCE)
 
 add_subdirectory(
     ${CMAKE_CURRENT_SOURCE_DIR}/extern/CommonLibVR-ng
@@ -16,14 +17,20 @@ add_subdirectory(
 get_target_property(COMMONLIB_SRC_DIR CommonLibSSE SOURCE_DIR)
 include(${COMMONLIB_SRC_DIR}/cmake/CommonLibSSE.cmake)
 
+include(cmake/CollectFiles.cmake)
 include(cmake/headerlist.cmake)
 include(cmake/sourcelist.cmake)
 
 add_commonlibsse_plugin(${PROJECT_NAME} SOURCES ${headers} ${sources})
 
 target_include_directories(${PROJECT_NAME}
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
-    PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/src
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/extern/SKSEMenuFramework
+        ${CMAKE_CURRENT_SOURCE_DIR}/extern/lib
+        ${CMAKE_CURRENT_SOURCE_DIR}/extern/Detours
 )
 
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
@@ -31,7 +38,7 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 find_package(imgui CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE imgui::imgui xinput.lib)
 
-target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h)
+target_precompile_headers(${PROJECT_NAME} PRIVATE include/PCH.h)
 
 include(cmake/detours.cmake)
 

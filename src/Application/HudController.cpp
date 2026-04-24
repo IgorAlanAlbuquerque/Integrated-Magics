@@ -1,4 +1,4 @@
-#include "HudController.h"
+#include "Application/HudController.h"
 
 #include "Application/InputController.h"
 

@@ -1,4 +1,4 @@
-#include "SlotDrawer.h"
+#include "UI/SlotDrawer.h"
 
 #include <imgui.h>
 
@@ -666,10 +666,8 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         if (onCooldown) {
             const float p = std::clamp(cooldownProgress, 0.0f, 1.0f);
 
-            // parte em cooldown: mais transparente/apagada
             DrawSlotContent(dl, center, r, isActive, rSpell, lSpell, shoutFormID, forceOffset, 0.25f);
 
-            // parte preenchida: normal
             const float fillTopY = center.y + r - (2.0f * r * p);
 
             dl->PushClipRect({center.x - r - 2.0f, fillTopY}, {center.x + r + 2.0f, center.y + r + 2.0f}, true);
@@ -1000,7 +998,6 @@ namespace IntegratedMagic::HUD::SlotDrawer {
                 const auto cdInfo = IntegratedMagic::SlotCooldownTracker::Get().GetSlotInfo(i);
                 auto& anim = s_cooldownAnim[i];
 
-                // dispara pulse quando acabou o cooldown
                 if (cdInfo.justFinished && anim.pulseT < 0.f) {
                     anim.pulseT = 0.f;
                 }

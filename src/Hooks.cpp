@@ -14,9 +14,9 @@
 #include "Application/InputController.h"
 #include "Application/SpellSystemController.h"
 #include "Config/InputConstants.h"
+#include "Domain/State.h"
 #include "HookUtil.hpp"
 #include "PCH.h"
-#include "Domain/State.h"
 #include "UI/FontLoader.h"
 #include "UI/HudManager.h"
 #include "UI/HudState.h"
@@ -321,6 +321,52 @@ namespace IntegratedMagic::Hooks {
                 MAGIC_DEBUG_LOG("[Hooks] DXGIPresentHook installed");
             }
         };
+
+        struct MagicCasterStartCastHook {
+            using Fn = void(RE::MagicCaster*);
+            static inline Fn* _orig{nullptr};
+
+            static void thunk(RE::MagicCaster* self) {
+                if (_orig) _orig(self);
+
+                auto* actor = self->GetCasterAsActor();
+                if (!actor || !actor->IsPlayerRef()) return;
+
+                const auto src = self->GetCastingSource();
+                auto* spell = self->currentSpell;
+                const auto kind = spell ? spell->GetCastingType() : RE::MagicSystem::CastingType::kFireAndForget;
+
+                Application::SpellSystemController::Get().OnCastStarted(src, spell, kind);
+            }
+
+            static void Install() {
+                REL::Relocation<std::uintptr_t> vtbl{RE::VTABLE_ActorMagicCaster[0]};
+                _orig = reinterpret_cast<Fn*>(vtbl.write_vfunc(6, thunk));
+            }
+        };
+
+        struct MagicCasterInterruptHook {
+            using Fn = void(RE::MagicCaster*, bool);
+            static inline Fn* _orig{nullptr};
+
+            static void thunk(RE::MagicCaster* self, bool a_depleteEnergy) {
+                auto* actor = self->GetCasterAsActor();
+                const bool isPlayer = actor && actor->IsPlayerRef();
+                const auto src = self->GetCastingSource();
+                auto* spell = self->currentSpell;
+
+                if (_orig) _orig(self, a_depleteEnergy);
+
+                if (isPlayer) {
+                    Application::SpellSystemController::Get().OnCastInterrupted(src, spell, a_depleteEnergy);
+                }
+            }
+
+            static void Install() {
+                REL::Relocation<std::uintptr_t> vtbl{RE::VTABLE_ActorMagicCaster[0]};
+                _orig = reinterpret_cast<Fn*>(vtbl.write_vfunc(8, thunk));
+            }
+        };
     }
 
     void Install_Hooks() {
@@ -328,5 +374,7 @@ namespace IntegratedMagic::Hooks {
         PlayerAnimGraphProcessEventHook::Install();
         D3DInitHook::Install();
         DXGIPresentHook::Install();
+        MagicCasterInterruptHook::Install();
+        MagicCasterStartCastHook::Install();
     }
 }

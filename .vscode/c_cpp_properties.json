@@ -5,8 +5,7 @@
             "includePath": [
                 "${workspaceFolder}/src",
                 "${workspaceFolder}/build/release/vcpkg_installed/x64-windows-static-md/include",
-                "${workspaceFolder}/extern/CommonLibVR-ng/include",
-                "${workspaceFolder}/build/release/vcpkg_installed/vcpkg/pkgs/directxtk_x64-windows-static-md/include/directxtk"
+                "${workspaceFolder}/extern/CommonLibVR-ng/include"
             ],
             "defines": [
                 "UNICODE",

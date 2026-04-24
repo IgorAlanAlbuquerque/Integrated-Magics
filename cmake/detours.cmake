@@ -1,9 +1,9 @@
 set_source_files_properties(
-    src/Detours/detours.cpp
-    src/Detours/disasm.cpp
-    src/Detours/disolx64.cpp
-    src/Detours/image.cpp
-    src/Detours/modules.cpp
+    extern/Detours/detours.cpp
+    extern/Detours/disasm.cpp
+    extern/Detours/disolx64.cpp
+    extern/Detours/image.cpp
+    extern/Detours/modules.cpp
     PROPERTIES
         SKIP_PRECOMPILE_HEADERS ON
         COMPILE_DEFINITIONS "DETOURS_INTERNAL"

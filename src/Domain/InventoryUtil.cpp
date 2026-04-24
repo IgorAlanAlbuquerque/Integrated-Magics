@@ -2,7 +2,7 @@
     #undef GetObject
 #endif
 
-#include "InventoryUtil.h"
+#include "Domain/InventoryUtil.h"
 
 #include "PCH.h"
 

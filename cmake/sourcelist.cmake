@@ -1,44 +1,9 @@
-set(sources
-    src/plugin.cpp
-    src/Hooks.cpp
-    src/Config/Config.cpp
-    src/Config/StyleConfig.cpp
-    src/Config/ConfigAdapter.cpp
-    src/Persistence/SpellSettingsDB.cpp
-    src/Persistence/SaveSpellDB.cpp
-    src/Persistence/Slots.cpp
-    src/UI/Strings.cpp
-    src/UI/MENU.cpp
-    src/UI/HudManager.cpp
-    src/UI/TextureManager.cpp
-    src/UI/SlotDrawer.cpp
-    src/UI/PopupDrawer.cpp
-    src/UI/HoveredForm.cpp
-    src/Input/InputFilter.cpp
-    src/Input/ExclusiveTracker.cpp
-    src/Input/HotkeyMatcher.cpp
-    src/Input/HudToggle.cpp
-    src/Input/ReplaySystem.cpp
-    src/Input/PhysicalReconciler.cpp
-    src/Domain/InventoryUtil.cpp
-    src/Domain/MagicStateLifecycle.cpp
-    src/Domain/MagicStatePump.cpp
-    src/Domain/MagicStateSlot.cpp
-    src/Domain/SlotCostUtil.cpp
-    src/Domain/SlotCooldownTracker.cpp
-    src/Application/InputController.cpp
-    src/Application/HudController.cpp
-    src/Application/AssignService.cpp
-    src/Application/SpellSystemController.cpp
-    src/Adapters/Inbound/SpellTypeDetector.cpp
-    src/Adapters/Inbound/AnimEventAdapter.cpp
-    src/Adapters/Inbound/EquipEventAdapter.cpp
-    src/Adapters/Outbound/SyntheticInput.cpp
-    src/Adapters/Outbound/MagicEquip.cpp
-    src/Adapters/Outbound/RestoreEquip.cpp
-    src/Detours/detours.cpp
-    src/Detours/disasm.cpp
-    src/Detours/disolx64.cpp
-    src/Detours/image.cpp
-    src/Detours/modules.cpp
+collect_project_files(sources "${CMAKE_CURRENT_SOURCE_DIR}/src" "*.cpp")
+
+list(APPEND sources
+    "${CMAKE_CURRENT_SOURCE_DIR}/extern/Detours/detours.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/extern/Detours/disasm.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/extern/Detours/disolx64.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/extern/Detours/image.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/extern/Detours/modules.cpp"
 )

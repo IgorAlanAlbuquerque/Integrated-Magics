@@ -1,5 +1,5 @@
 
-#include "ConfigAdapter.h"
+#include "Config/ConfigAdapter.h"
 
 #include <utility>
 

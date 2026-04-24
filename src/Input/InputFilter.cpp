@@ -1,4 +1,4 @@
-#include "InputFilter.h"
+#include "Input/InputFilter.h"
 
 #include <ranges>
 
@@ -126,8 +126,7 @@ namespace Input::detail {
             int drained = 0;
             while (ConsumeBitLocal(pressedMask, slots).has_value()) ++drained;
             if (drained > 0) MAGIC_DEBUG_LOG("[Input] DrainWhenBlocked: discarded {} pressed slot(s)", drained);
-            while (ConsumeBitLocal(releasedMask, slots).has_value()) {
-            }
+            while (ConsumeBitLocal(releasedMask, slots).has_value());
         }
 
         bool ShouldFilterAndSave(RE::INPUT_DEVICE dev, int convertedCode, std::uint32_t rawIdCode,
@@ -214,9 +213,9 @@ namespace Input::detail {
                ui->IsMenuOpen(ostim);
     }
 
-    IntegratedMagic::ProcessButtonEventsResult ProcessButtonEvents(RE::InputEvent** a_evns, CaptureState& cap,
+    ProcessButtonEventsResult ProcessButtonEvents(RE::InputEvent** a_evns, CaptureState& cap,
                                                                  bool& wantCapture, KeyStateStore& keys) {
-        IntegratedMagic::ProcessButtonEventsResult result{};
+        ProcessButtonEventsResult result{};
 
         auto* player = RE::PlayerCharacter::GetSingleton();
         for (auto* e = *a_evns; e; e = e->next) {
@@ -224,8 +223,7 @@ namespace Input::detail {
             if (!btn || (!btn->IsDown() && !btn->IsUp())) continue;
 
             const auto dev = btn->GetDevice();
-            auto code = static_cast<int>(btn->idCode);
-
+            auto code = static_cast<int>(btn->GetIDCode());
             if (dev == RE::INPUT_DEVICE::kGamepad) code = GamepadIdToIndex(code);
 
             if (dev == RE::INPUT_DEVICE::kMouse) {
@@ -321,8 +319,8 @@ namespace Input::detail {
 
             if (const auto* btn = cur->AsButtonEvent()) {
                 const auto dev = btn->GetDevice();
-                auto code = static_cast<int>(btn->idCode);
-                const auto rawCode = btn->idCode;
+                auto code = static_cast<int>(btn->GetIDCode());
+                const auto rawCode = btn->GetIDCode();
                 if (dev == RE::INPUT_DEVICE::kGamepad) code = GamepadIdToIndex(code);
 
                 if (code >= 0 && code < kMaxCode) {

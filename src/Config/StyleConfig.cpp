@@ -1,4 +1,4 @@
-#include "StyleConfig.h"
+#include "Config/StyleConfig.h"
 
 #include <cmath>
 #include <numbers>

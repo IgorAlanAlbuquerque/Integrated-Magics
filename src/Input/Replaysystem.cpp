@@ -1,4 +1,4 @@
-#include "ReplaySystem.h"
+#include "Input/ReplaySystem.h"
 
 #include "PCH.h"
 
@@ -10,7 +10,7 @@ namespace Input::detail {
         return std::ranges::any_of(deferred, [s](const DeferredReplayEvent& item) { return item.slot == s; });
     }
 
-    void QueueDeferredReplayEvent(std::size_t s, const IntegratedMagic::RetainedEvent& ev, DeferredVec& deferred) {
+    void QueueDeferredReplayEvent(std::size_t s, const RetainedEvent& ev, DeferredVec& deferred) {
         deferred.emplace_back(s, ev);
     }
 
@@ -28,8 +28,8 @@ namespace Input::detail {
         return (value > 0.5f) == rp.valueAboveHalf;
     }
 
-    IntegratedMagic::DrainDeferredReplayResult DrainOneDeferredReplayEvent(ReplayArr& replay, DeferredVec& deferred) {
-        IntegratedMagic::DrainDeferredReplayResult result{};
+    DrainDeferredReplayResult DrainOneDeferredReplayEvent(ReplayArr& replay, DeferredVec& deferred) {
+        DrainDeferredReplayResult result{};
 
         if (deferred.empty()) return result;
 

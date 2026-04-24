@@ -1,5 +1,5 @@
 #pragma once
-#include "Detours/detours.hpp"
+#include "detours.hpp"
 #include "REL/Relocation.h"
 #include "SKSE/SKSE.h"
 

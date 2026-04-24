@@ -1,4 +1,4 @@
-#include "Strings.h"
+#include "UI/Strings.h"
 
 #include <fstream>
 #include <unordered_map>

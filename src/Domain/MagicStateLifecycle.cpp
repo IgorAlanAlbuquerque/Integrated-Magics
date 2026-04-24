@@ -1,6 +1,5 @@
 #include <utility>
 
-#include "Adapters/Outbound/MagicEquip.h"
 #include "Domain/InventoryUtil.h"
 #include "Domain/State.h"
 #include "PCH.h"
@@ -34,14 +33,16 @@ namespace IntegratedMagic {
         return inst;
     }
 
-    void MagicState::EnsureActiveWithSnapshot(RE::PlayerCharacter const* player, int slot, bool raiseHandsIfSheathed) {
+    bool MagicState::EnsureActiveWithSnapshot(RE::PlayerCharacter const* player, int slot, bool raiseHandsIfSheathed) {
         if (_session.active) {
             MAGIC_DEBUG_LOG("[State] EnsureActiveWithSnapshot: already active, updating slot {} -> {}",
                             _session.activeSlot, slot);
 
             _session.activeSlot = slot;
-            return;
+            return false;
         }
+
+        bool setSkipAndDrawnhands = false;
 
         CaptureSnapshot(player);
         _restore.prevExtraEquipped.clear();
@@ -65,8 +66,7 @@ namespace IntegratedMagic {
                 "[State] EnsureActiveWithSnapshot: calling DrawWeaponMagicHands(true) - wasHandsDown=true "
                 "snapHasSpells={}",
                 snapHasSpells);
-            MagicAction::SetSkipEquipVars(pc, true);
-            pc->DrawWeaponMagicHands(true);
+            setSkipAndDrawnhands = true;
         } else {
             MAGIC_DEBUG_LOG(
                 "[State] EnsureActiveWithSnapshot: skipping DrawWeaponMagicHands - wasHandsDown={} "
@@ -84,6 +84,7 @@ namespace IntegratedMagic {
         _aa.Reset();
         _shout.Reset();
         _session.activeTimeoutSecs = 0.f;
+        return setSkipAndDrawnhands;
     }
 
     void MagicState::CaptureSnapshot(RE::PlayerCharacter const* player) {
@@ -337,7 +338,7 @@ namespace IntegratedMagic {
         _session.activeSlot = -1;
     }
 
-    ExitAllResult MagicState::TryFinalizeExit() {
+    StateExitResult MagicState::TryFinalizeExit() {
         if (!_session.active) return {};
         const bool allFinished = AllRelevantHandsFinished();
 
@@ -350,25 +351,25 @@ namespace IntegratedMagic {
         return {};
     }
 
-    ExitAllResult MagicState::ExitAllNow() {
-        ExitAllResult result{};
+    StateExitResult MagicState::ExitAllNow() {
+        StateExitResult result{};
 
         using enum Hand;
 
-        auto stopAttack = [&](Hand hand) -> std::optional<ExitAllResult::StopEvent> {
+        auto stopAttack = [&](Hand hand) -> std::optional<StopDispatchIntent> {
             if (!_aa.Held(hand)) return std::nullopt;
             const float held = (_aa.Secs(hand) > 0.f) ? _aa.Secs(hand) : 0.1f;
             _aa.Held(hand) = false;
             _aa.Secs(hand) = 0.f;
-            return ExitAllResult::StopEvent{held};
+            return StopDispatchIntent{held};
         };
 
-        auto stopShout = [&]() -> std::optional<ExitAllResult::StopEvent> {
+        auto stopShout = [&]() -> std::optional<StopDispatchIntent> {
             if (!_shout.held) return std::nullopt;
             const float held = (_shout.heldSecs > 0.f) ? _shout.heldSecs : 0.1f;
             _shout.held = false;
             _shout.heldSecs = 0.f;
-            return ExitAllResult::StopEvent{held};
+            return StopDispatchIntent{held};
         };
 
         result.leftAttack = stopAttack(Left);
@@ -415,7 +416,7 @@ namespace IntegratedMagic {
         }
 
         result.restorePlan = BuildRestoreSnapshotPlan(player);
-        result.finalizeExitAfterController = true;
+        result.finalizeAfterController = true;
         return result;
     }
 
@@ -430,7 +431,7 @@ namespace IntegratedMagic {
 
             MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(Left) ? "Left" : "Right", held);
 
-            result.leftAttack = PrepareOverwriteResult::StopEvent{held};
+            result.leftAttack = StopDispatchIntent{held};
             _aa.Held(Left) = false;
             _aa.Secs(Left) = 0.f;
         }
@@ -440,7 +441,7 @@ namespace IntegratedMagic {
 
             MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(Right) ? "Left" : "Right", held);
 
-            result.rightAttack = PrepareOverwriteResult::StopEvent{held};
+            result.rightAttack = StopDispatchIntent{held};
             _aa.Held(Right) = false;
             _aa.Secs(Right) = 0.f;
         }
@@ -462,8 +463,8 @@ namespace IntegratedMagic {
         return result;
     }
 
-    ForceExitResult MagicState::ForceExit() {
-        ForceExitResult result{};
+    StateExitResult MagicState::ForceExit() {
+        StateExitResult result{};
 
         if (!_session.active) return result;
 
@@ -472,7 +473,7 @@ namespace IntegratedMagic {
 
         using enum Hand;
 
-        auto stopAttack = [&](Hand hand) -> std::optional<ForceExitResult::StopEvent> {
+        auto stopAttack = [&](Hand hand) -> std::optional<StopDispatchIntent> {
             if (!_aa.Held(hand)) return std::nullopt;
 
             const float held = (_aa.Secs(hand) > 0.f) ? _aa.Secs(hand) : 0.1f;
@@ -481,7 +482,7 @@ namespace IntegratedMagic {
 
             _aa.Held(hand) = false;
             _aa.Secs(hand) = 0.f;
-            return ForceExitResult::StopEvent{held};
+            return StopDispatchIntent{held};
         };
 
         result.leftAttack = stopAttack(Left);
@@ -502,7 +503,7 @@ namespace IntegratedMagic {
         return result;
     }
 
-    ForceExitResult MagicState::ForceExitNoRestore() {
+    StateExitResult MagicState::ForceExitNoRestore() {
         if (!_session.active) return {};
 
         MAGIC_DEBUG_LOG("[State] ForceExitNoRestore: discarding snapshot and forcing exit");

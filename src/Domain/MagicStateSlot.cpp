@@ -30,7 +30,7 @@ namespace IntegratedMagic {
 
             MAGIC_DEBUG_LOG("[State] StopAutoAttack: hand={} heldSecs={:.3f}", IsLeft(hand) ? "Left" : "Right", held);
 
-            result.attack = DisableHandResult::StopEvent{held};
+            result.attack = StopDispatchIntent{held};
             _aa.Held(hand) = false;
             _aa.Secs(hand) = 0.f;
         }
@@ -173,7 +173,7 @@ namespace IntegratedMagic {
             if (!out.shoutForm) return false;
             out.shoutSettings = SpellSettingsDB::Get().GetOrCreate(out.shoutID, out.shoutForm);
 
-            EnsureActiveWithSnapshot(player, slot, false);
+            out.needsSkipEquipVars = EnsureActiveWithSnapshot(player, slot, false);
             _shout.modeShoutID = out.shoutID;
             _shout.finished = false;
             _shout.isPower = (out.shoutForm->As<RE::SpellItem>() != nullptr);
@@ -203,7 +203,7 @@ namespace IntegratedMagic {
         if (out.hasRight) out.rightSettings = SpellSettingsDB::Get().GetOrCreate(out.rightID, out.rightSpell);
         if (out.hasLeft) out.leftSettings = SpellSettingsDB::Get().GetOrCreate(out.leftID, out.leftSpell);
 
-        EnsureActiveWithSnapshot(player, slot);
+        out.needsSkipEquipVars = EnsureActiveWithSnapshot(player, slot);
         _session.modeSpellRight = out.rightSpell;
         _session.modeSpellLeft = out.leftSpell;
 
@@ -231,7 +231,7 @@ namespace IntegratedMagic {
         using enum Hand;
         using enum ActivationMode;
 
-        auto mergeExitIntoAction = [&](ExitAllResult&& src) {
+        auto mergeExitIntoAction = [&](StateExitResult&& src) {
             if (!action.leftAttack) action.leftAttack = src.leftAttack;
             if (!action.rightAttack) action.rightAttack = src.rightAttack;
             if (!action.shout) action.shout = src.shout;
@@ -240,15 +240,17 @@ namespace IntegratedMagic {
                 action.restorePlan = std::move(src.restorePlan);
             }
 
-            action.finalizeAfterController = action.finalizeAfterController || src.finalizeExitAfterController;
+            action.finalizeAfterController = action.finalizeAfterController || src.finalizeAfterController;
+
+            action.resetShoutAfterController = action.resetShoutAfterController || src.resetShoutAfterController;
         };
 
         auto mergeOverwriteIntoAction = [&](const PrepareOverwriteResult& src) {
             if (!action.leftAttack && src.leftAttack) {
-                action.leftAttack = ExitAllResult::StopEvent{src.leftAttack->heldSecs};
+                action.leftAttack = StopDispatchIntent{src.leftAttack->heldSecs};
             }
             if (!action.rightAttack && src.rightAttack) {
-                action.rightAttack = ExitAllResult::StopEvent{src.rightAttack->heldSecs};
+                action.rightAttack = StopDispatchIntent{src.rightAttack->heldSecs};
             }
         };
 
@@ -257,14 +259,15 @@ namespace IntegratedMagic {
 
             if (IsLeft(hand)) {
                 if (!action.leftAttack) {
-                    action.leftAttack = ExitAllResult::StopEvent{src.attack->heldSecs};
+                    action.leftAttack = StopDispatchIntent{src.attack->heldSecs};
                 }
             } else {
                 if (!action.rightAttack) {
-                    action.rightAttack = ExitAllResult::StopEvent{src.attack->heldSecs};
+                    action.rightAttack = StopDispatchIntent{src.attack->heldSecs};
                 }
             }
         };
+
         if (Slots::IsShoutSlot(slot)) {
             if (_session.active && slot == _session.activeSlot && _shout.modeShoutID != 0) {
                 if (_shout.finished) return action;
@@ -275,7 +278,7 @@ namespace IntegratedMagic {
 
                     if (_shout.held) {
                         const float held = (_shout.heldSecs > 0.f) ? _shout.heldSecs : 0.1f;
-                        action.shout = ExitAllResult::StopEvent{held};
+                        action.shout = StopDispatchIntent{held};
                         _shout.held = false;
                         _shout.heldSecs = 0.f;
                     }
@@ -295,6 +298,7 @@ namespace IntegratedMagic {
 
             SlotEntry e{};
             if (!PrepareSlotEntry(slot, e)) return action;
+            action.needsSkipEquipVars = e.needsSkipEquipVars;
 
             if ((e.shoutSettings.mode == Hold || e.shoutSettings.mode == Automatic) && !_shout.isPower &&
                 e.player->GetVoiceRecoveryTime() > 0.f) {
@@ -333,8 +337,8 @@ namespace IntegratedMagic {
                 const float finishedL = FinishHand(Left);
                 const float finishedR = FinishHand(Right);
 
-                if (finishedL != -1.f) action.leftAttack = ExitAllResult::StopEvent{finishedL};
-                if (finishedR != -1.f) action.rightAttack = ExitAllResult::StopEvent{finishedR};
+                if (finishedL != -1.f) action.leftAttack = StopDispatchIntent{finishedL};
+                if (finishedR != -1.f) action.rightAttack = StopDispatchIntent{finishedR};
 
                 mergeExitIntoAction(ExitAllNow());
                 return action;
@@ -342,12 +346,12 @@ namespace IntegratedMagic {
 
             if (pressL) {
                 const float finishedL = FinishHand(Left);
-                if (finishedL != -1.f) action.leftAttack = ExitAllResult::StopEvent{finishedL};
+                if (finishedL != -1.f) action.leftAttack = StopDispatchIntent{finishedL};
             }
 
             if (pressR) {
                 const float finishedR = FinishHand(Right);
-                if (finishedR != -1.f) action.rightAttack = ExitAllResult::StopEvent{finishedR};
+                if (finishedR != -1.f) action.rightAttack = StopDispatchIntent{finishedR};
             }
 
             mergeExitIntoAction(TryFinalizeExit());
@@ -370,6 +374,7 @@ namespace IntegratedMagic {
 
         SlotEntry e{};
         if (!PrepareSlotEntry(slot, e)) return action;
+        action.needsSkipEquipVars = e.needsSkipEquipVars; 
 
         _session.isDualCasting = false;
         if (e.hasRight && e.hasLeft && e.rightSettings.mode == Automatic && e.leftSettings.mode == Automatic &&
@@ -473,8 +478,8 @@ namespace IntegratedMagic {
         _inSlotSetup = false;
     }
 
-    ExitAllResult MagicState::OnSlotReleased(int slot) {
-        ExitAllResult result{};
+    StateExitResult MagicState::OnSlotReleased(int slot) {
+        StateExitResult result{};
 
         MAGIC_DEBUG_LOG(
             "[State] OnSlotReleased: slot={} active={} activeSlot={} modeShoutID={:#010x} isPower={} held={}", slot,
@@ -482,7 +487,7 @@ namespace IntegratedMagic {
 
         if (!_session.active || slot != _session.activeSlot) return result;
 
-        auto merge = [&](ExitAllResult&& src) {
+        auto merge = [&](StateExitResult&& src) {
             if (!result.leftAttack) result.leftAttack = src.leftAttack;
             if (!result.rightAttack) result.rightAttack = src.rightAttack;
             if (!result.shout) result.shout = src.shout;
@@ -494,7 +499,8 @@ namespace IntegratedMagic {
             result.waitForSheatheRestore = result.waitForSheatheRestore || src.waitForSheatheRestore;
             result.waitForPendingRestore = result.waitForPendingRestore || src.waitForPendingRestore;
             result.waitForPowerRestore = result.waitForPowerRestore || src.waitForPowerRestore;
-            result.finalizeExitAfterController = result.finalizeExitAfterController || src.finalizeExitAfterController;
+            result.finalizeAfterController = result.finalizeAfterController || src.finalizeAfterController;
+            result.resetShoutAfterController = result.resetShoutAfterController || src.resetShoutAfterController;
         };
 
         if (_shout.modeShoutID != 0) {
@@ -509,7 +515,7 @@ namespace IntegratedMagic {
 
                 if (_shout.held) {
                     const float held = (_shout.heldSecs > 0.f) ? _shout.heldSecs : 0.1f;
-                    result.shout = ExitAllResult::StopEvent{held};
+                    result.shout = StopDispatchIntent{held};
                     _shout.held = false;
                     _shout.heldSecs = 0.f;
                 }
@@ -524,6 +530,7 @@ namespace IntegratedMagic {
                     _shout.waitingStopEvent = true;
                 }
             }
+
             return result;
         }
 
@@ -541,9 +548,9 @@ namespace IntegratedMagic {
                 const float finished = FinishHand(hand);
                 if (finished != -1.f) {
                     if (IsLeft(hand))
-                        result.leftAttack = ExitAllResult::StopEvent{finished};
+                        result.leftAttack = StopDispatchIntent{finished};
                     else
-                        result.rightAttack = ExitAllResult::StopEvent{finished};
+                        result.rightAttack = StopDispatchIntent{finished};
                 }
                 return;
             }
@@ -555,9 +562,9 @@ namespace IntegratedMagic {
                 const float finished = FinishHand(hand);
                 if (finished != -1.f) {
                     if (IsLeft(hand))
-                        result.leftAttack = ExitAllResult::StopEvent{finished};
+                        result.leftAttack = StopDispatchIntent{finished};
                     else
-                        result.rightAttack = ExitAllResult::StopEvent{finished};
+                        result.rightAttack = StopDispatchIntent{finished};
                 }
                 return;
             }
@@ -566,9 +573,9 @@ namespace IntegratedMagic {
                 const float finished = FinishHand(hand);
                 if (finished != -1.f) {
                     if (IsLeft(hand))
-                        result.leftAttack = ExitAllResult::StopEvent{finished};
+                        result.leftAttack = StopDispatchIntent{finished};
                     else
-                        result.rightAttack = ExitAllResult::StopEvent{finished};
+                        result.rightAttack = StopDispatchIntent{finished};
                 }
                 return;
             }
@@ -580,9 +587,9 @@ namespace IntegratedMagic {
                                 held);
 
                 if (IsLeft(hand))
-                    result.leftAttack = ExitAllResult::StopEvent{held};
+                    result.leftAttack = StopDispatchIntent{held};
                 else
-                    result.rightAttack = ExitAllResult::StopEvent{held};
+                    result.rightAttack = StopDispatchIntent{held};
 
                 _aa.Held(hand) = false;
                 _aa.Secs(hand) = 0.f;

@@ -10,8 +10,6 @@ namespace IntegratedMagic::detail {
     const RE::BSFixedString& RightAttackEvent();
     const RE::BSFixedString& LeftAttackEvent();
 
-    void EnqueueSyntheticAttack(RE::ButtonEvent* ev);
-
     void EnqueueRetainedEvent(RE::INPUT_DEVICE dev, std::uint32_t idCode, const RE::BSFixedString& userEvent,
                               float value, float heldSecs);
 
@@ -19,5 +17,4 @@ namespace IntegratedMagic::detail {
 
     void DispatchAttack(Hand hand, float value, float heldSecs);
     void DispatchShout(float value, float heldSecs);
-
 }

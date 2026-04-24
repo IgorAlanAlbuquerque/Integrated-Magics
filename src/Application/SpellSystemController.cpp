@@ -1,4 +1,4 @@
-#include "SpellSystemController.h"
+#include "Application/SpellSystemController.h"
 
 #include "Adapters/Outbound/EquipSlots.h"
 #include "Adapters/Outbound/MagicEquip.h"
@@ -12,11 +12,23 @@
 #include "PCH.h"
 #include "Persistence/Slots.h"
 #include "Shared/Hand.h"
-#include "Shared/SlotPressAction.h"
-#include "Shared/SlotPressResult.h"
 #include "UI/HoveredForm.h"
 
 namespace Application {
+
+    namespace {
+        std::optional<IntegratedMagic::Hand> SourceToHand(RE::MagicSystem::CastingSource src) {
+            using enum RE::MagicSystem::CastingSource;
+            switch (src) {
+                case kLeftHand:
+                    return IntegratedMagic::Hand::Left;
+                case kRightHand:
+                    return IntegratedMagic::Hand::Right;
+                default:
+                    return std::nullopt;
+            }
+        }
+    }
 
     SpellSystemController& SpellSystemController::Get() {
         static SpellSystemController inst;
@@ -29,31 +41,56 @@ namespace Application {
         if (!inputBlocked) {
             const auto aaResult = IntegratedMagic::MagicState::Get().PumpAutoAttack(dt);
 
-            if (aaResult.leftAttack)
+            if (aaResult.leftAttack) {
+                MAGIC_DEBUG_LOG("[FLOW] OnFrame: dispatching aa.leftAttack power={:.2f} held={:.3f}",
+                                aaResult.leftAttack->power, aaResult.leftAttack->secsHeld);
                 IntegratedMagic::detail::DispatchAttack(aaResult.leftAttack->hand, aaResult.leftAttack->power,
                                                         aaResult.leftAttack->secsHeld);
-            if (aaResult.rightAttack)
+            }
+            if (aaResult.rightAttack) {
+                MAGIC_DEBUG_LOG("[FLOW] OnFrame: dispatching aa.rightAttack power={:.2f} held={:.3f}",
+                                aaResult.rightAttack->power, aaResult.rightAttack->secsHeld);
                 IntegratedMagic::detail::DispatchAttack(aaResult.rightAttack->hand, aaResult.rightAttack->power,
                                                         aaResult.rightAttack->secsHeld);
+            }
 
-            if (aaResult.shout) IntegratedMagic::detail::DispatchShout(aaResult.shout->power, aaResult.shout->secsHeld);
+            if (aaResult.shout) {
+                MAGIC_DEBUG_LOG("[FLOW] OnFrame: dispatching aa.shout power={:.2f} held={:.3f}", aaResult.shout->power,
+                                aaResult.shout->secsHeld);
+                IntegratedMagic::detail::DispatchShout(aaResult.shout->power, aaResult.shout->secsHeld);
+            }
+
             const auto autoResult = IntegratedMagic::MagicState::Get().PumpAutomatic(dt);
 
-            if (autoResult.startLeftAttack)
+            if (autoResult.startLeftAttack) {
+                MAGIC_DEBUG_LOG("[FLOW] OnFrame: dispatching startLeftAttack value=1.0 held=0.0");
                 IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 1.0f, 0.0f);
+            }
 
-            if (autoResult.startRightAttack)
+            if (autoResult.startRightAttack) {
+                MAGIC_DEBUG_LOG("[FLOW] OnFrame: dispatching startRightAttack value=1.0 held=0.0");
                 IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Right, 1.0f, 0.0f);
+            }
 
-            if (autoResult.stopLeftAttack)
+            if (autoResult.stopLeftAttack) {
+                MAGIC_DEBUG_LOG("[FLOW] OnFrame: dispatching stopLeftAttack value=0.0 held={:.3f}",
+                                autoResult.stopLeftAttack->heldSecs);
                 IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 0.0f,
                                                         autoResult.stopLeftAttack->heldSecs);
+            }
 
-            if (autoResult.stopRightAttack)
+            if (autoResult.stopRightAttack) {
+                MAGIC_DEBUG_LOG("[FLOW] OnFrame: dispatching stopRightAttack value=0.0 held={:.3f}",
+                                autoResult.stopRightAttack->heldSecs);
                 IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Right, 0.0f,
                                                         autoResult.stopRightAttack->heldSecs);
+            }
 
-            if (autoResult.stopShout) IntegratedMagic::detail::DispatchShout(0.0f, autoResult.stopShout->heldSecs);
+            if (autoResult.stopShout) {
+                MAGIC_DEBUG_LOG("[FLOW] OnFrame: dispatching stopShout value=0.0 held={:.3f}",
+                                autoResult.stopShout->heldSecs);
+                IntegratedMagic::detail::DispatchShout(0.0f, autoResult.stopShout->heldSecs);
+            }
 
             if (autoResult.restorePlan) ExecuteRestoreSnapshotPlan(*autoResult.restorePlan);
 
@@ -74,6 +111,11 @@ namespace Application {
             auto action = state.OnSlotPressed(*s);
 
             if (action.result == IntegratedMagic::SlotPressResult::Deactivated) input.SetSlotDeactivatedThisPress(*s);
+
+            if (action.needsSkipEquipVars) {
+                IntegratedMagic::MagicAction::SetSkipEquipVars(player, true);
+                player->DrawWeaponMagicHands(true);
+            }
 
             if (action.leftAttack)
                 IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 0.0f, action.leftAttack->heldSecs);
@@ -290,7 +332,7 @@ namespace Application {
         }
     }
 
-    void SpellSystemController::HandleExitAllResult(IntegratedMagic::ExitAllResult result) const {
+    void SpellSystemController::HandleExitAllResult(IntegratedMagic::StateExitResult result) const {
         using enum IntegratedMagic::Hand;
         auto& state = IntegratedMagic::MagicState::Get();
 
@@ -310,12 +352,12 @@ namespace Application {
             ExecuteRestoreSnapshotPlan(*result.restorePlan);
         }
 
-        if (result.finalizeExitAfterController) {
+        if (result.finalizeAfterController) {
             state.FinalizeRestoreSnapshotPlan();
         }
     }
 
-    void SpellSystemController::HandleForceExitResult(IntegratedMagic::ForceExitResult result) const {
+    void SpellSystemController::HandleForceExitResult(IntegratedMagic::StateExitResult result) const {
         using enum IntegratedMagic::Hand;
         auto& state = IntegratedMagic::MagicState::Get();
 
@@ -339,8 +381,32 @@ namespace Application {
         }
     }
 
-    void SpellSystemController::ConsumeForceExitResult(IntegratedMagic::ForceExitResult result) const {
+    void SpellSystemController::ConsumeForceExitResult(IntegratedMagic::StateExitResult result) const {
         HandleForceExitResult(std::move(result));
+    }
+
+    void SpellSystemController::OnCastStarted(RE::MagicSystem::CastingSource src, RE::MagicItem* spell,
+                                              RE::MagicSystem::CastingType type) const {
+        const auto hand = SourceToHand(src);
+        if (!hand) return;
+
+        MAGIC_DEBUG_LOG("[SpellSystem] OnCastStarted: hand={} spell={:#010x} type={}",
+                        *hand == IntegratedMagic::Hand::Left ? "Left" : "Right", spell ? spell->GetFormID() : 0u,
+                        static_cast<int>(type));
+
+        IntegratedMagic::MagicState::Get().OnCasterStartCast(*hand, spell, type);
+    }
+
+    void SpellSystemController::OnCastInterrupted(RE::MagicSystem::CastingSource src, RE::MagicItem* spell,
+                                                  bool depleteEnergy) const {
+        const auto hand = SourceToHand(src);
+        if (!hand) return;
+
+        MAGIC_DEBUG_LOG("[SpellSystem] OnCastInterrupted: hand={} spell={:#010x} depleteEnergy={}",
+                        *hand == IntegratedMagic::Hand::Left ? "Left" : "Right", spell ? spell->GetFormID() : 0u,
+                        depleteEnergy);
+
+        IntegratedMagic::MagicState::Get().OnCasterInterrupt(*hand, spell, depleteEnergy);
     }
 
 }
