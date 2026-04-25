@@ -1,4 +1,4 @@
-#include "SlotDrawer.h"
+#include "UI/SlotDrawer.h"
 
 #include <imgui.h>
 
@@ -6,18 +6,15 @@
 #include <cmath>
 #include <numbers>
 
-#include "Config/Config.h"
-#include "Config/Slots.h"
-#include "Input/Input.h"
+#include "Config/StyleConfig.h"
 #include "PCH.h"
-#include "State/SpellClassify.h"
-#include "State/State.h"
+#include "Shared/Hand.h"
 #include "UI/HudState.h"
 #include "UI/HudTextUtil.h"
+#include "UI/HudView.h"
 #include "UI/PolyFill.h"
 #include "UI/SlotAnimator.h"
 #include "UI/SlotLayout.h"
-#include "UI/StyleConfig.h"
 #include "UI/TextureManager.h"
 #include "imgui_internal.h"
 
@@ -35,6 +32,91 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             ImU32 fill;
             ImU32 glow;
         };
+
+        inline float Length2D(float x, float y) { return std::sqrt(x * x + y * y); }
+
+        inline void Normalize2D(float& x, float& y) {
+            const float len = Length2D(x, y);
+            if (len > 0.0001f) {
+                x /= len;
+                y /= len;
+            }
+        }
+
+        inline ImVec2 ClampCrackPointToSlotShape(ImVec2 p, float insetScale = 0.86f) {
+            const auto& st = Style();
+
+            if (st.slotShape.useCustomShape && st.slotShape.vertices.size() >= 3) {
+                float dx = p.x;
+                float dy = p.y;
+                const float len = Length2D(dx, dy);
+                if (len <= 0.0001f) return {0.f, 0.f};
+
+                const float ux = dx / len;
+                const float uy = dy / len;
+
+                float bestT = 1.0e9f;
+                const auto& verts = st.slotShape.vertices;
+                const int n = static_cast<int>(verts.size());
+
+                for (int i = 0; i < n; ++i) {
+                    const auto& a = verts[i];
+                    const auto& b = verts[(i + 1) % n];
+
+                    const float ex = b.x - a.x;
+                    const float ey = b.y - a.y;
+
+                    const float det = ex * (-uy) - ey * (-ux);
+                    if (std::abs(det) < 1e-6f) continue;
+
+                    const float rhsx = -a.x;
+                    const float rhsy = -a.y;
+
+                    const float s = (rhsx * (-uy) - rhsy * (-ux)) / det;
+                    const float t = (ex * rhsy - ey * rhsx) / det;
+
+                    if (s >= 0.f && s <= 1.f && t > 0.f) {
+                        bestT = std::min(bestT, t);
+                    }
+                }
+
+                if (bestT < 1.0e8f) {
+                    const float maxLen = bestT * insetScale;
+                    if (len > maxLen) {
+                        dx = ux * maxLen;
+                        dy = uy * maxLen;
+                    }
+                }
+
+                return {dx, dy};
+            }
+
+            switch (st.slotCornerStyle) {
+                using enum IntegratedMagic::CornerStyle;
+
+                case Square: {
+                    const float m = insetScale;
+                    return {std::clamp(p.x, -m, m), std::clamp(p.y, -m, m)};
+                }
+
+                case Notched:
+                case Chamfered: {
+                    const float m = insetScale * 0.82f;
+                    return {std::clamp(p.x, -m, m), std::clamp(p.y, -m, m)};
+                }
+
+                case Round:
+                default: {
+                    const float len = Length2D(p.x, p.y);
+                    const float maxLen = insetScale;
+                    if (len > maxLen && len > 0.0001f) {
+                        const float k = maxLen / len;
+                        return {p.x * k, p.y * k};
+                    }
+                    return p;
+                }
+            }
+        }
 
         Palette SchoolPalette(RE::ActorValue av) {
             const auto& st = Style();
@@ -103,30 +185,16 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             }
         }
 
-        const TextureManager::Image& ResolveModifierIcon() {
+        const TextureManager::Image& ResolveModifierIcon(const HudView& v) {
             static const TextureManager::Image kEmpty{};
-            const auto& cfg = IntegratedMagic::GetMagicConfig();
             const auto& st = StyleConfig::Get();
 
             if (st.buttonIconType == ButtonIconType::Keyboard) {
-                const int kbPos = cfg.modifierKeyboardPosition;
-                if (kbPos <= 0) return kEmpty;
-                const auto& ic = cfg.slotInput[0];
-                int sc = kbPos == 1   ? ic.KeyboardScanCode1.load(std::memory_order_relaxed)
-                         : kbPos == 2 ? ic.KeyboardScanCode2.load(std::memory_order_relaxed)
-                                      : ic.KeyboardScanCode3.load(std::memory_order_relaxed);
-                if (sc < 0) return kEmpty;
-                return TextureManager::GetKeyboardIcon(sc);
-            } else {
-                const int gpPos = cfg.modifierGamepadPosition;
-                if (gpPos <= 0) return kEmpty;
-                const auto& ic = cfg.slotInput[0];
-                int idx = gpPos == 1   ? ic.GamepadButton1.load(std::memory_order_relaxed)
-                          : gpPos == 2 ? ic.GamepadButton2.load(std::memory_order_relaxed)
-                                       : ic.GamepadButton3.load(std::memory_order_relaxed);
-                if (idx < 0) return kEmpty;
-                return TextureManager::GetGamepadButtonIcon(idx, st.buttonIconType);
+                if (v.modifierKbCode < 0) return kEmpty;
+                return TextureManager::GetKeyboardIcon(v.modifierKbCode);
             }
+            if (v.modifierGpCode < 0) return kEmpty;
+            return TextureManager::GetGamepadButtonIcon(v.modifierGpCode, st.buttonIconType);
         }
     }
 
@@ -356,16 +424,141 @@ namespace IntegratedMagic::HUD::SlotDrawer {
                      {0.f, 0.f}, {1.f, 1.f}, ComputeIconTint());
     }
 
-    void DrawSlotVisual(ImDrawList* dl, ImVec2 center, float r, bool isActive, RE::SpellItem const* rSpell,
-                        RE::SpellItem const* lSpell, RE::FormID shoutFormID, bool forceOffset) {
-        const auto rPal = SpellPalette(rSpell);
-        const auto lPal = SpellPalette(lSpell);
+    void DrawCrackOverlay(ImDrawList* dl, ImVec2 center, float r) {
+        struct CrackPoint {
+            float x, y;
+        };
 
-        if (isActive) {
-            DrawGlowShape(dl, center, r, rPal.glow);
-            DrawGlowShape(dl, center, r, lPal.glow);
+        struct Crack {
+            CrackPoint pts[8];
+            int count;
+            float thickness;
+            ImU32 color;
+        };
+
+        static constexpr ImU32 kStrong = IM_COL32(255, 255, 255, 95);
+        static constexpr ImU32 kMedium = IM_COL32(255, 255, 255, 72);
+        static constexpr ImU32 kFaint = IM_COL32(255, 255, 255, 42);
+
+        static constexpr Crack kCracks[] = {
+            {{{0.00f, 0.00f},
+              {-0.05f, -0.09f},
+              {-0.02f, -0.18f},
+              {0.06f, -0.16f},
+              {0.10f, -0.06f},
+              {0.07f, 0.02f},
+              {0.00f, 0.00f}},
+             7,
+             1.6f,
+             kStrong},
+            {{{0.00f, 0.00f}, {-0.09f, -0.02f}, {-0.14f, -0.09f}, {-0.11f, -0.17f}, {-0.04f, -0.19f}},
+             5,
+             1.4f,
+             kStrong},
+            {{{0.00f, 0.00f}, {0.10f, -0.02f}, {0.16f, -0.09f}, {0.13f, -0.17f}, {0.06f, -0.19f}}, 5, 1.4f, kStrong},
+            {{{0.00f, 0.00f}, {-0.05f, 0.09f}, {-0.03f, 0.18f}, {0.05f, 0.20f}, {0.10f, 0.12f}, {0.07f, 0.04f}},
+             6,
+             1.4f,
+             kStrong},
+            {{{0.00f, 0.00f}, {-0.05f, -0.16f}, {-0.12f, -0.32f}, {-0.22f, -0.50f}, {-0.32f, -0.66f}, {-0.41f, -0.82f}},
+             6,
+             1.5f,
+             kStrong},
+            {{{0.00f, 0.00f}, {0.08f, -0.16f}, {0.18f, -0.31f}, {0.30f, -0.48f}, {0.41f, -0.64f}, {0.51f, -0.84f}},
+             6,
+             1.5f,
+             kStrong},
+            {{{0.00f, 0.00f}, {-0.17f, -0.01f}, {-0.34f, -0.02f}, {-0.53f, -0.05f}, {-0.70f, -0.08f}, {-0.88f, -0.12f}},
+             6,
+             1.5f,
+             kStrong},
+            {{{0.00f, 0.00f}, {0.16f, 0.03f}, {0.33f, 0.08f}, {0.51f, 0.15f}, {0.68f, 0.22f}, {0.87f, 0.30f}},
+             6,
+             1.5f,
+             kStrong},
+            {{{0.00f, 0.00f}, {-0.03f, 0.16f}, {-0.06f, 0.33f}, {-0.10f, 0.50f}, {-0.13f, 0.68f}, {-0.16f, 0.88f}},
+             6,
+             1.5f,
+             kStrong},
+            {{{0.00f, 0.00f}, {0.08f, 0.13f}, {0.17f, 0.26f}, {0.27f, 0.40f}, {0.38f, 0.56f}, {0.49f, 0.73f}},
+             6,
+             1.5f,
+             kStrong},
+            {{{0.00f, 0.00f}, {-0.10f, 0.12f}, {-0.21f, 0.25f}, {-0.34f, 0.39f}, {-0.46f, 0.53f}, {-0.58f, 0.69f}},
+             6,
+             1.5f,
+             kStrong},
+            {{{0.00f, 0.00f}, {0.03f, -0.17f}, {0.07f, -0.34f}, {0.11f, -0.52f}, {0.16f, -0.69f}, {0.20f, -0.88f}},
+             6,
+             1.5f,
+             kStrong},
+            {{{-0.12f, -0.32f}, {-0.22f, -0.35f}, {-0.31f, -0.39f}, {-0.40f, -0.45f}}, 4, 1.2f, kMedium},
+            {{{-0.12f, -0.32f}, {-0.08f, -0.42f}, {-0.04f, -0.51f}, {0.00f, -0.60f}}, 4, 1.1f, kMedium},
+            {{{0.18f, -0.31f}, {0.28f, -0.35f}, {0.37f, -0.40f}, {0.46f, -0.47f}}, 4, 1.2f, kMedium},
+            {{{0.18f, -0.31f}, {0.15f, -0.42f}, {0.13f, -0.51f}, {0.12f, -0.60f}}, 4, 1.1f, kMedium},
+            {{{-0.34f, -0.02f}, {-0.43f, -0.10f}, {-0.51f, -0.18f}, {-0.60f, -0.25f}}, 4, 1.2f, kMedium},
+            {{{-0.53f, -0.05f}, {-0.62f, 0.02f}, {-0.72f, 0.09f}, {-0.81f, 0.15f}}, 4, 1.1f, kMedium},
+            {{{0.33f, 0.08f}, {0.42f, 0.00f}, {0.51f, -0.06f}, {0.61f, -0.12f}}, 4, 1.2f, kMedium},
+            {{{0.51f, 0.15f}, {0.57f, 0.24f}, {0.64f, 0.33f}, {0.72f, 0.41f}}, 4, 1.1f, kMedium},
+            {{{-0.06f, 0.33f}, {-0.15f, 0.40f}, {-0.24f, 0.48f}, {-0.33f, 0.56f}}, 4, 1.2f, kMedium},
+            {{{-0.10f, 0.50f}, {-0.05f, 0.60f}, {-0.02f, 0.69f}, {0.02f, 0.79f}}, 4, 1.1f, kMedium},
+            {{{0.17f, 0.26f}, {0.28f, 0.24f}, {0.39f, 0.23f}, {0.50f, 0.23f}}, 4, 1.2f, kMedium},
+            {{{0.38f, 0.56f}, {0.35f, 0.65f}, {0.32f, 0.74f}, {0.30f, 0.83f}}, 4, 1.1f, kMedium},
+            {{{-0.21f, 0.25f}, {-0.31f, 0.22f}, {-0.40f, 0.17f}, {-0.49f, 0.11f}}, 4, 1.2f, kMedium},
+            {{{-0.34f, 0.39f}, {-0.42f, 0.46f}, {-0.49f, 0.53f}, {-0.56f, 0.62f}}, 4, 1.1f, kMedium},
+            {{{0.07f, -0.34f}, {-0.01f, -0.38f}, {-0.09f, -0.42f}, {-0.17f, -0.47f}}, 4, 1.2f, kMedium},
+            {{{0.11f, -0.52f}, {0.19f, -0.58f}, {0.27f, -0.64f}, {0.35f, -0.71f}}, 4, 1.1f, kMedium},
+            {{{-0.05f, -0.09f}, {-0.11f, -0.13f}, {-0.16f, -0.18f}}, 3, 1.0f, kMedium},
+            {{{-0.05f, -0.09f}, {-0.06f, -0.16f}, {-0.08f, -0.23f}}, 3, 1.0f, kMedium},
+            {{{0.06f, -0.16f}, {0.13f, -0.20f}, {0.19f, -0.25f}}, 3, 1.0f, kMedium},
+            {{{0.06f, -0.16f}, {0.08f, -0.24f}, {0.10f, -0.31f}}, 3, 1.0f, kMedium},
+            {{{-0.05f, 0.09f}, {-0.12f, 0.15f}, {-0.18f, 0.21f}}, 3, 1.0f, kMedium},
+            {{{0.05f, 0.20f}, {0.11f, 0.27f}, {0.17f, 0.33f}}, 3, 1.0f, kMedium},
+            {{{0.07f, 0.04f}, {0.15f, 0.06f}, {0.23f, 0.09f}}, 3, 1.0f, kMedium},
+            {{{-0.09f, -0.02f}, {-0.16f, -0.04f}, {-0.24f, -0.06f}}, 3, 1.0f, kMedium},
+            {{{-0.03f, 0.18f}, {-0.05f, 0.25f}, {-0.07f, 0.32f}}, 3, 1.0f, kMedium},
+            {{{0.10f, 0.12f}, {0.17f, 0.15f}, {0.24f, 0.20f}}, 3, 1.0f, kMedium},
+            {{{-0.41f, -0.82f}, {-0.48f, -0.90f}, {-0.54f, -0.98f}}, 3, 0.9f, kFaint},
+            {{{0.51f, -0.84f}, {0.58f, -0.92f}, {0.65f, -1.00f}}, 3, 0.9f, kFaint},
+            {{{-0.88f, -0.12f}, {-0.98f, -0.16f}, {-1.08f, -0.20f}}, 3, 0.9f, kFaint},
+            {{{0.87f, 0.30f}, {0.97f, 0.35f}, {1.08f, 0.40f}}, 3, 0.9f, kFaint},
+            {{{-0.16f, 0.88f}, {-0.18f, 0.98f}, {-0.20f, 1.08f}}, 3, 0.9f, kFaint},
+            {{{0.49f, 0.73f}, {0.56f, 0.82f}, {0.63f, 0.92f}}, 3, 0.9f, kFaint},
+            {{{-0.58f, 0.69f}, {-0.65f, 0.78f}, {-0.72f, 0.88f}}, 3, 0.9f, kFaint},
+            {{{0.20f, -0.88f}, {0.23f, -0.98f}, {0.26f, -1.08f}}, 3, 0.9f, kFaint},
+        };
+
+        for (const auto& crack : kCracks) {
+            ImVec2 pts[8];
+
+            for (int i = 0; i < crack.count; ++i) {
+                ImVec2 local = {crack.pts[i].x, crack.pts[i].y};
+                local = ClampCrackPointToSlotShape(local, 0.84f);
+                pts[i] = {center.x + local.x * r, center.y + local.y * r};
+            }
+
+            const float thicknessScale = std::clamp(r / 32.0f, 0.85f, 1.75f);
+            dl->AddPolyline(pts, crack.count, crack.color, 0, crack.thickness * thicknessScale);
         }
+    }
 
+    static ImU32 MulAlpha(ImU32 col, float alphaMul) {
+        alphaMul = std::clamp(alphaMul, 0.0f, 1.0f);
+        const auto a = static_cast<int>(((col >> 24) & 0xFF) * alphaMul);
+        return (col & 0x00FFFFFFu) | (static_cast<ImU32>(a) << 24);
+    }
+
+    void DrawSpellIconTinted(ImDrawList* dl, const RE::SpellItem* spell, float cx, float cy, float iconSize,
+                             ImU32 tint) {
+        const auto& img = TextureManager::GetSpellIcon(spell);
+        if (!img.valid()) return;
+        const float half = iconSize * 0.5f;
+        dl->AddImage(reinterpret_cast<ImTextureID>(img.texture), {cx - half, cy - half}, {cx + half, cy + half},
+                     {0.f, 0.f}, {1.f, 1.f}, tint);
+    }
+
+    static void DrawSlotContent(ImDrawList* dl, ImVec2 center, float r, bool isActive, RE::SpellItem const* rSpell,
+                                RE::SpellItem const* lSpell, RE::FormID shoutFormID, bool forceOffset, float alphaMul) {
         const auto& st = Style();
 
         if (st.useTextureForSlotBg) {
@@ -380,23 +573,27 @@ namespace IntegratedMagic::HUD::SlotDrawer {
                 }
                 return TextureManager::GetUiTexture(UiTextureType::slot_bg);
             }();
-            if (bgImg.valid())
 
+            if (bgImg.valid()) {
                 dl->AddImage(reinterpret_cast<ImTextureID>(bgImg.texture), {center.x - r, center.y - r},
-                             {center.x + r, center.y + r}, {0.f, 0.f}, {1.f, 1.f}, IM_COL32(255, 255, 255, 255));
-            else
-                FillSlotShape(dl, center, r, isActive ? st.slotBgActive : st.slotBgInactive);
+                             {center.x + r, center.y + r}, {0.f, 0.f}, {1.f, 1.f},
+                             IM_COL32(255, 255, 255, static_cast<int>(255.0f * alphaMul)));
+            } else {
+                FillSlotShape(dl, center, r, MulAlpha(isActive ? st.slotBgActive : st.slotBgInactive, alphaMul));
+            }
         } else {
-            FillSlotShape(dl, center, r, isActive ? st.slotBgActive : st.slotBgInactive);
+            FillSlotShape(dl, center, r, MulAlpha(isActive ? st.slotBgActive : st.slotBgInactive, alphaMul));
         }
 
+        const ImU32 iconTint = MulAlpha(ComputeIconTint(), alphaMul);
         const float iconSize = r * st.iconSizeFactor;
+
         if (shoutFormID) {
             const auto& img = TextureManager::GetIconForForm(shoutFormID);
             if (img.valid()) {
                 const float half = iconSize * 0.6f;
                 dl->AddImage(reinterpret_cast<ImTextureID>(img.texture), {center.x - half, center.y - half},
-                             {center.x + half, center.y + half}, {0.f, 0.f}, {1.f, 1.f}, ComputeIconTint());
+                             {center.x + half, center.y + half}, {0.f, 0.f}, {1.f, 1.f}, iconTint);
             }
         } else {
             const float off = r * st.iconOffsetFactor;
@@ -405,12 +602,42 @@ namespace IntegratedMagic::HUD::SlotDrawer {
 
             if (!forceOffset && (sameSpell || onlyOne)) {
                 const RE::SpellItem* sp = rSpell ? rSpell : lSpell;
-                DrawSpellIcon(dl, sp, center.x, center.y, iconSize);
+                DrawSpellIconTinted(dl, sp, center.x, center.y, iconSize, iconTint);
             } else {
-                if (rSpell) DrawSpellIcon(dl, rSpell, center.x + off, center.y, iconSize);
-                if (lSpell) DrawSpellIcon(dl, lSpell, center.x - off, center.y, iconSize);
+                if (rSpell) DrawSpellIconTinted(dl, rSpell, center.x + off, center.y, iconSize, iconTint);
+                if (lSpell) DrawSpellIconTinted(dl, lSpell, center.x - off, center.y, iconSize, iconTint);
             }
         }
+    }
+
+    void DrawSlotVisual(ImDrawList* dl, ImVec2 center, float r, bool isActive, RE::SpellItem const* rSpell,
+                        RE::SpellItem const* lSpell, RE::FormID shoutFormID, bool forceOffset, bool canCast,
+                        bool onCooldown, float cooldownProgress) {
+        const auto rPal = SpellPalette(rSpell);
+        const auto lPal = SpellPalette(lSpell);
+
+        if (isActive) {
+            DrawGlowShape(dl, center, r, rPal.glow);
+            DrawGlowShape(dl, center, r, lPal.glow);
+        }
+
+        if (onCooldown) {
+            const float p = std::clamp(cooldownProgress, 0.0f, 1.0f);
+
+            DrawSlotContent(dl, center, r, isActive, rSpell, lSpell, shoutFormID, forceOffset, 0.25f);
+
+            const float fillTopY = center.y + r - (2.0f * r * p);
+
+            dl->PushClipRect({center.x - r - 2.0f, fillTopY}, {center.x + r + 2.0f, center.y + r + 2.0f}, true);
+
+            DrawSlotContent(dl, center, r, isActive, rSpell, lSpell, shoutFormID, forceOffset, 1.0f);
+
+            dl->PopClipRect();
+        } else {
+            DrawSlotContent(dl, center, r, isActive, rSpell, lSpell, shoutFormID, forceOffset, 1.0f);
+        }
+
+        const auto& st = Style();
 
         if (isActive) {
             const double t = ImGui::GetTime();
@@ -439,6 +666,10 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             dl->AddLine({center.x - d, center.y - d}, {center.x + d, center.y + d}, xc, 1.f);
             dl->AddLine({center.x + d, center.y - d}, {center.x - d, center.y + d}, xc, 1.f);
         }
+
+        if (!canCast) {
+            DrawCrackOverlay(dl, center, r);
+        }
     }
 
     void DrawRingCenter(ImDrawList* dl, ImVec2 c, float r) {
@@ -447,7 +678,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         dl->AddCircle(c, r, st.ringCenterBorder, 16, 1.f);
     }
 
-    void DrawModifierWidget(ImDrawList* dl, ImVec2 c, bool modHeld) {
+    void DrawModifierWidget(ImDrawList* dl, ImVec2 c, bool modHeld, const HudView& v) {
         const auto& st = StyleConfig::Get();
 
         std::uint8_t alpha = 0;
@@ -465,7 +696,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         }
         if (alpha == 0) return;
 
-        const auto& icon = ResolveModifierIcon();
+        const auto& icon = ResolveModifierIcon(v);
         if (!icon.valid()) return;
 
         const float r = st.modifierWidgetRadius;
@@ -476,8 +707,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
                      IM_COL32(255, 255, 255, alpha));
     }
 
-    void DrawSlotHotkeyIcons(ImDrawList* dl, ImVec2 center, float slotR, int slotIndex) {
-        const auto& cfg = IntegratedMagic::GetMagicConfig();
+    void DrawSlotHotkeyIcons(ImDrawList* dl, ImVec2 center, float slotR, const SlotView& s) {
         const auto& st = StyleConfig::Get();
         const auto iconType = st.buttonIconType;
 
@@ -492,18 +722,11 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         KeyEntry keys[3]{};
         int keyCount = 0;
 
-        const auto& ic = cfg.slotInput[static_cast<std::size_t>(slotIndex)];
         if (iconType == ButtonIconType::Keyboard) {
-            int codes[3] = {ic.KeyboardScanCode1.load(std::memory_order_relaxed),
-                            ic.KeyboardScanCode2.load(std::memory_order_relaxed),
-                            ic.KeyboardScanCode3.load(std::memory_order_relaxed)};
-            for (int c : codes)
+            for (int c : s.kbCodes)
                 if (c >= 0 && keyCount < 3) keys[keyCount++] = {false, c};
         } else {
-            int codes[3] = {ic.GamepadButton1.load(std::memory_order_relaxed),
-                            ic.GamepadButton2.load(std::memory_order_relaxed),
-                            ic.GamepadButton3.load(std::memory_order_relaxed)};
-            for (int c : codes)
+            for (int c : s.gpCodes)
                 if (c >= 0 && keyCount < 3) keys[keyCount++] = {true, c};
         }
         if (keyCount == 0) return;
@@ -528,14 +751,13 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         }
     }
 
-    void DrawSlotButtonLabel(ImDrawList* dl, ImVec2 center, float slotR, int slotIndex, ImVec2 hudOrigin, float alpha) {
+    void DrawSlotButtonLabel(ImDrawList* dl, ImVec2 center, float slotR, const SlotView& s, const HudView& v,
+                             ImVec2 hudOrigin, float alpha) {
         if (alpha <= 0.f) return;
 
-        const auto& cfg = IntegratedMagic::GetMagicConfig();
         const auto& st = StyleConfig::Get();
         const auto iconType = st.buttonIconType;
-        const int modPos =
-            (iconType == ButtonIconType::Keyboard) ? cfg.modifierKeyboardPosition : cfg.modifierGamepadPosition;
+        const int modPos = (iconType == ButtonIconType::Keyboard) ? v.modifierKbPos : v.modifierGpPos;
         const bool suppressMod = (st.modifierWidgetVisibility != ModifierWidgetVisibility::Never) && (modPos > 0);
 
         struct KeyEntry {
@@ -545,24 +767,17 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         KeyEntry keys[3]{};
         int keyCount = 0;
 
-        const auto& ic = cfg.slotInput[static_cast<std::size_t>(slotIndex)];
         if (iconType == ButtonIconType::Keyboard) {
-            int codes[3] = {ic.KeyboardScanCode1.load(std::memory_order_relaxed),
-                            ic.KeyboardScanCode2.load(std::memory_order_relaxed),
-                            ic.KeyboardScanCode3.load(std::memory_order_relaxed)};
             for (int k = 0; k < 3; ++k) {
-                if (codes[k] < 0) continue;
+                if (s.kbCodes[k] < 0) continue;
                 if (suppressMod && (k + 1) == modPos) continue;
-                if (keyCount < 3) keys[keyCount++] = {false, codes[k]};
+                if (keyCount < 3) keys[keyCount++] = {false, s.kbCodes[k]};
             }
         } else {
-            int codes[3] = {ic.GamepadButton1.load(std::memory_order_relaxed),
-                            ic.GamepadButton2.load(std::memory_order_relaxed),
-                            ic.GamepadButton3.load(std::memory_order_relaxed)};
             for (int k = 0; k < 3; ++k) {
-                if (codes[k] < 0) continue;
+                if (s.gpCodes[k] < 0) continue;
                 if (suppressMod && (k + 1) == modPos) continue;
-                if (keyCount < 3) keys[keyCount++] = {true, codes[k]};
+                if (keyCount < 3) keys[keyCount++] = {true, s.gpCodes[k]};
             }
         }
         if (keyCount == 0) return;
@@ -641,10 +856,12 @@ namespace IntegratedMagic::HUD::SlotDrawer {
     }
 
     void DrawSmallHUD(const ImGuiIO& io) {
+        const HudView v = SnapshotHudView();
+
         const auto& st = Style();
-        const auto n = static_cast<int>(Slots::GetSlotCount());
-        const int activeSlot = MagicState::Get().ActiveSlot();
-        const bool modHeld = !MagicState::Get().IsActive() && Input::IsModifierHeld();
+        const int n = std::min(v.slotCount, static_cast<int>(v.slots.size()));
+        const int activeSlot = v.activeSlot;
+        const bool modHeld = !v.spellSystemActive && v.modifierHeld;
 
         SlotAnimator::Update(n, activeSlot, modHeld, st.hudLayout, st.gridColumns);
 
@@ -657,7 +874,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             s_last = now;
             if (dt < 0.f || dt > 0.25f) dt = 0.f;
 
-            const bool slotActive = MagicState::Get().IsActive();
+            const bool slotActive = v.spellSystemActive;
             const float fadeSpeed = st.buttonLabelFadeTime > 0.f ? 1.f / st.buttonLabelFadeTime : 9999.f;
 
             for (int i = 0; i < n; ++i) {
@@ -679,40 +896,193 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             for (int i = n; i < SlotLayout::kMaxSlots; ++i) s_labelAlpha[i] = 0.f;
         }
 
+        struct SlotManaAnim {
+            bool wasCastable = true;
+            float pulseT = -1.f;
+        };
+        struct SlotCooldownAnim {
+            bool wasOnCooldown = false;
+            float pulseT = -1.f;
+        };
+        static SlotCooldownAnim s_cooldownAnim[SlotLayout::kMaxSlots]{};
+        static SlotManaAnim s_manaAnim[SlotLayout::kMaxSlots]{};
+        {
+            using clock = std::chrono::steady_clock;
+            static clock::time_point s_manaLast = clock::now();
+            const auto now = clock::now();
+            float dt = std::chrono::duration<float>(now - s_manaLast).count();
+            s_manaLast = now;
+            if (dt < 0.f || dt > 0.25f) dt = 0.f;
+
+            constexpr float kPulseDuration = 0.30f;
+
+            for (int i = 0; i < n; ++i) {
+                const auto& sv = v.slots[i];
+                const bool castable = !sv.hasSpells || sv.canCast;
+                auto& anim = s_manaAnim[i];
+
+                if (castable && !anim.wasCastable && anim.pulseT < 0.f) anim.pulseT = 0.f;
+
+                anim.wasCastable = castable;
+
+                if (anim.pulseT >= 0.f) {
+                    anim.pulseT += dt / kPulseDuration;
+                    if (anim.pulseT >= 1.f) anim.pulseT = -1.f;
+                }
+            }
+            for (int i = n; i < SlotLayout::kMaxSlots; ++i) s_manaAnim[i] = {};
+        }
+
+        auto GetManaPulseScale = [](int i) -> float {
+            const float t = s_manaAnim[i].pulseT;
+            if (t < 0.f) return 1.f;
+            return 1.f + 0.28f * std::sin(t * kPI);
+        };
+
+        {
+            using clock = std::chrono::steady_clock;
+            static clock::time_point s_cdLast = clock::now();
+            const auto now = clock::now();
+            float dt = std::chrono::duration<float>(now - s_cdLast).count();
+            s_cdLast = now;
+            if (dt < 0.f || dt > 0.25f) dt = 0.f;
+
+            constexpr float kPulseDuration = 0.30f;
+
+            for (int i = 0; i < n; ++i) {
+                const auto& sv = v.slots[i];
+                auto& anim = s_cooldownAnim[i];
+
+                if (sv.justFinishedCooldown && anim.pulseT < 0.f) {
+                    anim.pulseT = 0.f;
+                }
+
+                anim.wasOnCooldown = sv.onCooldown;
+
+                if (anim.pulseT >= 0.f) {
+                    anim.pulseT += dt / kPulseDuration;
+                    if (anim.pulseT >= 1.f) anim.pulseT = -1.f;
+                }
+            }
+
+            for (int i = n; i < SlotLayout::kMaxSlots; ++i) {
+                s_cooldownAnim[i] = {};
+            }
+        }
+
+        auto GetCooldownPulseScale = [](int i) -> float {
+            const float t = s_cooldownAnim[i].pulseT;
+            if (t < 0.f) return 1.f;
+            return 1.f + 0.28f * std::sin(t * kPI);
+        };
+
         float maxScale = SlotAnimator::MaxPossibleScale();
         for (int i = 0; i < n; ++i) maxScale = std::max(maxScale, SlotAnimator::GetScale(i));
 
-        const LayoutVec2 animHalf = [&] {
-            LayoutVec2 h = SlotLayout::BoundingHalf(st.hudLayout, n, st.slotRadius * maxScale, st.ringRadius,
-                                                    st.slotSpacing, st.gridColumns);
-            float extraY = kGlowPad;
-            if (st.showSpellNamesInHud) {
-                const bool iconsVisible = st.buttonLabelVisibility == ButtonLabelVisibility::Always ||
-                                          (st.buttonLabelVisibility == ButtonLabelVisibility::OnModifier && modHeld);
-                const float iconReserve = iconsVisible ? (st.buttonLabelIconSize + st.buttonLabelMargin) : 0.f;
-                const float textReserve = ImGui::GetTextLineHeight() * 3.f + 4.f + iconReserve;
-                extraY += textReserve;
-            }
-            return LayoutVec2{h.x + kGlowPad, h.y + extraY};
-        }();
+        const float scalePad = (SlotAnimator::MaxPossibleScale() - 1.f) * st.slotRadius + kGlowPad;
+        const LayoutVec2 baseHalf =
+            SlotLayout::BoundingHalf(st.hudLayout, n, st.slotRadius, st.ringRadius, st.slotSpacing, st.gridColumns);
 
-        const ImVec2 hudOrigin = ComputeHudCenter(io, {animHalf.x, animHalf.y});
+        float textPadTop = 0.f, textPadBottom = 0.f, textPadLeft = 0.f, textPadRight = 0.f;
+        if (st.showSpellNamesInHud) {
+            const float textReserve = ImGui::GetTextLineHeight() * 2.f + 8.f + st.spellNamePadding;
+            switch (st.spellNamePosition) {
+                case ButtonLabelCorner::Top:
+                    textPadTop = textReserve;
+                    break;
+                case ButtonLabelCorner::Bottom:
+                    textPadBottom = textReserve;
+                    break;
+                case ButtonLabelCorner::Left:
+                    textPadLeft = textReserve;
+                    break;
+                case ButtonLabelCorner::Right:
+                    textPadRight = textReserve;
+                    break;
+                default:
+                    textPadTop = textPadBottom = textPadLeft = textPadRight = textReserve;
+                    break;
+            }
+        }
+
+        const LayoutVec2 stableHalf = {baseHalf.x + scalePad + std::max(textPadLeft, textPadRight),
+                                       baseHalf.y + scalePad + std::max(textPadTop, textPadBottom)};
+
+        ImGuiIO fakeIo = io;
+        fakeIo.DisplaySize = IntegratedMagic::HUD::GetDisplaySize();
+        const ImVec2 hudOrigin = ComputeHudCenter(fakeIo, {stableHalf.x, stableHalf.y});
 
         LayoutVec2 relPos[SlotLayout::kMaxSlots]{};
         SlotLayout::Compute(st.hudLayout, n, st.slotRadius, st.ringRadius, st.slotSpacing, st.gridColumns, relPos);
 
-        auto ScaledCenter = [&](int idx) -> ImVec2 {
-            const float scale = SlotAnimator::GetScale(idx);
-            const float rx = relPos[idx].x;
-            const float ry = relPos[idx].y;
-            const float len = std::sqrt(rx * rx + ry * ry);
-            const float push = (scale - 1.f) * st.slotRadius;
-            if (len > 0.5f) return {hudOrigin.x + rx + (rx / len) * push, hudOrigin.y + ry + (ry / len) * push};
-            return {hudOrigin.x + rx, hudOrigin.y + ry};
-        };
+        float slotScale[SlotLayout::kMaxSlots]{};
+        float slotRadiusFinal[SlotLayout::kMaxSlots]{};
+        ImVec2 slotCenter[SlotLayout::kMaxSlots]{};
 
-        ImGui::SetNextWindowPos({hudOrigin.x - animHalf.x, hudOrigin.y - animHalf.y}, ImGuiCond_Always);
-        ImGui::SetNextWindowSize({animHalf.x * 2.f, animHalf.y * 2.f}, ImGuiCond_Always);
+        for (int i = 0; i < n; ++i) {
+            slotScale[i] = SlotAnimator::GetScale(i) * std::max(GetManaPulseScale(i), GetCooldownPulseScale(i));
+            slotRadiusFinal[i] = st.slotRadius * slotScale[i];
+        }
+
+        switch (st.hudLayout) {
+            case HudLayoutType::Horizontal: {
+                float totalW = 0.f;
+                for (int i = 0; i < n; ++i) {
+                    totalW += slotRadiusFinal[i] * 2.f;
+                }
+                totalW += (n - 1) * st.slotSpacing;
+
+                float x = hudOrigin.x - totalW * 0.5f;
+                for (int i = 0; i < n; ++i) {
+                    x += slotRadiusFinal[i];
+                    slotCenter[i] = {x, hudOrigin.y};
+                    x += slotRadiusFinal[i] + st.slotSpacing;
+                }
+                break;
+            }
+
+            case HudLayoutType::Vertical: {
+                float totalH = 0.f;
+                for (int i = 0; i < n; ++i) {
+                    totalH += slotRadiusFinal[i] * 2.f;
+                }
+                totalH += (n - 1) * st.slotSpacing;
+
+                float y = hudOrigin.y - totalH * 0.5f;
+                for (int i = 0; i < n; ++i) {
+                    y += slotRadiusFinal[i];
+                    slotCenter[i] = {hudOrigin.x, y};
+                    y += slotRadiusFinal[i] + st.slotSpacing;
+                }
+                break;
+            }
+
+            case HudLayoutType::Circular:
+            case HudLayoutType::Grid:
+            default: {
+                for (int i = 0; i < n; ++i) {
+                    const float rx = relPos[i].x;
+                    const float ry = relPos[i].y;
+                    const float len = std::sqrt(rx * rx + ry * ry);
+
+                    if (len <= 0.5f) {
+                        slotCenter[i] = {hudOrigin.x + rx, hudOrigin.y + ry};
+                    } else {
+                        const float extra = slotRadiusFinal[i] - st.slotRadius;
+                        const float finalLen = len + extra;
+                        slotCenter[i] = {hudOrigin.x + (rx / len) * finalLen, hudOrigin.y + (ry / len) * finalLen};
+                    }
+                }
+                break;
+            }
+        }
+
+        const float winOffsetX = (textPadRight - textPadLeft) * 0.5f;
+        const float winOffsetY = (textPadBottom - textPadTop) * 0.5f;
+
+        ImGui::SetNextWindowPos({hudOrigin.x - stableHalf.x + winOffsetX, hudOrigin.y - stableHalf.y + winOffsetY},
+                                ImGuiCond_Always);
+        ImGui::SetNextWindowSize({stableHalf.x * 2.f, stableHalf.y * 2.f}, ImGuiCond_Always);
         ImGui::SetNextWindowBgAlpha(0.f);
         ImGui::Begin(kHudWindowID, nullptr,
                      ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar |
@@ -725,46 +1095,39 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         if (SlotLayout::HasCenter(st.hudLayout)) DrawRingCenter(dl, hudOrigin);
 
         auto DrawSlot = [&](int i, bool active) {
-            const ImVec2 center = ScaledCenter(i);
-            const float slotR = st.slotRadius * SlotAnimator::GetScale(i);
-            const auto rID = Slots::GetSlotSpell(i, Slots::Hand::Right);
-            const auto lID = Slots::GetSlotSpell(i, Slots::Hand::Left);
-            const auto shID = Slots::GetSlotShout(i);
-            auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
-            auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
-            const bool is2H = !shID && !rID && lSp && SpellClassify::IsTwoHandedSpell(lSp);
-            DrawSlotVisual(dl, center, slotR, active, is2H ? nullptr : rSp, is2H ? nullptr : lSp, is2H ? lID : shID);
+            const auto& sv = v.slots[i];
+            const ImVec2 center = slotCenter[i];
+            const float slotR = slotRadiusFinal[i];
 
-            if (st.showSpellNamesInHud && !MagicState::Get().IsActive()) {
-                const bool iconsVisible = st.buttonLabelVisibility == ButtonLabelVisibility::Always ||
-                                          (st.buttonLabelVisibility == ButtonLabelVisibility::OnModifier && modHeld);
-                const float iconReserve = iconsVisible ? (st.buttonLabelIconSize + st.buttonLabelMargin) : 0.f;
-                const float slotTop = center.y - slotR - iconReserve;
+            const bool canCast = s_manaAnim[i].wasCastable;
 
-                if (shID || is2H) {
-                    const RE::FormID dispID = shID ? shID : lID;
-                    auto const* f = RE::TESForm::LookupByID(dispID);
-                    const char* name = f ? f->GetName() : "";
-                    DrawWrappedLabelAbove(name, center.x - slotR, slotR * 2.f, slotTop, 4.f, true);
-                } else if (rSp || lSp) {
-                    const bool sameSpell = rSp && lSp && (rSp->GetFormID() == lSp->GetFormID());
-                    const bool onlyOne = (rSp != nullptr) != (lSp != nullptr);
+            DrawSlotVisual(dl, center, slotR, active, sv.isTwoHanded ? nullptr : sv.rightSpell,
+                           sv.isTwoHanded ? nullptr : sv.leftSpell, sv.isTwoHanded ? sv.leftSpellID : sv.shoutFormID,
+                           false, canCast, sv.onCooldown, sv.cooldownProgress);
 
-                    if (sameSpell || onlyOne) {
-                        const RE::SpellItem* sp = rSp ? rSp : lSp;
-                        DrawWrappedLabelAbove(sp->GetName(), center.x - slotR, slotR * 2.f, slotTop, 4.f, true);
+            if (st.showSpellNamesInHud && !v.spellSystemActive) {
+                const ImVec2 toCenter = [&]() -> ImVec2 {
+                    const float dx = hudOrigin.x - center.x;
+                    const float dy = hudOrigin.y - center.y;
+                    const float len = std::sqrt(dx * dx + dy * dy);
+                    return len > 0.5f ? ImVec2{dx / len, dy / len} : ImVec2{0.f, -1.f};
+                }();
+
+                auto drawLabel = [&](const char* name) {
+                    DrawSpellLabel(name, center, slotR, toCenter, st.spellNamePosition, st.spellNamePadding);
+                };
+
+                if (sv.shoutFormID || sv.isTwoHanded) {
+                    drawLabel(sv.labelForm ? sv.labelForm->GetName() : "");
+                } else if (sv.rightSpell || sv.leftSpell) {
+                    const bool same =
+                        sv.rightSpell && sv.leftSpell && (sv.rightSpell->GetFormID() == sv.leftSpell->GetFormID());
+                    const bool onlyOne = (sv.rightSpell != nullptr) != (sv.leftSpell != nullptr);
+                    if (same || onlyOne) {
+                        drawLabel((sv.rightSpell ? sv.rightSpell : sv.leftSpell)->GetName());
                     } else {
-                        constexpr float kPipeGap = 6.f;
-                        const float pipeW = ImGui::CalcTextSize("|").x;
-                        const float halfPipe = pipeW * 0.5f;
-
-                        DrawWrappedLabelAbove(lSp->GetName(), center.x - slotR, slotR - halfPipe - kPipeGap, slotTop);
-
-                        const float pipeH = ImGui::GetTextLineHeight();
-                        ImGui::SetCursorScreenPos({center.x - halfPipe, slotTop - 4.f - pipeH});
-
-                        DrawWrappedLabelAbove(rSp->GetName(), center.x + halfPipe + kPipeGap,
-                                              slotR - halfPipe - kPipeGap, slotTop);
+                        std::string combined = std::string(sv.leftSpell->GetName()) + " | " + sv.rightSpell->GetName();
+                        drawLabel(combined.c_str());
                     }
                 }
             }
@@ -776,13 +1139,13 @@ namespace IntegratedMagic::HUD::SlotDrawer {
 
         for (int i = 0; i < n; ++i)
             if (i != activeSlot)
-                DrawSlotButtonLabel(dl, ScaledCenter(i), st.slotRadius * SlotAnimator::GetScale(i), i, hudOrigin,
-                                    s_labelAlpha[i]);
-        if (activeSlot >= 0 && activeSlot < n)
-            DrawSlotButtonLabel(dl, ScaledCenter(activeSlot), st.slotRadius * SlotAnimator::GetScale(activeSlot),
-                                activeSlot, hudOrigin, s_labelAlpha[activeSlot]);
+                DrawSlotButtonLabel(dl, slotCenter[i], slotRadiusFinal[i], v.slots[i], v, hudOrigin, s_labelAlpha[i]);
 
-        DrawModifierWidget(dl, hudOrigin, Input::IsModifierHeld() || MagicState::Get().IsActive());
+        if (activeSlot >= 0 && activeSlot < n)
+            DrawSlotButtonLabel(dl, slotCenter[activeSlot], slotRadiusFinal[activeSlot], v.slots[activeSlot], v,
+                                hudOrigin, s_labelAlpha[activeSlot]);
+
+        DrawModifierWidget(dl, hudOrigin, v.modifierHeld || v.spellSystemActive, v);
 
         ImGui::End();
     }

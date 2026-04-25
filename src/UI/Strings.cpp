@@ -1,10 +1,10 @@
-#include "Strings.h"
+#include "UI/Strings.h"
 
 #include <fstream>
 #include <unordered_map>
 
-#include "Config/ConfigPath.h"
 #include "PCH.h"
+#include "Shared/ConfigPath.h"
 
 namespace IntegratedMagic::Strings {
     namespace {

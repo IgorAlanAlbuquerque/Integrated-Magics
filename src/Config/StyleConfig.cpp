@@ -1,0 +1,498 @@
+#include "Config/StyleConfig.h"
+
+#include <cmath>
+#include <numbers>
+
+#include "PCH.h"
+#include "SimpleIni.h"
+
+namespace IntegratedMagic {
+    namespace {
+        constexpr float kPI = std::numbers::pi_v<float>;
+
+        float GetFloat(const CSimpleIniA& ini, const char* section, const char* key, float def) {
+            const char* v = ini.GetValue(section, key, nullptr);
+            if (!v) return def;
+            try {
+                return std::stof(v);
+            } catch (...) {
+                return def;
+            }
+        }
+
+        std::uint8_t GetU8(const CSimpleIniA& ini, const char* section, const char* key, std::uint8_t def) {
+            const char* v = ini.GetValue(section, key, nullptr);
+            if (!v) return def;
+            try {
+                return static_cast<std::uint8_t>(std::stoul(v));
+            } catch (...) {
+                return def;
+            }
+        }
+
+        std::uint32_t GetColor(const CSimpleIniA& ini, const char* section, const char* key, std::uint32_t def) {
+            const char* v = ini.GetValue(section, key, nullptr);
+            if (!v) return def;
+            try {
+                return static_cast<std::uint32_t>(std::stoul(v, nullptr, 0));
+            } catch (...) {
+                return def;
+            }
+        }
+
+        HudAnchor GetAnchor(const CSimpleIniA& ini, const char* section, const char* key, HudAnchor def) {
+            const char* v = ini.GetValue(section, key, nullptr);
+            if (!v) return def;
+            const std::string s{v};
+            if (s == "TopLeft" || s == "0") return HudAnchor::TopLeft;
+            if (s == "TopCenter" || s == "1") return HudAnchor::TopCenter;
+            if (s == "TopRight" || s == "2") return HudAnchor::TopRight;
+            if (s == "MiddleLeft" || s == "3") return HudAnchor::MiddleLeft;
+            if (s == "Center" || s == "4") return HudAnchor::Center;
+            if (s == "MiddleRight" || s == "5") return HudAnchor::MiddleRight;
+            if (s == "BottomLeft" || s == "6") return HudAnchor::BottomLeft;
+            if (s == "BottomCenter" || s == "7") return HudAnchor::BottomCenter;
+            if (s == "BottomRight" || s == "8") return HudAnchor::BottomRight;
+            return def;
+        }
+
+        HudLayoutType GetLayout(const CSimpleIniA& ini, const char* section, const char* key, HudLayoutType def) {
+            const char* v = ini.GetValue(section, key, nullptr);
+            if (!v) return def;
+            const std::string s{v};
+            if (s == "Circular" || s == "0") return HudLayoutType::Circular;
+            if (s == "Horizontal" || s == "1") return HudLayoutType::Horizontal;
+            if (s == "Vertical" || s == "2") return HudLayoutType::Vertical;
+            if (s == "Grid" || s == "3") return HudLayoutType::Grid;
+            return def;
+        }
+
+        ButtonIconType GetButtonIconType(const CSimpleIniA& ini, const char* section, const char* key,
+                                         ButtonIconType def) {
+            const char* v = ini.GetValue(section, key, nullptr);
+            if (!v) return def;
+            const std::string s{v};
+            if (s == "Keyboard" || s == "0") return ButtonIconType::Keyboard;
+            if (s == "PlayStation" || s == "1") return ButtonIconType::PlayStation;
+            if (s == "Xbox" || s == "2") return ButtonIconType::Xbox;
+            return def;
+        }
+
+        ButtonLabelVisibility GetButtonLabelVisibility(const CSimpleIniA& ini, const char* section, const char* key,
+                                                       ButtonLabelVisibility def) {
+            const char* v = ini.GetValue(section, key, nullptr);
+            if (!v) return def;
+            const std::string s{v};
+            if (s == "Never" || s == "0") return ButtonLabelVisibility::Never;
+            if (s == "Always" || s == "1") return ButtonLabelVisibility::Always;
+            if (s == "OnModifier" || s == "2") return ButtonLabelVisibility::OnModifier;
+            return def;
+        }
+
+        ButtonLabelCorner GetButtonLabelCorner(const CSimpleIniA& ini, const char* section, const char* key,
+                                               ButtonLabelCorner def) {
+            const char* v = ini.GetValue(section, key, nullptr);
+            if (!v) return def;
+            const std::string s{v};
+            if (s == "Top" || s == "0") return ButtonLabelCorner::Top;
+            if (s == "Right" || s == "1") return ButtonLabelCorner::Right;
+            if (s == "Bottom" || s == "2") return ButtonLabelCorner::Bottom;
+            if (s == "Left" || s == "3") return ButtonLabelCorner::Left;
+            if (s == "TowardCenter" || s == "4") return ButtonLabelCorner::TowardCenter;
+            if (s == "AwayFromCenter" || s == "5") return ButtonLabelCorner::AwayFromCenter;
+            return def;
+        }
+    }
+
+    void SlotShapeConfig::SetCircle(int segments) {
+        vertices.clear();
+        for (int i = 0; i < segments; ++i) {
+            const float a = (2.f * kPI * i) / segments - kPI * 0.5f;
+            vertices.push_back({std::cos(a), std::sin(a)});
+        }
+    }
+    void SlotShapeConfig::SetSquare() { vertices = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}}; }
+    void SlotShapeConfig::SetDiamond() { vertices = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}}; }
+    void SlotShapeConfig::SetStar(int points, float inner) {
+        vertices.clear();
+        for (int i = 0; i < points * 2; ++i) {
+            const float a = (kPI * i / points) - kPI * 0.5f;
+            const float r = (i % 2 == 0) ? 1.f : inner;
+            vertices.push_back({r * std::cos(a), r * std::sin(a)});
+        }
+    }
+
+    void StyleConfig::Load() {
+        constexpr const char* kPath = R"(.\Data\SKSE\Plugins\IntegratedMagics\styles.ini)";
+        auto& shape = slotShape;
+        auto& verts = slotShape.vertices;
+
+        CSimpleIniA ini;
+        ini.SetUnicode();
+        const SI_Error rc = ini.LoadFile(kPath);
+        if (rc < 0) {
+            spdlog::info("[StyleConfig] styles.ini não encontrado — usando defaults.");
+            return;
+        }
+
+        font.path = ini.GetValue("Font", "Path", R"(.\Data\SKSE\Plugins\IntegratedMagics\resources\font)");
+        font.size = static_cast<float>(ini.GetDoubleValue("Font", "Size", 28.0));
+
+        font.rangePolish = ini.GetBoolValue("Font", "RangePolish", false);
+        font.rangeCyrillic = ini.GetBoolValue("Font", "RangeCyrillic", false);
+        font.rangeJapanese = ini.GetBoolValue("Font", "RangeJapanese", false);
+        font.rangeChineseSimplified = ini.GetBoolValue("Font", "RangeChineseSimplified", false);
+        font.rangeKorean = ini.GetBoolValue("Font", "RangeKorean", false);
+        font.rangeGreek = ini.GetBoolValue("Font", "RangeGreek", false);
+
+        long count = ini.GetLongValue("SlotShape", "Count", 0);
+        verts.clear();
+        for (long i = 0; i < count; ++i) {
+            std::string key = "V" + std::to_string(i);
+            std::string val = ini.GetValue("SlotShape", key.c_str(), "0,0");
+            float x = 0.f, y = 0.f;
+            sscanf_s(val.c_str(), "%f,%f", &x, &y);
+            verts.push_back({x, y});
+        }
+        {
+            const char* v = ini.GetValue("SlotShape", "UseCustomShape", nullptr);
+            if (v) shape.useCustomShape = (_stricmp(v, "true") == 0 || std::strcmp(v, "1") == 0);
+        }
+        if (verts.empty()) {
+            shape.SetCircle();
+            shape.useCustomShape = false;
+        }
+
+        slotRadius = GetFloat(ini, "HUD", "SlotRadius", slotRadius);
+        ringRadius = GetFloat(ini, "HUD", "RingRadius", ringRadius);
+        popupSlotRadius = GetFloat(ini, "Popup", "SlotRadius", popupSlotRadius);
+        popupRingRadius = GetFloat(ini, "Popup", "RingRadius", popupRingRadius);
+        popupSlotGap = GetFloat(ini, "Popup", "SlotGap", popupSlotGap);
+        popupLayout = GetLayout(ini, "Popup", "Layout", popupLayout);
+        popupOffsetX = GetFloat(ini, "Popup", "OffsetX", popupOffsetX);
+        popupOffsetY = GetFloat(ini, "Popup", "OffsetY", popupOffsetY);
+        modeWidgetW = GetFloat(ini, "Popup", "ModeWidgetWidth", modeWidgetW);
+        iconSizeFactor = GetFloat(ini, "Icons", "SizeFactor", iconSizeFactor);
+        iconOffsetFactor = GetFloat(ini, "Icons", "OffsetFactor", iconOffsetFactor);
+        overlayAlpha = GetU8(ini, "Popup", "OverlayAlpha", overlayAlpha);
+        vignetteColor = GetColor(ini, "Popup", "VignetteColor", vignetteColor);
+
+        slotActiveScale = GetFloat(ini, "HUD", "SlotActiveScale", slotActiveScale);
+        slotModifierScale = GetFloat(ini, "HUD", "SlotModifierScale", slotModifierScale);
+        slotNeighborScale = GetFloat(ini, "HUD", "SlotNeighborScale", slotNeighborScale);
+        slotExpandTime = GetFloat(ini, "HUD", "SlotExpandTime", slotExpandTime);
+        slotRetractTime = GetFloat(ini, "HUD", "SlotRetractTime", slotRetractTime);
+        hudAnchor = GetAnchor(ini, "HUD", "Anchor", hudAnchor);
+        hudOffsetX = GetFloat(ini, "HUD", "OffsetX", hudOffsetX);
+        hudOffsetY = GetFloat(ini, "HUD", "OffsetY", hudOffsetY);
+        hudLayout = GetLayout(ini, "HUD", "Layout", hudLayout);
+        slotSpacing = GetFloat(ini, "HUD", "SlotSpacing", slotSpacing);
+        gridColumns = static_cast<int>(GetFloat(ini, "HUD", "GridColumns", static_cast<float>(gridColumns)));
+
+        {
+            const char* v = ini.GetValue("HUD", "UseTextureForSlotBg", nullptr);
+            if (v) useTextureForSlotBg = (_stricmp(v, "true") == 0 || std::strcmp(v, "1") == 0);
+            {
+                const char* v2 = ini.GetValue("HUD", "ShowSpellNames", nullptr);
+                if (v2) showSpellNamesInHud = (_stricmp(v2, "true") == 0 || std::strcmp(v2, "1") == 0);
+            }
+        }
+
+        spellNamePosition = GetButtonLabelCorner(ini, "HUD", "SpellNamePosition", spellNamePosition);
+        spellNamePadding = GetFloat(ini, "HUD", "SpellNamePadding", spellNamePadding);
+
+        buttonIconType = GetButtonIconType(ini, "General", "ButtonIconType", buttonIconType);
+
+        {
+            const char* v = ini.GetValue("HUD", "ModifierWidgetVisibility", nullptr);
+            if (v) {
+                const std::string s{v};
+                if (s == "Never" || s == "0")
+                    modifierWidgetVisibility = ModifierWidgetVisibility::Never;
+                else if (s == "Always" || s == "1")
+                    modifierWidgetVisibility = ModifierWidgetVisibility::Always;
+                else if (s == "HideOnPress" || s == "2")
+                    modifierWidgetVisibility = ModifierWidgetVisibility::HideOnPress;
+            }
+        }
+        modifierWidgetRadius = GetFloat(ini, "HUD", "ModifierWidgetRadius", modifierWidgetRadius);
+        modifierWidgetOffsetX = GetFloat(ini, "HUD", "ModifierWidgetOffsetX", modifierWidgetOffsetX);
+        modifierWidgetOffsetY = GetFloat(ini, "HUD", "ModifierWidgetOffsetY", modifierWidgetOffsetY);
+
+        buttonLabelVisibility = GetButtonLabelVisibility(ini, "HUD", "ButtonLabelVisibility", buttonLabelVisibility);
+        buttonLabelCorner = GetButtonLabelCorner(ini, "HUD", "ButtonLabelCorner", buttonLabelCorner);
+        buttonLabelIconSize = GetFloat(ini, "HUD", "ButtonLabelIconSize", buttonLabelIconSize);
+        buttonLabelIconSpacing = GetFloat(ini, "HUD", "ButtonLabelIconSpacing", buttonLabelIconSpacing);
+        buttonLabelMargin = GetFloat(ini, "HUD", "ButtonLabelMargin", buttonLabelMargin);
+        buttonLabelOffsetX = GetFloat(ini, "HUD", "ButtonLabelOffsetX", buttonLabelOffsetX);
+        buttonLabelOffsetY = GetFloat(ini, "HUD", "ButtonLabelOffsetY", buttonLabelOffsetY);
+        buttonLabelFadeTime = GetFloat(ini, "HUD", "ButtonLabelFadeTime", buttonLabelFadeTime);
+
+        slotBgActive = GetColor(ini, "Colors", "SlotBgActive", slotBgActive);
+        slotBgInactive = GetColor(ini, "Colors", "SlotBgInactive", slotBgInactive);
+        slotRingInactive = GetColor(ini, "Colors", "SlotRingInactive", slotRingInactive);
+        slotRingActive = GetColor(ini, "Colors", "SlotRingActive", slotRingActive);
+        slotRingActiveAlpha = GetU8(ini, "Colors", "SlotRingActiveAlpha", slotRingActiveAlpha);
+        slotRingWidth = GetFloat(ini, "Colors", "SlotRingWidth", slotRingWidth);
+        slotRingWidthActive = GetFloat(ini, "Colors", "SlotRingWidthActive", slotRingWidthActive);
+        iconAlpha = GetU8(ini, "Colors", "IconAlpha", iconAlpha);
+        emptySlotColor = GetColor(ini, "Colors", "EmptySlotColor", emptySlotColor);
+
+        ringCenterFill = GetColor(ini, "Colors", "RingCenterFill", ringCenterFill);
+        ringCenterBorder = GetColor(ini, "Colors", "RingCenterBorder", ringCenterBorder);
+
+        alterationFill = GetColor(ini, "SchoolColors", "AlterationFill", alterationFill);
+        alterationGlow = GetColor(ini, "SchoolColors", "AlterationGlow", alterationGlow);
+        conjurationFill = GetColor(ini, "SchoolColors", "ConjurationFill", conjurationFill);
+        conjurationGlow = GetColor(ini, "SchoolColors", "ConjurationGlow", conjurationGlow);
+        destructionFill = GetColor(ini, "SchoolColors", "DestructionFill", destructionFill);
+        destructionGlow = GetColor(ini, "SchoolColors", "DestructionGlow", destructionGlow);
+        illusionFill = GetColor(ini, "SchoolColors", "IllusionFill", illusionFill);
+        illusionGlow = GetColor(ini, "SchoolColors", "IllusionGlow", illusionGlow);
+        restorationFill = GetColor(ini, "SchoolColors", "RestorationFill", restorationFill);
+        restorationGlow = GetColor(ini, "SchoolColors", "RestorationGlow", restorationGlow);
+        defaultFill = GetColor(ini, "SchoolColors", "DefaultFill", defaultFill);
+        defaultGlow = GetColor(ini, "SchoolColors", "DefaultGlow", defaultGlow);
+        emptyFill = GetColor(ini, "SchoolColors", "EmptyFill", emptyFill);
+
+        {
+            const char* v = ini.GetValue("Gradient", "Type", nullptr);
+            if (v) {
+                const std::string s{v};
+                if (s == "Radial" || s == "1")
+                    slotGradientType = GradientType::Radial;
+                else if (s == "Linear" || s == "2")
+                    slotGradientType = GradientType::Linear;
+                else
+                    slotGradientType = GradientType::None;
+            }
+        }
+        slotGradientStart = GetColor(ini, "Gradient", "StartColor", slotGradientStart);
+        slotGradientEnd = GetColor(ini, "Gradient", "EndColor", slotGradientEnd);
+        slotGradientAngle = GetFloat(ini, "Gradient", "Angle", slotGradientAngle);
+        slotGradientRadialOffset = GetFloat(ini, "Gradient", "RadialOffset", slotGradientRadialOffset);
+
+        slotOuterRingColor = GetColor(ini, "Colors", "SlotOuterRingColor", slotOuterRingColor);
+        slotOuterRingWidth = GetFloat(ini, "Colors", "SlotOuterRingWidth", slotOuterRingWidth);
+
+        {
+            const char* v = ini.GetValue("HUD", "CornerStyle", nullptr);
+            if (v) {
+                const std::string s{v};
+                if (s == "Square" || s == "1")
+                    slotCornerStyle = CornerStyle::Square;
+                else if (s == "Notched" || s == "2")
+                    slotCornerStyle = CornerStyle::Notched;
+                else if (s == "Chamfered" || s == "3")
+                    slotCornerStyle = CornerStyle::Chamfered;
+                else
+                    slotCornerStyle = CornerStyle::Round;
+            }
+        }
+        slotCornerSize = GetFloat(ini, "HUD", "CornerSize", slotCornerSize);
+
+        iconTintColor = GetColor(ini, "Icons", "TintColor", iconTintColor);
+        iconSaturation = GetU8(ini, "Icons", "Saturation", iconSaturation);
+        iconBrightness = GetU8(ini, "Icons", "Brightness", iconBrightness);
+        iconTintStrength = GetFloat(ini, "Icons", "TintStrength", iconTintStrength);
+
+        textColor = GetColor(ini, "TextShadow", "TextColor", textColor);
+        {
+            const char* v = ini.GetValue("TextShadow", "Enabled", nullptr);
+            if (v) textShadowEnabled = (_stricmp(v, "true") == 0 || std::strcmp(v, "1") == 0);
+        }
+        textShadowColor = GetColor(ini, "TextShadow", "Color", textShadowColor);
+        textShadowOffsetX = GetFloat(ini, "TextShadow", "OffsetX", textShadowOffsetX);
+        textShadowOffsetY = GetFloat(ini, "TextShadow", "OffsetY", textShadowOffsetY);
+
+        overlayColor = GetColor(ini, "Popup", "OverlayColor", overlayColor);
+        vignetteStrength = GetFloat(ini, "Popup", "VignetteStrength", vignetteStrength);
+
+        {
+            const char* v = ini.GetValue("Glow", "Style", nullptr);
+            if (v) {
+                const std::string s{v};
+                if (s == "Fill" || s == "1")
+                    glowStyle = GlowStyle::Fill;
+                else if (s == "Both" || s == "2")
+                    glowStyle = GlowStyle::Both;
+                else
+                    glowStyle = GlowStyle::Ring;
+            }
+        }
+        glowLayers = GetU8(ini, "Glow", "Layers", glowLayers);
+        glowRadius = GetFloat(ini, "Glow", "Radius", glowRadius);
+        glowIntensity = GetFloat(ini, "Glow", "Intensity", glowIntensity);
+        pulseSpeed = GetFloat(ini, "Glow", "PulseSpeed", pulseSpeed);
+
+        spdlog::info("[StyleConfig] styles.ini carregado.");
+    }
+
+    void StyleConfig::Save() {
+        constexpr const char* kPath = R"(.\Data\SKSE\Plugins\IntegratedMagics\styles.ini)";
+        auto& verts = slotShape.vertices;
+
+        CSimpleIniA ini;
+        ini.SetUnicode();
+        ini.LoadFile(kPath);
+
+        auto setFloat = [&](const char* sec, const char* key, float v) {
+            std::string s = std::to_string(v);
+
+            if (s.contains('.')) {
+                s.erase(s.find_last_not_of('0') + 1);
+                if (s.back() == '.') s += '0';
+            }
+            ini.SetValue(sec, key, s.c_str());
+        };
+        auto setInt = [&](const char* sec, const char* key, int v) { ini.SetLongValue(sec, key, v); };
+        auto setBool = [&](const char* sec, const char* key, bool v) { ini.SetBoolValue(sec, key, v); };
+        auto setColor = [&](const char* sec, const char* key, std::uint32_t v) {
+            char buf[12];
+            std::snprintf(buf, sizeof(buf), "0x%08Xu", v);
+            ini.SetValue(sec, key, buf);
+        };
+        auto setU8 = [&](const char* sec, const char* key, std::uint8_t v) {
+            ini.SetLongValue(sec, key, static_cast<long>(v));
+        };
+
+        static const char* kAnchorNames[] = {"TopLeft",     "TopCenter",  "TopRight",     "MiddleLeft", "Center",
+                                             "MiddleRight", "BottomLeft", "BottomCenter", "BottomRight"};
+        static const char* kLayoutNames[] = {"Circular", "Horizontal", "Vertical", "Grid"};
+        static const char* kButtonIconTypeNames[] = {"Keyboard", "PlayStation", "Xbox"};
+        static const char* kButtonLabelVisibilityNames[] = {"Never", "Always", "OnModifier"};
+        static const char* kButtonLabelCornerNames[] = {"Top",  "Right",        "Bottom",
+                                                        "Left", "TowardCenter", "AwayFromCenter"};
+
+        for (int i = 0; i < verts.size(); ++i) {
+            std::string key = "V" + std::to_string(i);
+            std::string val = std::to_string(verts[i].x) + "," + std::to_string(verts[i].y);
+            ini.SetValue("SlotShape", key.c_str(), val.c_str());
+        }
+        ini.SetLongValue("SlotShape", "Count", static_cast<long>(verts.size()));
+        ini.SetBoolValue("SlotShape", "UseCustomShape", slotShape.useCustomShape);
+
+        ini.SetValue("Font", "Path", font.path.c_str());
+        setFloat("Font", "Size", font.size);
+        setBool("Font", "RangePolish", font.rangePolish);
+        setBool("Font", "RangeCyrillic", font.rangeCyrillic);
+        setBool("Font", "RangeJapanese", font.rangeJapanese);
+        setBool("Font", "RangeChineseSimplified", font.rangeChineseSimplified);
+        setBool("Font", "RangeKorean", font.rangeKorean);
+        setBool("Font", "RangeGreek", font.rangeGreek);
+
+        setFloat("HUD", "SlotRadius", slotRadius);
+        setFloat("HUD", "RingRadius", ringRadius);
+        setFloat("HUD", "SlotActiveScale", slotActiveScale);
+        setFloat("HUD", "SlotModifierScale", slotModifierScale);
+        setFloat("HUD", "SlotNeighborScale", slotNeighborScale);
+        setFloat("HUD", "SlotExpandTime", slotExpandTime);
+        setFloat("HUD", "SlotRetractTime", slotRetractTime);
+        ini.SetValue("HUD", "Anchor", kAnchorNames[static_cast<int>(hudAnchor)]);
+        setFloat("HUD", "OffsetX", hudOffsetX);
+        setFloat("HUD", "OffsetY", hudOffsetY);
+        ini.SetValue("HUD", "Layout", kLayoutNames[static_cast<int>(hudLayout)]);
+        setFloat("HUD", "SlotSpacing", slotSpacing);
+        setInt("HUD", "GridColumns", gridColumns);
+        setBool("HUD", "UseTextureForSlotBg", useTextureForSlotBg);
+        setBool("HUD", "ShowSpellNames", showSpellNamesInHud);
+        ini.SetValue("HUD", "SpellNamePosition", kButtonLabelCornerNames[static_cast<int>(spellNamePosition)]);
+        setFloat("HUD", "SpellNamePadding", spellNamePadding);
+
+        ini.SetValue("General", "ButtonIconType", kButtonIconTypeNames[static_cast<int>(buttonIconType)]);
+
+        static const char* kModifierWidgetVisibilityNames[] = {"Never", "Always", "HideOnPress"};
+        ini.SetValue("HUD", "ModifierWidgetVisibility",
+                     kModifierWidgetVisibilityNames[static_cast<int>(modifierWidgetVisibility)]);
+        setFloat("HUD", "ModifierWidgetRadius", modifierWidgetRadius);
+        setFloat("HUD", "ModifierWidgetOffsetX", modifierWidgetOffsetX);
+        setFloat("HUD", "ModifierWidgetOffsetY", modifierWidgetOffsetY);
+
+        ini.SetValue("HUD", "ButtonLabelVisibility",
+                     kButtonLabelVisibilityNames[static_cast<int>(buttonLabelVisibility)]);
+        ini.SetValue("HUD", "ButtonLabelCorner", kButtonLabelCornerNames[static_cast<int>(buttonLabelCorner)]);
+        setFloat("HUD", "ButtonLabelIconSize", buttonLabelIconSize);
+        setFloat("HUD", "ButtonLabelIconSpacing", buttonLabelIconSpacing);
+        setFloat("HUD", "ButtonLabelMargin", buttonLabelMargin);
+        setFloat("HUD", "ButtonLabelOffsetX", buttonLabelOffsetX);
+        setFloat("HUD", "ButtonLabelOffsetY", buttonLabelOffsetY);
+        setFloat("HUD", "ButtonLabelFadeTime", buttonLabelFadeTime);
+
+        setFloat("Popup", "SlotRadius", popupSlotRadius);
+        setFloat("Popup", "RingRadius", popupRingRadius);
+        setFloat("Popup", "SlotGap", popupSlotGap);
+        setFloat("Popup", "ModeWidgetWidth", modeWidgetW);
+        setU8("Popup", "OverlayAlpha", overlayAlpha);
+        ini.SetValue("Popup", "Layout", kLayoutNames[static_cast<int>(popupLayout)]);
+        setFloat("Popup", "OffsetX", popupOffsetX);
+        setFloat("Popup", "OffsetY", popupOffsetY);
+        setColor("Popup", "VignetteColor", vignetteColor);
+
+        setFloat("Icons", "SizeFactor", iconSizeFactor);
+        setFloat("Icons", "OffsetFactor", iconOffsetFactor);
+
+        setColor("Colors", "SlotBgActive", slotBgActive);
+        setColor("Colors", "SlotBgInactive", slotBgInactive);
+        setColor("Colors", "SlotRingInactive", slotRingInactive);
+        setColor("Colors", "SlotRingActive", slotRingActive);
+        setU8("Colors", "SlotRingActiveAlpha", slotRingActiveAlpha);
+        setFloat("Colors", "SlotRingWidth", slotRingWidth);
+        setFloat("Colors", "SlotRingWidthActive", slotRingWidthActive);
+        setU8("Colors", "IconAlpha", iconAlpha);
+        setColor("Colors", "EmptySlotColor", emptySlotColor);
+        setColor("Colors", "RingCenterFill", ringCenterFill);
+        setColor("Colors", "RingCenterBorder", ringCenterBorder);
+
+        setColor("SchoolColors", "AlterationFill", alterationFill);
+        setColor("SchoolColors", "AlterationGlow", alterationGlow);
+        setColor("SchoolColors", "ConjurationFill", conjurationFill);
+        setColor("SchoolColors", "ConjurationGlow", conjurationGlow);
+        setColor("SchoolColors", "DestructionFill", destructionFill);
+        setColor("SchoolColors", "DestructionGlow", destructionGlow);
+        setColor("SchoolColors", "IllusionFill", illusionFill);
+        setColor("SchoolColors", "IllusionGlow", illusionGlow);
+        setColor("SchoolColors", "RestorationFill", restorationFill);
+        setColor("SchoolColors", "RestorationGlow", restorationGlow);
+        setColor("SchoolColors", "DefaultFill", defaultFill);
+        setColor("SchoolColors", "DefaultGlow", defaultGlow);
+        setColor("SchoolColors", "EmptyFill", emptyFill);
+
+        static constexpr const char* kGradientNames[] = {"None", "Radial", "Linear"};
+        ini.SetValue("Gradient", "Type", kGradientNames[static_cast<int>(slotGradientType)]);
+        setColor("Gradient", "StartColor", slotGradientStart);
+        setColor("Gradient", "EndColor", slotGradientEnd);
+        setFloat("Gradient", "Angle", slotGradientAngle);
+        setFloat("Gradient", "RadialOffset", slotGradientRadialOffset);
+
+        setColor("Colors", "SlotOuterRingColor", slotOuterRingColor);
+        setFloat("Colors", "SlotOuterRingWidth", slotOuterRingWidth);
+
+        static constexpr const char* kCornerNames[] = {"Round", "Square", "Notched", "Chamfered"};
+        ini.SetValue("HUD", "CornerStyle", kCornerNames[static_cast<int>(slotCornerStyle)]);
+        setFloat("HUD", "CornerSize", slotCornerSize);
+
+        setColor("Icons", "TintColor", iconTintColor);
+        setU8("Icons", "Saturation", iconSaturation);
+        setU8("Icons", "Brightness", iconBrightness);
+        setFloat("Icons", "TintStrength", iconTintStrength);
+
+        setColor("TextShadow", "TextColor", textColor);
+        setBool("TextShadow", "Enabled", textShadowEnabled);
+        setColor("TextShadow", "Color", textShadowColor);
+        setFloat("TextShadow", "OffsetX", textShadowOffsetX);
+        setFloat("TextShadow", "OffsetY", textShadowOffsetY);
+
+        setColor("Popup", "OverlayColor", overlayColor);
+        setFloat("Popup", "VignetteStrength", vignetteStrength);
+
+        static constexpr const char* kGlowStyleNames[] = {"Ring", "Fill", "Both"};
+        ini.SetValue("Glow", "Style", kGlowStyleNames[static_cast<int>(glowStyle)]);
+        setU8("Glow", "Layers", glowLayers);
+        setFloat("Glow", "Radius", glowRadius);
+        setFloat("Glow", "Intensity", glowIntensity);
+        setFloat("Glow", "PulseSpeed", pulseSpeed);
+
+        ini.SaveFile(kPath);
+        spdlog::info("[StyleConfig] styles.ini salvo.");
+    }
+}
