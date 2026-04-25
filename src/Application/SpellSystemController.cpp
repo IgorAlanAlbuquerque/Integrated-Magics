@@ -1,5 +1,6 @@
 #include "Application/SpellSystemController.h"
 
+#include "Adapters/Inbound/HoveredForm.h"
 #include "Adapters/Outbound/EquipSlots.h"
 #include "Adapters/Outbound/MagicEquip.h"
 #include "Adapters/Outbound/RestoreEquip.h"
@@ -11,7 +12,6 @@
 #include "Input/HotkeyMatcher.h"
 #include "PCH.h"
 #include "Persistence/Slots.h"
-#include "UI/HoveredForm.h"
 
 namespace Application {
 

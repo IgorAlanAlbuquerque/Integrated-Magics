@@ -5,7 +5,7 @@
 #include "PCH.h"
 #include "Persistence/Slots.h"
 #include "Shared/Hand.h"
-#include "UI/HoveredForm.h"
+#include "Adapters/Inbound/HoveredForm.h"
 
 namespace IntegratedMagic::MagicAssign {
 

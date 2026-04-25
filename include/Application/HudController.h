@@ -1,5 +1,4 @@
 #pragma once
-#include "PCH.h"
 
 namespace Application {
 
@@ -7,8 +6,7 @@ namespace Application {
     public:
         static HudController& Get();
 
-        [[nodiscard]] bool ConsumeHudToggle();
-        [[nodiscard]] bool IsModifierHeld() const;
+        void OnFrame();
 
     private:
         HudController() = default;

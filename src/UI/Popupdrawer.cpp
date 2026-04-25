@@ -8,15 +8,11 @@
 #include <string>
 #include <vector>
 
-#include "Application/AssignService.h"
 #include "Config/ConfigAdapter.h"
 #include "Config/StyleConfig.h"
-#include "Domain/SpellClassify.h"
-#include "Domain/State.h"
 #include "PCH.h"
-#include "Persistence/Slots.h"
 #include "Shared/Hand.h"
-#include "UI/HoveredForm.h"
+#include "Shared/HudIntents.h"
 #include "UI/HudState.h"
 #include "UI/HudTextUtil.h"
 #include "UI/PolyFill.h"
@@ -308,6 +304,7 @@ namespace IntegratedMagic::HUD::PopupDrawer {
     }
 
     void DrawDetailPopup() {
+        const HudView v = SnapshotHudView();
         const ImVec2 displaySize = IntegratedMagic::HUD::GetDisplaySize();
 
         if (g_popupJustOpened.exchange(false)) g_mousePos = {displaySize.x * 0.5f, displaySize.y * 0.5f};
@@ -319,7 +316,7 @@ namespace IntegratedMagic::HUD::PopupDrawer {
         bool hintsShout = false;
         bool hintsHoverRight = false;
 
-        const int n = static_cast<int>(Slots::GetSlotCount());
+        const int n = std::min(v.slotCount, static_cast<int>(v.slots.size()));
         const auto& st = Style();
         const float dynPopupR = [&] {
             const float minR =
@@ -355,30 +352,26 @@ namespace IntegratedMagic::HUD::PopupDrawer {
                              ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_NoDecoration)) {
             ImDrawList* dl = ImGui::GetWindowDrawList();
-            const int activeSlot = MagicState::Get().ActiveSlot();
+            const int activeSlot = v.activeSlot;
 
-            const auto hovType = HoveredForm::GetHoveredMagicType();
-            const bool hovIsShoutOrPow =
-                hovType == HoveredForm::MagicType::Shout || hovType == HoveredForm::MagicType::Power;
-            const bool hovIsTwoHanded = hovType == HoveredForm::MagicType::TwoHandedSpell;
-            const bool hovIsRightOnly = hovType == HoveredForm::MagicType::RightOnlySpell;
-            const bool hovIsLeftOnly = hovType == HoveredForm::MagicType::LeftOnlySpell;
+            using HM = HoveredMagicType;
+            const HM hovType = v.hoveredMagicType;
+            const bool hovIsShoutOrPow = hovType == HM::Shout || hovType == HM::Power;
+            const bool hovIsTwoHanded = hovType == HM::TwoHandedSpell;
+            const bool hovIsRightOnly = hovType == HM::RightOnlySpell;
+            const bool hovIsLeftOnly = hovType == HM::LeftOnlySpell;
             const bool hovIsFullSlot = hovIsShoutOrPow || hovIsTwoHanded;
 
             for (int i = 0; i < n; ++i) {
+                const auto& sv = v.slots[i];
                 const ImVec2 center = {ringCenter.x + relPos[i].x, ringCenter.y + relPos[i].y};
-                const auto rID = Slots::GetSlotSpell(i, Hand::Right);
-                const auto lID = Slots::GetSlotSpell(i, Hand::Left);
-                const auto shoutID = Slots::GetSlotShout(i);
-                auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
-                auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
 
-                const bool slotIs2H = !shoutID && !rID && lSp && SpellClassify::IsTwoHandedSpell(lSp);
-                const RE::FormID dispShoutID = shoutID ? shoutID : (slotIs2H ? lID : 0);
+                const RE::FormID dispShoutID = sv.shoutFormID ? sv.shoutFormID : (sv.isTwoHanded ? sv.leftSpellID : 0);
 
-                SlotDrawer::DrawSlotVisual(dl, center, st.popupSlotRadius, activeSlot == i, slotIs2H ? nullptr : rSp,
-                                           slotIs2H ? nullptr : lSp, dispShoutID, true);
-                SlotDrawer::DrawSlotHotkeyIcons(dl, center, st.popupSlotRadius, i);
+                SlotDrawer::DrawSlotVisual(dl, center, st.popupSlotRadius, activeSlot == i,
+                                           sv.isTwoHanded ? nullptr : sv.rightSpell,
+                                           sv.isTwoHanded ? nullptr : sv.leftSpell, dispShoutID, true);
+                SlotDrawer::DrawSlotHotkeyIcons(dl, center, st.popupSlotRadius, sv);
 
                 const ImVec2 toCenter = [&]() -> ImVec2 {
                     const float dx = ringCenter.x - center.x;
@@ -392,12 +385,11 @@ namespace IntegratedMagic::HUD::PopupDrawer {
                                    st.spellNamePadding);
                 };
 
-                if (shoutID || slotIs2H) {
-                    auto* f = RE::TESForm::LookupByID(dispShoutID);
-                    drawLabel(f ? f->GetName() : "???");
-                } else if (rSp || lSp) {
-                    if (lSp) drawLabel(lSp->GetName());
-                    if (rSp && rSp != lSp) drawLabel(rSp->GetName());
+                if (sv.shoutFormID || sv.isTwoHanded) {
+                    drawLabel(sv.labelForm ? sv.labelForm->GetName() : "???");
+                } else if (sv.rightSpell || sv.leftSpell) {
+                    if (sv.leftSpell) drawLabel(sv.leftSpell->GetName());
+                    if (sv.rightSpell && sv.rightSpell != sv.leftSpell) drawLabel(sv.rightSpell->GetName());
                 }
 
                 const float dx = g_mousePos.x - center.x;
@@ -405,37 +397,17 @@ namespace IntegratedMagic::HUD::PopupDrawer {
                 if ((dx * dx + dy * dy) < (st.popupSlotRadius * st.popupSlotRadius)) {
                     if (hovIsFullSlot) {
                         FillSlotShapeHighlight(dl, center, st.popupSlotRadius - 1.f, IM_COL32(255, 200, 80, 40));
-                        if (clicked) {
-                            hovIsTwoHanded ? MagicAssign::TryAssignHoveredSpellToSlot(i, Hand::Left)
-                                           : MagicAssign::TryAssignHoveredShoutToSlot(i);
-                        }
-                        if (rightClicked) {
-                            shoutID ? MagicAssign::TryClearSlotShout(i)
-                                    : (MagicAssign::TryClearSlotHand(i, Hand::Right),
-                                       MagicAssign::TryClearSlotHand(i, Hand::Left));
-                        }
+                        if (clicked) PushIntent({SlotIntentKind::AssignHovered, i, false});
+                        if (rightClicked) PushIntent({SlotIntentKind::ClearSlot, i, false});
                         hintsVisible = true;
                         hintsShout = true;
                         hintsHoverRight = false;
                     } else {
                         const bool hoverRight = hovIsRightOnly ? true : hovIsLeftOnly ? false : (dx >= 0.f);
                         const ImU32 hlCol = IM_COL32(255, 200, 80, 40);
-                        hoverRight ? FillSlotHalfHighlight(dl, center, st.popupSlotRadius - 1.f, true, hlCol)
-                                   : FillSlotHalfHighlight(dl, center, st.popupSlotRadius - 1.f, false, hlCol);
-                        if (clicked) {
-                            hoverRight ? MagicAssign::TryAssignHoveredSpellToSlot(i, Hand::Right)
-                                       : MagicAssign::TryAssignHoveredSpellToSlot(i, Hand::Left);
-                        }
-                        if (rightClicked) {
-                            if (shoutID)
-                                MagicAssign::TryClearSlotShout(i);
-                            else if (slotIs2H) {
-                                MagicAssign::TryClearSlotHand(i, Hand::Right);
-                                MagicAssign::TryClearSlotHand(i, Hand::Left);
-                            } else
-                                hoverRight ? MagicAssign::TryClearSlotHand(i, Hand::Right)
-                                           : MagicAssign::TryClearSlotHand(i, Hand::Left);
-                        }
+                        FillSlotHalfHighlight(dl, center, st.popupSlotRadius - 1.f, hoverRight, hlCol);
+                        if (clicked) PushIntent({SlotIntentKind::AssignHovered, i, hoverRight});
+                        if (rightClicked) PushIntent({SlotIntentKind::ClearSlot, i, hoverRight});
                         hintsVisible = true;
                         hintsShout = false;
                         hintsHoverRight = hoverRight;
@@ -443,16 +415,16 @@ namespace IntegratedMagic::HUD::PopupDrawer {
                 }
 
                 const float wy = center.y + st.popupSlotRadius + 4.f;
-                if (shoutID)
-                    DrawSpellModeWidget(dl, clicked, {center.x - st.modeWidgetW * 0.5f, wy}, st.modeWidgetW, shoutID,
-                                        std::to_string(i).append("S").c_str());
+                if (sv.shoutFormID)
+                    DrawSpellModeWidget(dl, clicked, {center.x - st.modeWidgetW * 0.5f, wy}, st.modeWidgetW,
+                                        sv.shoutFormID, std::to_string(i).append("S").c_str());
                 else {
-                    if (rID)
-                        DrawSpellModeWidget(dl, clicked, {center.x + 2.f, wy}, st.modeWidgetW, rID,
+                    if (sv.rightSpellID)
+                        DrawSpellModeWidget(dl, clicked, {center.x + 2.f, wy}, st.modeWidgetW, sv.rightSpellID,
                                             std::to_string(i).append("R").c_str());
-                    if (lID)
-                        DrawSpellModeWidget(dl, clicked, {center.x - st.modeWidgetW - 2.f, wy}, st.modeWidgetW, lID,
-                                            std::to_string(i).append("L").c_str());
+                    if (sv.leftSpellID)
+                        DrawSpellModeWidget(dl, clicked, {center.x - st.modeWidgetW - 2.f, wy}, st.modeWidgetW,
+                                            sv.leftSpellID, std::to_string(i).append("L").c_str());
                 }
             }
 
@@ -462,8 +434,7 @@ namespace IntegratedMagic::HUD::PopupDrawer {
                                                   g_mousePos.y < popupPos.y || g_mousePos.y > popupEnd.y);
 
             if (ImGui::IsKeyPressed(ImGuiKey_Escape) || mouseOutside) {
-                Config::MagicConfigAdapter::Get().FlushSpellSettingsIfDirty();
-                g_popupOpen.store(false);
+                PushIntent({SlotIntentKind::ClosePopup, -1, false});
             }
         }
         ImGui::End();

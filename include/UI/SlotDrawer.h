@@ -2,6 +2,7 @@
 #include <imgui.h>
 
 #include "PCH.h"
+#include "UI/HudView.h"
 
 namespace IntegratedMagic::HUD::SlotDrawer {
 
@@ -13,9 +14,10 @@ namespace IntegratedMagic::HUD::SlotDrawer {
                         bool canCast = true, bool onCooldown = false, float cooldownProgress = 0.0f);
 
     void DrawRingCenter(ImDrawList* dl, ImVec2 c, float r = 4.f);
-    void DrawModifierWidget(ImDrawList* dl, ImVec2 c, bool modHeld);
-    void DrawSlotHotkeyIcons(ImDrawList* dl, ImVec2 center, float slotR, int slotIndex);
-    void DrawSlotButtonLabel(ImDrawList* dl, ImVec2 center, float slotR, int slotIndex, ImVec2 hudOrigin, float alpha);
+    void DrawModifierWidget(ImDrawList* dl, ImVec2 c, bool modHeld, const HudView& v);
+    void DrawSlotHotkeyIcons(ImDrawList* dl, ImVec2 center, float slotR, const SlotView& s);
+    void DrawSlotButtonLabel(ImDrawList* dl, ImVec2 center, float slotR, const SlotView& s, const HudView& v,
+                             ImVec2 hudOrigin, float alpha);
 
     void DrawSmallHUD(const ImGuiIO& io);
 }

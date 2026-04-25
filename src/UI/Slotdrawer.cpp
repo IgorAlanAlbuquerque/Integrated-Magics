@@ -6,18 +6,12 @@
 #include <cmath>
 #include <numbers>
 
-#include "Application/HudController.h"
-#include "Config/ConfigAdapter.h"
 #include "Config/StyleConfig.h"
-#include "Domain/SlotCooldownTracker.h"
-#include "Domain/SlotCostUtil.h"
-#include "Domain/SpellClassify.h"
-#include "Domain/State.h"
 #include "PCH.h"
-#include "Persistence/Slots.h"
 #include "Shared/Hand.h"
 #include "UI/HudState.h"
 #include "UI/HudTextUtil.h"
+#include "UI/HudView.h"
 #include "UI/PolyFill.h"
 #include "UI/SlotAnimator.h"
 #include "UI/SlotLayout.h"
@@ -191,26 +185,16 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             }
         }
 
-        const TextureManager::Image& ResolveModifierIcon() {
+        const TextureManager::Image& ResolveModifierIcon(const HudView& v) {
             static const TextureManager::Image kEmpty{};
-            const auto& bindings = IntegratedMagic::Config::MagicConfigAdapter::Get();
             const auto& st = StyleConfig::Get();
 
             if (st.buttonIconType == ButtonIconType::Keyboard) {
-                const int kbPos = bindings.ModifierKbPosition();
-                if (kbPos <= 0) return kEmpty;
-                const auto binding = bindings.GetSlotBinding(0);
-                const int sc = kbPos == 1 ? binding.kb[0] : kbPos == 2 ? binding.kb[1] : binding.kb[2];
-                if (sc < 0) return kEmpty;
-                return TextureManager::GetKeyboardIcon(sc);
-            } else {
-                const int gpPos = bindings.ModifierGpPosition();
-                if (gpPos <= 0) return kEmpty;
-                const auto binding = bindings.GetSlotBinding(0);
-                const int idx = gpPos == 1 ? binding.gp[0] : gpPos == 2 ? binding.gp[1] : binding.gp[2];
-                if (idx < 0) return kEmpty;
-                return TextureManager::GetGamepadButtonIcon(idx, st.buttonIconType);
+                if (v.modifierKbCode < 0) return kEmpty;
+                return TextureManager::GetKeyboardIcon(v.modifierKbCode);
             }
+            if (v.modifierGpCode < 0) return kEmpty;
+            return TextureManager::GetGamepadButtonIcon(v.modifierGpCode, st.buttonIconType);
         }
     }
 
@@ -457,7 +441,6 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         static constexpr ImU32 kFaint = IM_COL32(255, 255, 255, 42);
 
         static constexpr Crack kCracks[] = {
-
             {{{0.00f, 0.00f},
               {-0.05f, -0.09f},
               {-0.02f, -0.18f},
@@ -468,98 +451,73 @@ namespace IntegratedMagic::HUD::SlotDrawer {
              7,
              1.6f,
              kStrong},
-
             {{{0.00f, 0.00f}, {-0.09f, -0.02f}, {-0.14f, -0.09f}, {-0.11f, -0.17f}, {-0.04f, -0.19f}},
              5,
              1.4f,
              kStrong},
-
             {{{0.00f, 0.00f}, {0.10f, -0.02f}, {0.16f, -0.09f}, {0.13f, -0.17f}, {0.06f, -0.19f}}, 5, 1.4f, kStrong},
-
             {{{0.00f, 0.00f}, {-0.05f, 0.09f}, {-0.03f, 0.18f}, {0.05f, 0.20f}, {0.10f, 0.12f}, {0.07f, 0.04f}},
              6,
              1.4f,
              kStrong},
-
             {{{0.00f, 0.00f}, {-0.05f, -0.16f}, {-0.12f, -0.32f}, {-0.22f, -0.50f}, {-0.32f, -0.66f}, {-0.41f, -0.82f}},
              6,
              1.5f,
              kStrong},
-
             {{{0.00f, 0.00f}, {0.08f, -0.16f}, {0.18f, -0.31f}, {0.30f, -0.48f}, {0.41f, -0.64f}, {0.51f, -0.84f}},
              6,
              1.5f,
              kStrong},
-
             {{{0.00f, 0.00f}, {-0.17f, -0.01f}, {-0.34f, -0.02f}, {-0.53f, -0.05f}, {-0.70f, -0.08f}, {-0.88f, -0.12f}},
              6,
              1.5f,
              kStrong},
-
             {{{0.00f, 0.00f}, {0.16f, 0.03f}, {0.33f, 0.08f}, {0.51f, 0.15f}, {0.68f, 0.22f}, {0.87f, 0.30f}},
              6,
              1.5f,
              kStrong},
-
             {{{0.00f, 0.00f}, {-0.03f, 0.16f}, {-0.06f, 0.33f}, {-0.10f, 0.50f}, {-0.13f, 0.68f}, {-0.16f, 0.88f}},
              6,
              1.5f,
              kStrong},
-
             {{{0.00f, 0.00f}, {0.08f, 0.13f}, {0.17f, 0.26f}, {0.27f, 0.40f}, {0.38f, 0.56f}, {0.49f, 0.73f}},
              6,
              1.5f,
              kStrong},
-
             {{{0.00f, 0.00f}, {-0.10f, 0.12f}, {-0.21f, 0.25f}, {-0.34f, 0.39f}, {-0.46f, 0.53f}, {-0.58f, 0.69f}},
              6,
              1.5f,
              kStrong},
-
             {{{0.00f, 0.00f}, {0.03f, -0.17f}, {0.07f, -0.34f}, {0.11f, -0.52f}, {0.16f, -0.69f}, {0.20f, -0.88f}},
              6,
              1.5f,
              kStrong},
-
             {{{-0.12f, -0.32f}, {-0.22f, -0.35f}, {-0.31f, -0.39f}, {-0.40f, -0.45f}}, 4, 1.2f, kMedium},
             {{{-0.12f, -0.32f}, {-0.08f, -0.42f}, {-0.04f, -0.51f}, {0.00f, -0.60f}}, 4, 1.1f, kMedium},
-
             {{{0.18f, -0.31f}, {0.28f, -0.35f}, {0.37f, -0.40f}, {0.46f, -0.47f}}, 4, 1.2f, kMedium},
             {{{0.18f, -0.31f}, {0.15f, -0.42f}, {0.13f, -0.51f}, {0.12f, -0.60f}}, 4, 1.1f, kMedium},
-
             {{{-0.34f, -0.02f}, {-0.43f, -0.10f}, {-0.51f, -0.18f}, {-0.60f, -0.25f}}, 4, 1.2f, kMedium},
             {{{-0.53f, -0.05f}, {-0.62f, 0.02f}, {-0.72f, 0.09f}, {-0.81f, 0.15f}}, 4, 1.1f, kMedium},
-
             {{{0.33f, 0.08f}, {0.42f, 0.00f}, {0.51f, -0.06f}, {0.61f, -0.12f}}, 4, 1.2f, kMedium},
             {{{0.51f, 0.15f}, {0.57f, 0.24f}, {0.64f, 0.33f}, {0.72f, 0.41f}}, 4, 1.1f, kMedium},
-
             {{{-0.06f, 0.33f}, {-0.15f, 0.40f}, {-0.24f, 0.48f}, {-0.33f, 0.56f}}, 4, 1.2f, kMedium},
             {{{-0.10f, 0.50f}, {-0.05f, 0.60f}, {-0.02f, 0.69f}, {0.02f, 0.79f}}, 4, 1.1f, kMedium},
-
             {{{0.17f, 0.26f}, {0.28f, 0.24f}, {0.39f, 0.23f}, {0.50f, 0.23f}}, 4, 1.2f, kMedium},
             {{{0.38f, 0.56f}, {0.35f, 0.65f}, {0.32f, 0.74f}, {0.30f, 0.83f}}, 4, 1.1f, kMedium},
-
             {{{-0.21f, 0.25f}, {-0.31f, 0.22f}, {-0.40f, 0.17f}, {-0.49f, 0.11f}}, 4, 1.2f, kMedium},
             {{{-0.34f, 0.39f}, {-0.42f, 0.46f}, {-0.49f, 0.53f}, {-0.56f, 0.62f}}, 4, 1.1f, kMedium},
-
             {{{0.07f, -0.34f}, {-0.01f, -0.38f}, {-0.09f, -0.42f}, {-0.17f, -0.47f}}, 4, 1.2f, kMedium},
             {{{0.11f, -0.52f}, {0.19f, -0.58f}, {0.27f, -0.64f}, {0.35f, -0.71f}}, 4, 1.1f, kMedium},
-
             {{{-0.05f, -0.09f}, {-0.11f, -0.13f}, {-0.16f, -0.18f}}, 3, 1.0f, kMedium},
             {{{-0.05f, -0.09f}, {-0.06f, -0.16f}, {-0.08f, -0.23f}}, 3, 1.0f, kMedium},
-
             {{{0.06f, -0.16f}, {0.13f, -0.20f}, {0.19f, -0.25f}}, 3, 1.0f, kMedium},
             {{{0.06f, -0.16f}, {0.08f, -0.24f}, {0.10f, -0.31f}}, 3, 1.0f, kMedium},
-
             {{{-0.05f, 0.09f}, {-0.12f, 0.15f}, {-0.18f, 0.21f}}, 3, 1.0f, kMedium},
             {{{0.05f, 0.20f}, {0.11f, 0.27f}, {0.17f, 0.33f}}, 3, 1.0f, kMedium},
-
             {{{0.07f, 0.04f}, {0.15f, 0.06f}, {0.23f, 0.09f}}, 3, 1.0f, kMedium},
             {{{-0.09f, -0.02f}, {-0.16f, -0.04f}, {-0.24f, -0.06f}}, 3, 1.0f, kMedium},
-
             {{{-0.03f, 0.18f}, {-0.05f, 0.25f}, {-0.07f, 0.32f}}, 3, 1.0f, kMedium},
             {{{0.10f, 0.12f}, {0.17f, 0.15f}, {0.24f, 0.20f}}, 3, 1.0f, kMedium},
-
             {{{-0.41f, -0.82f}, {-0.48f, -0.90f}, {-0.54f, -0.98f}}, 3, 0.9f, kFaint},
             {{{0.51f, -0.84f}, {0.58f, -0.92f}, {0.65f, -1.00f}}, 3, 0.9f, kFaint},
             {{{-0.88f, -0.12f}, {-0.98f, -0.16f}, {-1.08f, -0.20f}}, 3, 0.9f, kFaint},
@@ -720,7 +678,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         dl->AddCircle(c, r, st.ringCenterBorder, 16, 1.f);
     }
 
-    void DrawModifierWidget(ImDrawList* dl, ImVec2 c, bool modHeld) {
+    void DrawModifierWidget(ImDrawList* dl, ImVec2 c, bool modHeld, const HudView& v) {
         const auto& st = StyleConfig::Get();
 
         std::uint8_t alpha = 0;
@@ -738,7 +696,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         }
         if (alpha == 0) return;
 
-        const auto& icon = ResolveModifierIcon();
+        const auto& icon = ResolveModifierIcon(v);
         if (!icon.valid()) return;
 
         const float r = st.modifierWidgetRadius;
@@ -749,8 +707,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
                      IM_COL32(255, 255, 255, alpha));
     }
 
-    void DrawSlotHotkeyIcons(ImDrawList* dl, ImVec2 center, float slotR, int slotIndex) {
-        const auto& bindings = IntegratedMagic::Config::MagicConfigAdapter::Get();
+    void DrawSlotHotkeyIcons(ImDrawList* dl, ImVec2 center, float slotR, const SlotView& s) {
         const auto& st = StyleConfig::Get();
         const auto iconType = st.buttonIconType;
 
@@ -765,12 +722,11 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         KeyEntry keys[3]{};
         int keyCount = 0;
 
-        const auto binding = bindings.GetSlotBinding(slotIndex);
         if (iconType == ButtonIconType::Keyboard) {
-            for (int c : binding.kb)
+            for (int c : s.kbCodes)
                 if (c >= 0 && keyCount < 3) keys[keyCount++] = {false, c};
         } else {
-            for (int c : binding.gp)
+            for (int c : s.gpCodes)
                 if (c >= 0 && keyCount < 3) keys[keyCount++] = {true, c};
         }
         if (keyCount == 0) return;
@@ -795,14 +751,13 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         }
     }
 
-    void DrawSlotButtonLabel(ImDrawList* dl, ImVec2 center, float slotR, int slotIndex, ImVec2 hudOrigin, float alpha) {
+    void DrawSlotButtonLabel(ImDrawList* dl, ImVec2 center, float slotR, const SlotView& s, const HudView& v,
+                             ImVec2 hudOrigin, float alpha) {
         if (alpha <= 0.f) return;
 
-        const auto& bindings = IntegratedMagic::Config::MagicConfigAdapter::Get();
         const auto& st = StyleConfig::Get();
         const auto iconType = st.buttonIconType;
-        const int modPos =
-            (iconType == ButtonIconType::Keyboard) ? bindings.ModifierKbPosition() : bindings.ModifierGpPosition();
+        const int modPos = (iconType == ButtonIconType::Keyboard) ? v.modifierKbPos : v.modifierGpPos;
         const bool suppressMod = (st.modifierWidgetVisibility != ModifierWidgetVisibility::Never) && (modPos > 0);
 
         struct KeyEntry {
@@ -812,18 +767,17 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         KeyEntry keys[3]{};
         int keyCount = 0;
 
-        const auto binding = bindings.GetSlotBinding(slotIndex);
         if (iconType == ButtonIconType::Keyboard) {
             for (int k = 0; k < 3; ++k) {
-                if (binding.kb[k] < 0) continue;
+                if (s.kbCodes[k] < 0) continue;
                 if (suppressMod && (k + 1) == modPos) continue;
-                if (keyCount < 3) keys[keyCount++] = {false, binding.kb[k]};
+                if (keyCount < 3) keys[keyCount++] = {false, s.kbCodes[k]};
             }
         } else {
             for (int k = 0; k < 3; ++k) {
-                if (binding.gp[k] < 0) continue;
+                if (s.gpCodes[k] < 0) continue;
                 if (suppressMod && (k + 1) == modPos) continue;
-                if (keyCount < 3) keys[keyCount++] = {true, binding.gp[k]};
+                if (keyCount < 3) keys[keyCount++] = {true, s.gpCodes[k]};
             }
         }
         if (keyCount == 0) return;
@@ -902,11 +856,12 @@ namespace IntegratedMagic::HUD::SlotDrawer {
     }
 
     void DrawSmallHUD(const ImGuiIO& io) {
+        const HudView v = SnapshotHudView();
+
         const auto& st = Style();
-        const auto n = static_cast<int>(Slots::GetSlotCount());
-        const int activeSlot = MagicState::Get().ActiveSlot();
-        const bool modHeld = !MagicState::Get().IsActive() && Application::HudController::Get().IsModifierHeld();
-        IntegratedMagic::SlotCooldownTracker::Get().Update(0.0f);
+        const int n = std::min(v.slotCount, static_cast<int>(v.slots.size()));
+        const int activeSlot = v.activeSlot;
+        const bool modHeld = !v.spellSystemActive && v.modifierHeld;
 
         SlotAnimator::Update(n, activeSlot, modHeld, st.hudLayout, st.gridColumns);
 
@@ -919,7 +874,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             s_last = now;
             if (dt < 0.f || dt > 0.25f) dt = 0.f;
 
-            const bool slotActive = MagicState::Get().IsActive();
+            const bool slotActive = v.spellSystemActive;
             const float fadeSpeed = st.buttonLabelFadeTime > 0.f ? 1.f / st.buttonLabelFadeTime : 9999.f;
 
             for (int i = 0; i < n; ++i) {
@@ -962,8 +917,8 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             constexpr float kPulseDuration = 0.30f;
 
             for (int i = 0; i < n; ++i) {
-                const auto afford = ComputeSlotAffordability(i);
-                const bool castable = !afford.hasSpells || afford.canCast;
+                const auto& sv = v.slots[i];
+                const bool castable = !sv.hasSpells || sv.canCast;
                 auto& anim = s_manaAnim[i];
 
                 if (castable && !anim.wasCastable && anim.pulseT < 0.f) anim.pulseT = 0.f;
@@ -995,14 +950,14 @@ namespace IntegratedMagic::HUD::SlotDrawer {
             constexpr float kPulseDuration = 0.30f;
 
             for (int i = 0; i < n; ++i) {
-                const auto cdInfo = IntegratedMagic::SlotCooldownTracker::Get().GetSlotInfo(i);
+                const auto& sv = v.slots[i];
                 auto& anim = s_cooldownAnim[i];
 
-                if (cdInfo.justFinished && anim.pulseT < 0.f) {
+                if (sv.justFinishedCooldown && anim.pulseT < 0.f) {
                     anim.pulseT = 0.f;
                 }
 
-                anim.wasOnCooldown = cdInfo.onCooldown;
+                anim.wasOnCooldown = sv.onCooldown;
 
                 if (anim.pulseT >= 0.f) {
                     anim.pulseT += dt / kPulseDuration;
@@ -1140,25 +1095,17 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         if (SlotLayout::HasCenter(st.hudLayout)) DrawRingCenter(dl, hudOrigin);
 
         auto DrawSlot = [&](int i, bool active) {
+            const auto& sv = v.slots[i];
             const ImVec2 center = slotCenter[i];
             const float slotR = slotRadiusFinal[i];
 
-            const auto rID = Slots::GetSlotSpell(i, Hand::Right);
-            const auto lID = Slots::GetSlotSpell(i, Hand::Left);
-            const auto shID = Slots::GetSlotShout(i);
-            auto const* rSp = rID ? RE::TESForm::LookupByID<RE::SpellItem>(rID) : nullptr;
-            auto const* lSp = lID ? RE::TESForm::LookupByID<RE::SpellItem>(lID) : nullptr;
-            const bool is2H = !shID && !rID && lSp && SpellClassify::IsTwoHandedSpell(lSp);
-
             const bool canCast = s_manaAnim[i].wasCastable;
-            const auto cdInfo = IntegratedMagic::SlotCooldownTracker::Get().GetSlotInfo(i);
-            const bool onCooldown = cdInfo.onCooldown;
-            const float cooldownProgress = cdInfo.progress;
 
-            DrawSlotVisual(dl, center, slotR, active, is2H ? nullptr : rSp, is2H ? nullptr : lSp, is2H ? lID : shID,
-                           false, canCast, onCooldown, cooldownProgress);
+            DrawSlotVisual(dl, center, slotR, active, sv.isTwoHanded ? nullptr : sv.rightSpell,
+                           sv.isTwoHanded ? nullptr : sv.leftSpell, sv.isTwoHanded ? sv.leftSpellID : sv.shoutFormID,
+                           false, canCast, sv.onCooldown, sv.cooldownProgress);
 
-            if (st.showSpellNamesInHud && !MagicState::Get().IsActive()) {
+            if (st.showSpellNamesInHud && !v.spellSystemActive) {
                 const ImVec2 toCenter = [&]() -> ImVec2 {
                     const float dx = hudOrigin.x - center.x;
                     const float dy = hudOrigin.y - center.y;
@@ -1170,17 +1117,16 @@ namespace IntegratedMagic::HUD::SlotDrawer {
                     DrawSpellLabel(name, center, slotR, toCenter, st.spellNamePosition, st.spellNamePadding);
                 };
 
-                if (shID || is2H) {
-                    const RE::FormID dispID = shID ? shID : lID;
-                    auto const* f = RE::TESForm::LookupByID(dispID);
-                    drawLabel(f ? f->GetName() : "");
-                } else if (rSp || lSp) {
-                    const bool same = rSp && lSp && (rSp->GetFormID() == lSp->GetFormID());
-                    const bool onlyOne = (rSp != nullptr) != (lSp != nullptr);
+                if (sv.shoutFormID || sv.isTwoHanded) {
+                    drawLabel(sv.labelForm ? sv.labelForm->GetName() : "");
+                } else if (sv.rightSpell || sv.leftSpell) {
+                    const bool same =
+                        sv.rightSpell && sv.leftSpell && (sv.rightSpell->GetFormID() == sv.leftSpell->GetFormID());
+                    const bool onlyOne = (sv.rightSpell != nullptr) != (sv.leftSpell != nullptr);
                     if (same || onlyOne) {
-                        drawLabel((rSp ? rSp : lSp)->GetName());
+                        drawLabel((sv.rightSpell ? sv.rightSpell : sv.leftSpell)->GetName());
                     } else {
-                        std::string combined = std::string(lSp->GetName()) + " | " + rSp->GetName();
+                        std::string combined = std::string(sv.leftSpell->GetName()) + " | " + sv.rightSpell->GetName();
                         drawLabel(combined.c_str());
                     }
                 }
@@ -1193,14 +1139,13 @@ namespace IntegratedMagic::HUD::SlotDrawer {
 
         for (int i = 0; i < n; ++i)
             if (i != activeSlot)
-                DrawSlotButtonLabel(dl, slotCenter[i], slotRadiusFinal[i], i, hudOrigin, s_labelAlpha[i]);
+                DrawSlotButtonLabel(dl, slotCenter[i], slotRadiusFinal[i], v.slots[i], v, hudOrigin, s_labelAlpha[i]);
 
         if (activeSlot >= 0 && activeSlot < n)
-            DrawSlotButtonLabel(dl, slotCenter[activeSlot], slotRadiusFinal[activeSlot], activeSlot, hudOrigin,
-                                s_labelAlpha[activeSlot]);
+            DrawSlotButtonLabel(dl, slotCenter[activeSlot], slotRadiusFinal[activeSlot], v.slots[activeSlot], v,
+                                hudOrigin, s_labelAlpha[activeSlot]);
 
-        DrawModifierWidget(dl, hudOrigin,
-                           Application::HudController::Get().IsModifierHeld() || MagicState::Get().IsActive());
+        DrawModifierWidget(dl, hudOrigin, v.modifierHeld || v.spellSystemActive, v);
 
         ImGui::End();
     }

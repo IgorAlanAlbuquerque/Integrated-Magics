@@ -2,98 +2,24 @@
 
 #include <imgui.h>
 
-#include "Application/HudController.h"
-#include "Config/ConfigAdapter.h"
-#include "UI/HudState.h"
 #include "PCH.h"
-#include "Persistence/Slots.h"
+#include "UI/HudState.h"
 #include "UI/PopupDrawer.h"
 #include "UI/SlotDrawer.h"
-#include "Domain/State.h"
 
 namespace IntegratedMagic::HUD {
 
-    bool IsHardBlocked() {
-        if (!RE::PlayerCharacter::GetSingleton()) return true;
-        auto* ui = RE::UI::GetSingleton();
-        if (!ui) return true;
-        static const RE::BSFixedString mainMenu{"Main Menu"};
-        static const RE::BSFixedString loadingMenu{"Loading Menu"};
-        static const RE::BSFixedString faderMenu{"Fader Menu"};
-        return ui->IsMenuOpen(mainMenu) || ui->IsMenuOpen(loadingMenu) || ui->IsMenuOpen(faderMenu);
-    }
-
-    bool IsSoftBlocked() {
-        auto* ui = RE::UI::GetSingleton();
-        if (!ui) return true;
-        static const RE::BSFixedString magicMenu{"MagicMenu"};
-        static const RE::BSFixedString tweenMenu{"TweenMenu"};
-        static const RE::BSFixedString inventoryMenu{"InventoryMenu"};
-        static const RE::BSFixedString statsMenu{"StatsMenu"};
-        static const RE::BSFixedString mapMenu{"MapMenu"};
-        static const RE::BSFixedString journalMenu{"Journal Menu"};
-        static const RE::BSFixedString containerMenu{"ContainerMenu"};
-        static const RE::BSFixedString barterMenu{"BarterMenu"};
-        static const RE::BSFixedString craftingMenu{"Crafting Menu"};
-        static const RE::BSFixedString lockpickingMenu{"Lockpicking Menu"};
-        static const RE::BSFixedString sleepWaitMenu{"Sleep/Wait Menu"};
-        static const RE::BSFixedString dialogueMenu{"Dialogue Menu"};
-        static const RE::BSFixedString console{"Console"};
-        static const RE::BSFixedString mcm{"Mod Configuration Menu"};
-        static const RE::BSFixedString bestiary{"BestiaryMenu"};
-        static const RE::BSFixedString ostim{"OstimSceneMenu"};
-        static const RE::BSFixedString dialogueTopicMenu{"Dialogue Topic Menu"};
-        return ui->IsMenuOpen(inventoryMenu) || ui->IsMenuOpen(statsMenu) || ui->IsMenuOpen(mapMenu) ||
-               ui->IsMenuOpen(journalMenu) || ui->IsMenuOpen(containerMenu) || ui->IsMenuOpen(barterMenu) ||
-               ui->IsMenuOpen(craftingMenu) || ui->IsMenuOpen(lockpickingMenu) || ui->IsMenuOpen(sleepWaitMenu) ||
-               ui->IsMenuOpen(dialogueMenu) || ui->IsMenuOpen(console) || ui->IsMenuOpen(mcm) ||
-               ui->IsMenuOpen(magicMenu) || ui->IsMenuOpen(tweenMenu) || ui->IsMenuOpen(bestiary) ||
-               ui->IsMenuOpen(ostim) || ui->IsMenuOpen(dialogueTopicMenu);
-    }
-
-    bool IsInMagicMenu() {
-        auto* ui = RE::UI::GetSingleton();
-        if (!ui) return false;
-        static const RE::BSFixedString magicMenu{"MagicMenu"};
-        return ui->IsMenuOpen(magicMenu);
-    }
-
-    bool EvaluateHudVisibility() {
-        const auto& hud = Config::MagicConfigAdapter::Get();
-        using enum Config::HudVisibilityFlag;
-
-        if (hud.FlagSet(Always)) return true;
-
-        auto* player = RE::PlayerCharacter::GetSingleton();
-        if (!player) return false;
-
-        if (hud.FlagSet(SlotActive) && MagicState::Get().IsActive()) return true;
-        if (hud.FlagSet(InCombat) && player->IsInCombat()) return true;
-        if (hud.FlagSet(WeaponDrawn)) {
-            using enum RE::WEAPON_STATE;
-            const auto ws = player->AsActorState()->GetWeaponState();
-            if (ws == kDrawn || ws == kWantToDraw || ws == kDrawing) return true;
-        }
-        return false;
-    }
-
     void DrawHudFrame() {
-        if (IsHardBlocked()) {
+        if (g_hardBlocked.load()) {
             if (g_popupOpen.load()) g_popupOpen.store(false);
             return;
         }
-        if (Slots::GetSlotCount() == 0) return;
+        if (g_slotCount.load() == 0) return;
 
-        const bool inMagicMenu = IsInMagicMenu();
-        if (inMagicMenu && Application::HudController::Get().ConsumeHudToggle()) ToggleDetailPopup();
-        if (!inMagicMenu && g_popupOpen.load()) {
-            g_popupOpen.store(false);
-        }
-
-        if (EvaluateHudVisibility()) {
+        if (g_hudShouldDraw.load()) {
             ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.f, 0.f});
-            if (!IsSoftBlocked()) SlotDrawer::DrawSmallHUD(ImGui::GetIO());
+            if (!g_softBlocked.load()) SlotDrawer::DrawSmallHUD(ImGui::GetIO());
             ImGui::PopStyleVar(2);
         }
 
@@ -111,36 +37,6 @@ namespace IntegratedMagic::HUD {
     void FeedMouseClick() { g_mouseClicked.store(true, std::memory_order_relaxed); }
     void FeedMouseRightClick() { g_mouseRightClicked.store(true, std::memory_order_relaxed); }
 
-    namespace {
-        void SetMagicMenuVisible(bool visible) {
-            auto* ui = RE::UI::GetSingleton();
-            if (!ui) return;
-            static const RE::BSFixedString magicMenu{"MagicMenu"};
-            auto menu = ui->GetMenu<RE::MagicMenu>();
-            if (!menu || !menu->uiMovie) return;
-            RE::GFxValue val(visible);
-            menu->uiMovie->SetVariable("_root.Menu_mc._visible", val);
-        }
-    }
-
-    void ToggleDetailPopup() {
-        const bool willOpen = !g_popupOpen.load();
-        g_popupOpen.store(willOpen);
-        if (willOpen) {
-            g_popupJustOpened.store(true, std::memory_order_relaxed);
-            SetMagicMenuVisible(false);
-        } else {
-            SetMagicMenuVisible(true);
-        }
-    }
-
-    void CloseDetailPopup() {
-        if (g_popupOpen.load()) {
-            g_popupOpen.store(false);
-            SetMagicMenuVisible(true);
-        }
-    }
     bool IsHudVisible() { return g_hudVisible.load(std::memory_order_relaxed); }
     void SetHudVisible(bool v) { g_hudVisible.store(v, std::memory_order_relaxed); }
-
 }

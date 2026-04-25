@@ -3,6 +3,7 @@
 #include "Adapters/Outbound/SyntheticInput.h"
 #include "Application/InputController.h"
 #include "Application/SpellSystemController.h"
+#include "Application/HudController.h"
 #include "HookUtil.hpp"
 #include "PCH.h"
 
@@ -19,6 +20,7 @@ namespace IntegratedMagic::Inbound::PollInputDevicesHook {
                 const float dt = Application::InputController::Get().GetDeltaTime();
                 const bool blocked = Application::InputController::Get().IsInputBlocked();
                 Application::SpellSystemController::Get().OnFrame(dt, blocked);
+                Application::HudController::Get().OnFrame(); 
                 RE::InputEvent* head = IntegratedMagic::detail::FlushSyntheticInput(*a_events);
 
                 if (func == 0) return;

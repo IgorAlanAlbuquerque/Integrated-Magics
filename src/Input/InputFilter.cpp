@@ -9,7 +9,7 @@
 #include "Input/HudToggle.h"
 #include "PCH.h"
 #include "SKSEMenuFramework.h"
-#include "UI/HudManager.h"
+#include "Shared/InputIntents.h"
 
 namespace Input::detail {
 
@@ -213,8 +213,8 @@ namespace Input::detail {
                ui->IsMenuOpen(ostim);
     }
 
-    ProcessButtonEventsResult ProcessButtonEvents(RE::InputEvent** a_evns, CaptureState& cap,
-                                                                 bool& wantCapture, KeyStateStore& keys) {
+    ProcessButtonEventsResult ProcessButtonEvents(RE::InputEvent** a_evns, CaptureState& cap, bool& wantCapture,
+                                                  KeyStateStore& keys) {
         ProcessButtonEventsResult result{};
 
         auto* player = RE::PlayerCharacter::GetSingleton();
@@ -251,7 +251,7 @@ namespace Input::detail {
     }
 
     void FilterMouseForPopup(RE::InputEvent** a_evns) {
-        if (!IntegratedMagic::HUD::IsDetailPopupOpen()) return;
+        if (!Input::detail::g_popupOpenForInput.load(std::memory_order_relaxed)) return;
 
         RE::InputEvent* prev = nullptr;
         RE::InputEvent* cur = *a_evns;
@@ -261,8 +261,9 @@ namespace Input::detail {
 
             if (cur->eventType == RE::INPUT_EVENT_TYPE::kMouseMove) {
                 auto const* mm = static_cast<RE::MouseMoveEvent*>(cur);
-                IntegratedMagic::HUD::FeedMouseDelta(static_cast<float>(mm->mouseInputX),
-                                                     static_cast<float>(mm->mouseInputY));
+                Input::detail::PushPopupInput({Input::detail::PopupInputKind::MouseDelta,
+                                               static_cast<float>(mm->mouseInputX),
+                                               static_cast<float>(mm->mouseInputY)});
                 remove = true;
             } else if (cur->eventType == RE::INPUT_EVENT_TYPE::kThumbstick) {
                 auto const* ts = static_cast<RE::ThumbstickEvent*>(cur);
@@ -271,8 +272,10 @@ namespace Input::detail {
                     constexpr float kSensitivity = 12.f;
                     const float ax = (std::abs(ts->xValue) > kDeadzone) ? ts->xValue : 0.f;
                     const float ay = (std::abs(ts->yValue) > kDeadzone) ? ts->yValue : 0.f;
-                    if (ax != 0.f || ay != 0.f)
-                        IntegratedMagic::HUD::FeedMouseDelta(ax * kSensitivity, -ay * kSensitivity);
+                    if (ax != 0.f || ay != 0.f) {
+                        Input::detail::PushPopupInput(
+                            {Input::detail::PopupInputKind::StickDelta, ax * kSensitivity, -ay * kSensitivity});
+                    }
                 }
                 remove = true;
             } else if (const auto* btn = cur->AsButtonEvent()) {
@@ -280,19 +283,21 @@ namespace Input::detail {
                 const auto btnDev = btn->GetDevice();
                 const auto btnID = btn->GetIDCode();
                 if (btnDev == RE::INPUT_DEVICE::kMouse && btnID == 0) {
-                    if (btn->IsDown()) IntegratedMagic::HUD::FeedMouseClick();
+                    if (btn->IsDown()) Input::detail::PushPopupInput({Input::detail::PopupInputKind::Click, 0.f, 0.f});
                     remove = true;
                 } else if (btnDev == RE::INPUT_DEVICE::kMouse && btnID == 1) {
-                    if (btn->IsDown()) IntegratedMagic::HUD::FeedMouseRightClick();
+                    if (btn->IsDown())
+                        Input::detail::PushPopupInput({Input::detail::PopupInputKind::RightClick, 0.f, 0.f});
                     remove = true;
                 } else if (btnDev == RE::INPUT_DEVICE::kGamepad && btnID == static_cast<std::uint32_t>(Key::kX)) {
-                    if (btn->IsDown()) IntegratedMagic::HUD::FeedMouseClick();
+                    if (btn->IsDown()) Input::detail::PushPopupInput({Input::detail::PopupInputKind::Click, 0.f, 0.f});
                     remove = true;
                 } else if (btnDev == RE::INPUT_DEVICE::kGamepad && btnID == static_cast<std::uint32_t>(Key::kB)) {
-                    if (btn->IsDown()) IntegratedMagic::HUD::FeedMouseRightClick();
+                    if (btn->IsDown())
+                        Input::detail::PushPopupInput({Input::detail::PopupInputKind::RightClick, 0.f, 0.f});
                     remove = true;
                 } else if (btnDev == RE::INPUT_DEVICE::kGamepad && btnID == static_cast<std::uint32_t>(Key::kY)) {
-                    if (btn->IsDown()) IntegratedMagic::HUD::CloseDetailPopup();
+                    if (btn->IsDown()) Input::detail::PushPopupInput({Input::detail::PopupInputKind::Close, 0.f, 0.f});
                     remove = true;
                 }
             }
