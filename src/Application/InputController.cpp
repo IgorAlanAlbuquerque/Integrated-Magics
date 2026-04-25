@@ -3,9 +3,10 @@
 #include <xinput.h>
 
 #include <chrono>
+#include <utility>
 
+#include "Adapters/Outbound/SyntheticInput.h"
 #include "Application/AssignService.h"
-#include "Application/SpellSystemController.h"
 #include "Config/ConfigAdapter.h"
 #include "Domain/State.h"
 #include "Input/ExclusiveTracker.h"
@@ -14,7 +15,6 @@
 #include "Input/InputFilter.h"
 #include "Input/PhysicalReconciler.h"
 #include "Input/ReplaySystem.h"
-#include "Adapters/Outbound/SyntheticInput.h"
 #include "PCH.h"
 #include "Shared/Hand.h"
 #include "UI/HoveredForm.h"
@@ -40,8 +40,11 @@ namespace Application {
                 Input::detail::ResetReplayState(s, m_replay);
         }
 
+        const bool spellSystemActive = IntegratedMagic::MagicState::Get().IsActive();
+        const int activeSlot = IntegratedMagic::MagicState::Get().ActiveSlot();
+
         Input::detail::ReconcilePhysicalKeyState(m_keys, m_slots, m_exclusive, m_replay, m_retained, m_deferred,
-                                                 Application::SpellSystemController::Get().IsSpellSystemActive());
+                                                 spellSystemActive);
 
         bool wantCapture = m_captureState.captureRequested.load(std::memory_order_relaxed);
         const bool wantCaptureBefore = wantCapture;
@@ -64,16 +67,12 @@ namespace Application {
         const auto buttonResult = Input::detail::ProcessButtonEvents(a_evns, m_captureState, wantCapture, m_keys);
 
         if (buttonResult.forceExit) {
-            Application::SpellSystemController::Get().ConsumeForceExitResult(std::move(*buttonResult.forceExit));
+            m_pendingForceExit = std::move(*buttonResult.forceExit);
         }
         Input::detail::UpdateHudToggleState(m_hotkeys, m_keys);
 
-        if (blocked) Application::SpellSystemController::Get().TryAssignHoveredToSlotByHotkey();
-
         Input::detail::UpdateSlotsIfAllowed(blocked, dt, m_slots, m_exclusive, m_hotkeys, m_keys, m_retained,
-                                            m_deferred, m_replay,
-                                            Application::SpellSystemController::Get().IsSpellSystemActive(),
-                                            Application::SpellSystemController::Get().ActiveSlot());
+                                            m_deferred, m_replay, spellSystemActive, activeSlot);
 
         const auto replayResult = Input::detail::DrainOneDeferredReplayEvent(m_replay, m_deferred);
         if (replayResult.replayEvent) {
@@ -132,6 +131,10 @@ namespace Application {
 
     std::optional<int> InputController::ConsumePressedSlot() { return ConsumeBit(m_slots.pressedMask); }
     std::optional<int> InputController::ConsumeReleasedSlot() { return ConsumeBit(m_slots.releasedMask); }
+
+    std::optional<IntegratedMagic::StateExitResult> InputController::ConsumeForceExit() {
+        return std::exchange(m_pendingForceExit, std::nullopt);
+    }
 
     std::optional<int> InputController::GetDownSlotForSelection() const {
         const int n = m_slots.ActiveSlots();

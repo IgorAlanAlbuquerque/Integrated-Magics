@@ -7,7 +7,7 @@
 #include "PCH.h"
 #include "Persistence/SaveSpellDB.h"
 #include "Persistence/SpellSettingsDB.h"
-#include "UI/MENU.h"
+#include "UI/Menu.h"
 #include "UI/Strings.h"
 #include "UI/TextureManager.h"
 

@@ -3,6 +3,8 @@
 
 #include <utility>
 
+#include "Persistence/SpellSettingsDB.h"
+
 namespace IntegratedMagic::Config {
 
     MagicConfigAdapter& MagicConfigAdapter::Get() {
@@ -116,5 +118,25 @@ namespace IntegratedMagic::Config {
 
     bool MagicConfigAdapter::SkipEquipAnimation() const { return Cfg().skipEquipAnimationPatch; }
     bool MagicConfigAdapter::SkipEquipAnimationOnReturn() const { return Cfg().skipEquipAnimationOnReturnPatch; }
+
+    std::optional<SpellSettings> MagicConfigAdapter::GetSpellSettings(std::uint32_t formID) const {
+        return SpellSettingsDB::Get().Get(formID);
+    }
+
+    SpellSettings MagicConfigAdapter::GetOrCreateSpellSettings(std::uint32_t formID, const RE::TESForm* form) {
+        return SpellSettingsDB::Get().GetOrCreate(formID, form, this);
+    }
+
+    void MagicConfigAdapter::SetSpellSettings(std::uint32_t formID, const SpellSettings& s) {
+        SpellSettingsDB::Get().Set(formID, s);
+    }
+
+    void MagicConfigAdapter::FlushSpellSettingsIfDirty() {
+        auto& db = SpellSettingsDB::Get();
+        if (db.IsDirty()) {
+            db.Save();
+            db.ClearDirty();
+        }
+    }
 
 }

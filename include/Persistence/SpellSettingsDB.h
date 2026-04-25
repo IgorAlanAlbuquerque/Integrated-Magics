@@ -35,12 +35,9 @@ namespace IntegratedMagic {
 
         SpellSettings GetOrCreate(std::uint32_t spellFormID, const RE::TESForm* form,
                                   const Config::ISlotAssignments* assignments = nullptr);
-
         [[nodiscard]] std::optional<SpellSettings> Get(std::uint32_t spellFormID) const;
-
         void Set(std::uint32_t spellFormID, const SpellSettings& s);
-
-        bool IsDirty() const;
+        [[nodiscard]] bool IsDirty() const;
         void ClearDirty();
 
         static std::filesystem::path JsonPath();

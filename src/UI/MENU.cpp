@@ -11,7 +11,6 @@
 #include "Config/Limits.h"
 #include "Config/StyleConfig.h"
 #include "PCH.h"
-#include "Persistence/SpellSettingsDB.h"
 #include "SKSEMenuFramework.h"
 #include "Shared/SpellType.h"
 #include "UI/HudManager.h"
@@ -101,7 +100,7 @@ namespace {
 
             ImGuiMCP::TextDisabled("...");
             ImGuiMCP::SameLine();
-            if (ImGuiMCP::SmallButton("X")) {
+            if (ImGuiMCP::SmallButton(IntegratedMagic::Strings::Get("Btn_CancelCapture", "X").c_str())) {
                 CancelFieldCapture();
             }
         } else {
@@ -120,7 +119,7 @@ namespace {
             const bool isMod = (modPos == rowPos);
             if (isMod) ImGuiMCP::PushStyleColor(ImGuiMCP::ImGuiCol_Button, IM_COL32(180, 120, 30, 220));
             ImGuiMCP::PushID(wantKeyboard ? "kbm" : "gpm");
-            if (ImGuiMCP::SmallButton("M")) {
+            if (ImGuiMCP::SmallButton(IntegratedMagic::Strings::Get("Btn_Modifier", "M").c_str())) {
                 if (isMod) {
                     modPos = 0;
                 } else {
@@ -151,7 +150,12 @@ namespace {
                 }
                 dirty = true;
             }
-            if (ImGuiMCP::IsItemHovered()) ImGuiMCP::SetTooltip(isMod ? "Unmark as modifier" : "Mark as modifier");
+            if (ImGuiMCP::IsItemHovered()) {
+                const auto tip = isMod ? IntegratedMagic::Strings::Get("Tooltip_UnmarkModifier", "Unmark as modifier")
+                                       : IntegratedMagic::Strings::Get("Tooltip_MarkModifier", "Mark as modifier");
+
+                ImGuiMCP::SetTooltip("%s", tip.c_str());
+            }
             ImGuiMCP::PopID();
             if (isMod) ImGuiMCP::PopStyleColor();
         }
@@ -1409,10 +1413,7 @@ void __stdcall IntegratedMagic::MENU::DrawSettings() {
                              ImGuiMCP::ImVec2{kButtonWidth, 0.0f})) {
             cfg.Save();
             IntegratedMagic::StyleConfig::Get().Save();
-            if (IntegratedMagic::SpellSettingsDB::Get().IsDirty()) {
-                IntegratedMagic::SpellSettingsDB::Get().Save();
-                IntegratedMagic::SpellSettingsDB::Get().ClearDirty();
-            }
+            Config::MagicConfigAdapter::Get().FlushSpellSettingsIfDirty();
             Application::InputController::Get().OnConfigChanged();
             g_pending = false;
         }

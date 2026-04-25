@@ -1,11 +1,11 @@
 #include <utility>
 
+#include "Config/ConfigAdapter.h"
 #include "Domain/InventoryUtil.h"
 #include "Domain/SpellClassify.h"
 #include "Domain/State.h"
 #include "PCH.h"
 #include "Persistence/Slots.h"
-#include "Persistence/SpellSettingsDB.h"
 #include "Shared/Hand.h"
 
 namespace IntegratedMagic {
@@ -18,7 +18,7 @@ namespace IntegratedMagic {
             _aa.secsLeft += add;
             result.leftAttack = {Left, 1.0f, _aa.secsLeft};
             static int leftTick = 0;
-            if ((++leftTick % 30) == 0)  // log a cada ~30 ticks pra não poluir
+            if ((++leftTick % 30) == 0)
                 MAGIC_DEBUG_LOG("[FLOW] PumpAutoAttack: continuous press Left heldSecs={:.2f}", _aa.secsLeft);
         }
         if (_aa.heldRight) {
@@ -139,7 +139,9 @@ namespace IntegratedMagic {
 
     bool MagicState::RequestAutoAttackStart(Hand hand, bool clearWaitAfterEquip) {
         auto& hm = ModeFor(hand);
+#ifdef DEBUG
         const char* handStr = IsLeft(hand) ? "Left" : "Right";
+#endif
 
         MAGIC_DEBUG_LOG(
             "[FLOW] RequestAutoAttackStart: hand={} ENTRY clearWaitAfterEquip={} | "
@@ -334,7 +336,9 @@ namespace IntegratedMagic {
                 return result;
             }
 
-            if (!_left.chargeComplete && !_right.chargeComplete) return result;
+            if (!_left.chargeComplete && !_right.chargeComplete && !_left.holdFiredAndWaitingCastStop &&
+                !_right.holdFiredAndWaitingCastStop)
+                return result;
 
             const float finishedL = FinishHand(Left);
             if (finishedL != -1.f) result.leftAttack = StopDispatchIntent{finishedL};
@@ -438,7 +442,7 @@ namespace IntegratedMagic {
         MAGIC_DEBUG_LOG("[State] OnShoutStop: modeShoutID={:#010x} waitingStopEvent={}", _shout.modeShoutID,
                         _shout.waitingStopEvent);
 
-        const auto ss = SpellSettingsDB::Get().Get(_shout.modeShoutID);
+        const auto ss = Config::MagicConfigAdapter::Get().GetSpellSettings(_shout.modeShoutID);
         if (!ss) return result;
 
         const bool isHold = (ss->mode == ActivationMode::Hold);
@@ -483,10 +487,11 @@ namespace IntegratedMagic {
         PumpAutomaticHandResult result{};
 
         auto& hm = ModeFor(hand);
+#ifdef DEBUG
         const char* handStr = IsLeft(hand) ? "Left" : "Right";
+#endif
 
         if (!hm.autoActive || !hm.waitingChargeComplete) {
-            // silencioso — estado normal de "não tenho nada a fazer"
             return result;
         }
 
@@ -518,8 +523,10 @@ namespace IntegratedMagic {
             IsLeft(hand) ? RE::MagicSystem::CastingSource::kLeftHand : RE::MagicSystem::CastingSource::kRightHand;
 
         const auto* caster = GetMagicCaster(player, src);
+#ifdef DEBUG
         const auto casterCurrent = caster && caster->currentSpell ? caster->currentSpell->GetFormID() : 0u;
         const auto casterState = caster ? std::to_underlying(caster->state.get()) : -1;
+#endif
 
         MAGIC_DEBUG_LOG(
             "[FLOW] PumpAutomaticHand hand={} phase={} aaHeld={} secs={:.2f} | "
@@ -597,7 +604,9 @@ namespace IntegratedMagic {
         if (!_session.active || hm.finished) return result;
         if (!(hm.autoActive || (hm.holdActive && hm.wantAutoAttack))) return result;
 
+#ifdef DEBUG
         const char* handStr = IsLeft(hand) ? "Left" : "Right";
+#endif
         const float add = dt > 0.f ? dt : 0.f;
 
         const auto id = (_session.activeSlot >= 0) ? Slots::GetSlotSpell(_session.activeSlot, hand) : 0;
@@ -674,7 +683,9 @@ namespace IntegratedMagic {
                 const bool casterIdle =
                     _aa.Held(hand) && expectedSpell && IsCasterIdleForExpectedSpell(hand, expectedSpell);
                 if (casterIdle) {
+#ifdef DEBUG
                     const float prevStall = hm.stalledCastSecs;
+#endif
                     hm.stalledCastSecs += add;
                     MAGIC_DEBUG_LOG(
                         "[FLOW] PumpAutoStartFallback[StartRequested] hand={} caster IDLE -> stalledCastSecs {:.3f} -> "
@@ -755,14 +766,17 @@ namespace IntegratedMagic {
 
         auto pumpOne = [&](Hand h, bool& dispatchFlag) {
             auto& d = DelayFor(h);
+#ifdef DEBUG
             const char* handStr = IsLeft(h) ? "Left" : "Right";
+#endif
 
             if (!d.pending) {
-                // NÃO logar aqui (seria ruído) — só se quiser ver TODOS frames
                 return;
             }
 
+#ifdef DEBUG
             const float prevSecs = d.secs;
+#endif
             d.secs += dt > 0.f ? dt : 0.f;
 
             MAGIC_DEBUG_LOG(
@@ -781,7 +795,9 @@ namespace IntegratedMagic {
             d.pending = false;
             d.secs = 0.f;
 
+#ifdef DEBUG
             auto& hm = ModeFor(h);
+#endif
 
             MAGIC_DEBUG_LOG(
                 "[FLOW] PumpDelayedStarts: hand={} state before RequestAutoAttackStart: "
@@ -1025,7 +1041,7 @@ namespace IntegratedMagic {
         }
 
         if (_shout.modeShoutID != 0 && _shout.isPower && _shout.held && !_shout.finished) {
-            const auto ss = SpellSettingsDB::Get().Get(_shout.modeShoutID);
+            const auto ss = Config::MagicConfigAdapter::Get().GetSpellSettings(_shout.modeShoutID);
             if (ss && ss->mode == ActivationMode::Automatic) {
                 constexpr float kPowerAutoDuration = 0.2f;
                 _shout.powerAutoSecs += dt > 0.f ? dt : 0.f;
@@ -1159,7 +1175,12 @@ namespace IntegratedMagic {
         return result;
     }
 
-    void MagicState::OnCasterStartCast(Hand hand, const RE::MagicItem* spell, RE::MagicSystem::CastingType type) {
+    void MagicState::OnCasterStartCast(Hand hand, const RE::MagicItem* spell,
+                                       RE::MagicSystem::CastingType
+#ifdef DEBUG
+                                           type
+#endif
+    ) {
         if (!_session.active) return;
 
         auto& hm = ModeFor(hand);
@@ -1178,7 +1199,12 @@ namespace IntegratedMagic {
         }
     }
 
-    void MagicState::OnCasterInterrupt(Hand hand, const RE::MagicItem* spell, bool depleteEnergy) {
+    void MagicState::OnCasterInterrupt(Hand hand, const RE::MagicItem* spell,
+                                       bool
+#ifdef DEBUG
+                                           depleteEnergy
+#endif
+    ) {
         if (!_session.active) return;
 
         auto& hm = ModeFor(hand);

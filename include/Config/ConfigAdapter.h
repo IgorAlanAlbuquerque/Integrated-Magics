@@ -1,5 +1,5 @@
-
 #pragma once
+#include <optional>
 #include <vector>
 
 #include "Config/Config.h"
@@ -7,14 +7,17 @@
 #include "Config/Ports/InputBindings.h"
 #include "Config/Ports/PatchSettings.h"
 #include "Config/Ports/SlotAssignments.h"
+#include "Config/Ports/SpellSettings.h"
 #include "Persistence/SaveSpellDB.h"
+#include "Shared/SpellSettings.h"
 
 namespace IntegratedMagic::Config {
 
     class MagicConfigAdapter final : public ISlotAssignments,
                                      public IInputBindings,
                                      public IHudSettings,
-                                     public IPatchSettings {
+                                     public IPatchSettings,
+                                     public ISpellSettings {
     public:
         static MagicConfigAdapter& Get();
 
@@ -42,6 +45,10 @@ namespace IntegratedMagic::Config {
 
         bool SkipEquipAnimation() const override;
         bool SkipEquipAnimationOnReturn() const override;
+        [[nodiscard]] std::optional<SpellSettings> GetSpellSettings(std::uint32_t formID) const override;
+        SpellSettings GetOrCreateSpellSettings(std::uint32_t formID, const RE::TESForm* form) override;
+        void SetSpellSettings(std::uint32_t formID, const SpellSettings& s) override;
+        void FlushSpellSettingsIfDirty();
 
     private:
         MagicConfigAdapter() = default;

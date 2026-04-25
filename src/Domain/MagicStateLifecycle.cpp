@@ -1,9 +1,10 @@
 #include <utility>
+#undef GetObject
 
+#include "Config/ConfigAdapter.h"
 #include "Domain/InventoryUtil.h"
 #include "Domain/State.h"
 #include "PCH.h"
-#include "Persistence/SpellSettingsDB.h"
 #include "Shared/Hand.h"
 
 namespace IntegratedMagic {
@@ -51,8 +52,9 @@ namespace IntegratedMagic {
         auto* pc = const_cast<RE::PlayerCharacter*>(player);
         const auto ws = pc->AsActorState()->GetWeaponState();
         _session.wasHandsDown = (ws == RE::WEAPON_STATE::kSheathed);
-
+#ifdef DEBUG
         const bool snapHasSpells = (_restore.snapshot.rightSpell != nullptr || _restore.snapshot.leftSpell != nullptr);
+#endif
 
         MAGIC_DEBUG_LOG("[State] EnsureActiveWithSnapshot: ACTIVATING slot={} wasHandsDown={} weaponState={}", slot,
                         _session.wasHandsDown, static_cast<int>(std::to_underlying(ws)));
@@ -258,7 +260,7 @@ namespace IntegratedMagic {
         if (!_session.active || _session.activeSlot < 0) return false;
         if (_shout.modeShoutID != 0) {
             if (_shout.finished) return false;
-            const auto settings = SpellSettingsDB::Get().Get(_shout.modeShoutID);
+            const auto settings = Config::MagicConfigAdapter::Get().GetSpellSettings(_shout.modeShoutID);
             return settings && settings->mode == Press;
         }
         using enum Hand;
@@ -285,8 +287,9 @@ namespace IntegratedMagic {
         if (PlayerIsDead(pc)) return true;
         if (PlayerIsKnockedOrStaggered(pc) && (!_left.pressActive && !_right.pressActive)) return true;
         if (PlayerIsBlocking(pc) && (!_left.pressActive && !_right.pressActive)) return true;
-
+#ifdef DEBUG
         const auto ws = pc->AsActorState()->GetWeaponState();
+#endif
         if (!_restore.pendingRestoreAfterSheathe && _shout.modeShoutID == 0 && PlayerIsSheathingOrSheathed(pc)) {
             MAGIC_DEBUG_LOG("[State] ShouldForceInterrupt: TRUE - player sheathing/sheathed weaponState={}",
                             static_cast<int>(std::to_underlying(ws)));

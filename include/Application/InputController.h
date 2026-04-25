@@ -9,6 +9,7 @@
 #include "Input/ReplaySystem.h"
 #include "Input/SlotEdgeStore.h"
 #include "PCH.h"
+#include "Shared/StateExitResult.h"
 
 namespace Application {
 
@@ -21,6 +22,7 @@ namespace Application {
 
         [[nodiscard]] std::optional<int> ConsumePressedSlot();
         [[nodiscard]] std::optional<int> ConsumeReleasedSlot();
+        [[nodiscard]] std::optional<IntegratedMagic::StateExitResult> ConsumeForceExit();
 
         [[nodiscard]] std::optional<int> GetDownSlotForSelection() const;
         [[nodiscard]] bool IsSlotHotkeyDown(int slot) const;
@@ -63,6 +65,7 @@ namespace Application {
         Input::detail::ReplayArr m_replay{};
         Input::detail::RetainedArr m_retained{};
         Input::detail::DeferredVec m_deferred{};
+        std::optional<IntegratedMagic::StateExitResult> m_pendingForceExit{};
         float m_lastDt{0.f};
 
         static float CalculateDeltaTime();

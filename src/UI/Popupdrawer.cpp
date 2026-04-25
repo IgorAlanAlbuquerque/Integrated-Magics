@@ -2,18 +2,19 @@
 
 #include <imgui.h>
 
+#include <array>
 #include <cmath>
 #include <numbers>
 #include <string>
 #include <vector>
 
 #include "Application/AssignService.h"
+#include "Config/ConfigAdapter.h"
 #include "Config/StyleConfig.h"
 #include "Domain/SpellClassify.h"
 #include "Domain/State.h"
 #include "PCH.h"
 #include "Persistence/Slots.h"
-#include "Persistence/SpellSettingsDB.h"
 #include "Shared/Hand.h"
 #include "UI/HoveredForm.h"
 #include "UI/HudState.h"
@@ -239,9 +240,13 @@ namespace IntegratedMagic::HUD::PopupDrawer {
                              const char*) {
         if (!formID) return;
         auto const* form = RE::TESForm::LookupByID(formID);
-        auto s = SpellSettingsDB::Get().GetOrCreate(formID, form);
+        auto s = Config::MagicConfigAdapter::Get().GetOrCreateSpellSettings(formID, form);
 
-        static const char* kLabels[] = {"H", "P", "A"};
+        const std::array<std::string, 3> labels = {
+            Strings::Get("Popup_Mode_HoldShort", "H"),
+            Strings::Get("Popup_Mode_PressShort", "P"),
+            Strings::Get("Popup_Mode_AutoShort", "A"),
+        };
         const std::string kTipHold = Strings::Get("Mode_Hold", "Hold");
         const std::string kTipPress = Strings::Get("Mode_Press", "Press");
         const std::string kTipAuto = Strings::Get("Mode_Auto", "Auto");
@@ -264,12 +269,12 @@ namespace IntegratedMagic::HUD::PopupDrawer {
             dl->AddCircle(bc, btnR, cur ? IM_COL32(220, 170, 50, 220) : IM_COL32(90, 90, 90, 160), 16, 1.2f);
 
             ImGui::SetCursorScreenPos({bc.x - 4.f, bc.y - 7.f});
-            cur ? ImGui::TextUnformatted(kLabels[m]) : ImGui::TextDisabled("%s", kLabels[m]);
+            cur ? ImGui::TextUnformatted(labels[m].c_str()) : ImGui::TextDisabled("%s", labels[m].c_str());
 
             if (hov) MouseTooltip(kTips[m]);
             if (ManualClick(clicked, {bc.x - btnR, bc.y - btnR}, {btnR * 2.f, btnR * 2.f})) {
                 s.mode = IndexToMode(m);
-                SpellSettingsDB::Get().Set(formID, s);
+                Config::MagicConfigAdapter::Get().SetSpellSettings(formID, s);
             }
         }
 
@@ -292,11 +297,12 @@ namespace IntegratedMagic::HUD::PopupDrawer {
             }
 
             ImGui::SetCursorScreenPos({cc.x + btnR + 2.f, cc.y - 7.f});
-            ImGui::TextDisabled("AA");
+            const auto aaText = Strings::Get("Popup_AutoAttackShort", "AA");
+            ImGui::TextDisabled("%s", aaText.c_str());
 
             if (ManualClick(clicked, {cc.x - btnR, cc.y - btnR}, {btnR * 2.f, btnR * 2.f})) {
                 s.autoAttack = !s.autoAttack;
-                SpellSettingsDB::Get().Set(formID, s);
+                Config::MagicConfigAdapter::Get().SetSpellSettings(formID, s);
             }
         }
     }
@@ -456,10 +462,7 @@ namespace IntegratedMagic::HUD::PopupDrawer {
                                                   g_mousePos.y < popupPos.y || g_mousePos.y > popupEnd.y);
 
             if (ImGui::IsKeyPressed(ImGuiKey_Escape) || mouseOutside) {
-                if (SpellSettingsDB::Get().IsDirty()) {
-                    SpellSettingsDB::Get().Save();
-                    SpellSettingsDB::Get().ClearDirty();
-                }
+                Config::MagicConfigAdapter::Get().FlushSpellSettingsIfDirty();
                 g_popupOpen.store(false);
             }
         }

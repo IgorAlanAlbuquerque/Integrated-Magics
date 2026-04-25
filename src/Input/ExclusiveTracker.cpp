@@ -245,9 +245,11 @@ namespace Input::detail {
 
     void ClearExclusivePending(std::size_t s, ClearReason reason, ExclusiveStore& excl, ReplayArr& replay,
                                RetainedArr& retained, DeferredVec& deferred) {
+#ifdef DEBUG
         const char* reasonStr = (reason == ClearReason::Success)   ? "Success"
                                 : (reason == ClearReason::Timeout) ? "Timeout"
                                                                    : "Cancelled";
+#endif
         MAGIC_DEBUG_LOG("[Input] ClearExclusivePending: slot={} reason={} retainedEvents={}", s, reasonStr,
                         retained[s].size());
 

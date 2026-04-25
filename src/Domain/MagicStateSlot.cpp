@@ -7,7 +7,6 @@
 #include "Domain/State.h"
 #include "PCH.h"
 #include "Persistence/Slots.h"
-#include "Persistence/SpellSettingsDB.h"
 #include "Shared/Hand.h"
 #include "Shared/InventoryType.h"
 
@@ -83,7 +82,9 @@ namespace IntegratedMagic {
     void MagicState::EnterHand(Hand hand, const SpellSettings& ss, bool skipAnim) {
         using enum ActivationMode;
         auto& hm = ModeFor(hand);
+#ifdef DEBUG
         const char* handStr = IsLeft(hand) ? "Left" : "Right";
+#endif
         hm = {};
         hm.mode = ss.mode;
         hm.wantAutoAttack = ss.autoAttack;
@@ -171,7 +172,7 @@ namespace IntegratedMagic {
             out.shoutID = Slots::GetSlotShout(slot);
             out.shoutForm = out.shoutID ? RE::TESForm::LookupByID(out.shoutID) : nullptr;
             if (!out.shoutForm) return false;
-            out.shoutSettings = SpellSettingsDB::Get().GetOrCreate(out.shoutID, out.shoutForm);
+            out.shoutSettings = Config::MagicConfigAdapter::Get().GetOrCreateSpellSettings(out.shoutID, out.shoutForm);
 
             out.needsSkipEquipVars = EnsureActiveWithSnapshot(player, slot, false);
             _shout.modeShoutID = out.shoutID;
@@ -200,8 +201,8 @@ namespace IntegratedMagic {
         out.hasLeft = (out.leftSpell != nullptr);
         if (!out.hasRight && !out.hasLeft) return false;
 
-        if (out.hasRight) out.rightSettings = SpellSettingsDB::Get().GetOrCreate(out.rightID, out.rightSpell);
-        if (out.hasLeft) out.leftSettings = SpellSettingsDB::Get().GetOrCreate(out.leftID, out.leftSpell);
+        if (out.hasRight) out.rightSettings = Config::MagicConfigAdapter::Get().GetOrCreateSpellSettings(out.rightID, out.rightSpell);
+        if (out.hasLeft) out.leftSettings = Config::MagicConfigAdapter::Get().GetOrCreateSpellSettings(out.leftID, out.leftSpell);
 
         out.needsSkipEquipVars = EnsureActiveWithSnapshot(player, slot);
         _session.modeSpellRight = out.rightSpell;
@@ -272,7 +273,7 @@ namespace IntegratedMagic {
             if (_session.active && slot == _session.activeSlot && _shout.modeShoutID != 0) {
                 if (_shout.finished) return action;
 
-                const auto ss = SpellSettingsDB::Get().Get(_shout.modeShoutID);
+                const auto ss = Config::MagicConfigAdapter::Get().GetSpellSettings(_shout.modeShoutID);
                 if (ss && ss->mode == Press) {
                     MAGIC_DEBUG_LOG("[State] OnSlotPressed: shout Press toggle -> StopShoutPress + finish");
 
@@ -374,11 +375,11 @@ namespace IntegratedMagic {
 
         SlotEntry e{};
         if (!PrepareSlotEntry(slot, e)) return action;
-        action.needsSkipEquipVars = e.needsSkipEquipVars; 
+        action.needsSkipEquipVars = e.needsSkipEquipVars;
 
         _session.isDualCasting = false;
-        if (e.hasRight && e.hasLeft && e.rightSettings.mode == Automatic && e.leftSettings.mode == Automatic &&
-            e.rightID == e.leftID && GetDualCastCostMultiplier(e.player, e.rightSpell) > 2.f) {
+        if (e.hasRight && e.hasLeft && e.rightID == e.leftID && e.rightSettings.autoAttack &&
+            e.leftSettings.autoAttack && GetDualCastCostMultiplier(e.player, e.rightSpell) > 2.f) {
             _session.isDualCasting = true;
         }
 
@@ -504,7 +505,7 @@ namespace IntegratedMagic {
         };
 
         if (_shout.modeShoutID != 0) {
-            const auto ss = SpellSettingsDB::Get().Get(_shout.modeShoutID);
+            const auto ss = Config::MagicConfigAdapter::Get().GetSpellSettings(_shout.modeShoutID);
             const auto mode = ss ? ss->mode : ActivationMode::Hold;
 
             MAGIC_DEBUG_LOG("[State] OnSlotReleased: shout path mode={}", static_cast<int>(std::to_underlying(mode)));

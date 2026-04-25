@@ -11,7 +11,6 @@
 #include "Input/HotkeyMatcher.h"
 #include "PCH.h"
 #include "Persistence/Slots.h"
-#include "Shared/Hand.h"
 #include "UI/HoveredForm.h"
 
 namespace Application {

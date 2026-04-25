@@ -58,7 +58,11 @@ namespace IntegratedMagic {
         static bool LoadSVG(const char* path, Image& out, int targetSize = 0);
 
         static inline std::map<std::int32_t, Image> icons_;
-        static inline std::map<RE::FormID, Image> formid_icons_;
+
+        static inline std::map<std::string, Image> stable_form_icons_;
+
+        static inline std::map<RE::FormID, Image> legacy_formid_icons_;
+
         static inline std::map<std::int32_t, Image> ui_icons_;
 
         static inline std::map<int, Image> xbox_icons_;
@@ -71,6 +75,13 @@ namespace IntegratedMagic {
         static inline std::string xbox_icon_dir_ = R"(.\Data\SKSE\Plugins\IntegratedMagics\resources\buttons\xbox)";
         static inline std::string ps_icon_dir_ = R"(.\Data\SKSE\Plugins\IntegratedMagics\resources\buttons\ps)";
         static inline std::string kb_icon_dir_ = R"(.\Data\SKSE\Plugins\IntegratedMagics\resources\buttons\keyboard)";
+
+        static std::string MakeStableFormKey(const RE::TESForm* form);
+        static std::string MakeStableFormKey(std::string_view pluginName, std::uint32_t localFormID);
+        static std::string NormalizePluginName(std::string s);
+        static std::uint32_t GetLocalFormID(const RE::TESForm* form);
+        static std::string GetPluginName(const RE::TESForm* form);
+        static void LoadUniqueSpellIcons();
 
         static inline const std::map<std::string, SpellIconType> filename_map_ = {
             {"spell_default.svg", SpellIconType::spell_default},

@@ -11,6 +11,72 @@
 #define NANOSVGRAST_IMPLEMENTATION
 #include "nanosvgrast.h"
 namespace IntegratedMagic {
+    std::string TextureManager::NormalizePluginName(std::string s) {
+        for (auto& c : s) {
+            if (c == '/') {
+                c = '\\';
+            }
+
+            c = static_cast<char>(::tolower(static_cast<unsigned char>(c)));
+        }
+
+        return s;
+    }
+
+    std::string TextureManager::GetPluginName(const RE::TESForm* form) {
+        if (!form) {
+            return {};
+        }
+
+        const auto* file = form->GetFile(0);
+        if (!file) {
+            return {};
+        }
+
+        return file->fileName;
+    }
+
+    std::uint32_t TextureManager::GetLocalFormID(const RE::TESForm* form) {
+        if (!form) {
+            return 0u;
+        }
+
+        const auto runtimeID = form->GetFormID();
+        const auto* file = form->GetFile(0);
+
+        if (!file) {
+            return runtimeID;
+        }
+
+        if (file->IsLight()) {
+            return runtimeID & 0x00000FFFu;
+        }
+
+        return runtimeID & 0x00FFFFFFu;
+    }
+
+    std::string TextureManager::MakeStableFormKey(std::string_view pluginName, std::uint32_t localFormID) {
+        if (pluginName.empty() || localFormID == 0u) {
+            return {};
+        }
+
+        std::string plugin{pluginName};
+        plugin = NormalizePluginName(std::move(plugin));
+
+        return std::format("{}|{:08X}", plugin, localFormID);
+    }
+
+    std::string TextureManager::MakeStableFormKey(const RE::TESForm* form) {
+        if (!form) {
+            return {};
+        }
+
+        const auto plugin = GetPluginName(form);
+        const auto localID = GetLocalFormID(form);
+
+        return MakeStableFormKey(plugin, localID);
+    }
+
     void TextureManager::Init() {
         if (!std::filesystem::exists(icon_dir_)) {
             spdlog::warn("[TextureManager] Icon directory not found: {}", icon_dir_);
@@ -33,34 +99,7 @@ namespace IntegratedMagic {
             }
         }
 
-        formid_icons_.clear();
-        if (std::filesystem::exists(spell_icon_dir_)) {
-            for (const auto& entry : std::filesystem::directory_iterator(spell_icon_dir_)) {
-                const auto& path = entry.path();
-                if (path.extension() != ".svg") continue;
-
-                const std::string stem = path.stem().string();
-                if (stem.size() != 8) continue;
-
-                try {
-                    const auto formID = static_cast<RE::FormID>(std::stoul(stem, nullptr, 16));
-                    Image img;
-                    if (LoadSVG(path.string().c_str(), img)) {
-                        formid_icons_[formID] = img;
-
-                        MAGIC_DEBUG_LOG("[TextureManager] Loaded spell icon: {} -> FormID {:#010x}", stem, formID);
-
-                    } else {
-                        spdlog::error("[TextureManager] Failed to load spell icon: {}", stem);
-                    }
-                } catch (...) {
-                    spdlog::warn("[TextureManager] Invalid spell icon filename (not hex8): {}", stem);
-                }
-            }
-
-            MAGIC_DEBUG_LOG("[TextureManager] Loaded {} per-spell icon(s).", formid_icons_.size());
-        }
-
+        LoadUniqueSpellIcons();
         ui_icons_.clear();
         if (std::filesystem::exists(ui_icon_dir_)) {
             for (const auto& entry : std::filesystem::directory_iterator(ui_icon_dir_)) {
@@ -88,24 +127,164 @@ namespace IntegratedMagic {
         keyboard_icons_.clear();
     }
 
+    void TextureManager::LoadUniqueSpellIcons() {
+        stable_form_icons_.clear();
+        legacy_formid_icons_.clear();
+
+        if (!std::filesystem::exists(spell_icon_dir_)) {
+            return;
+        }
+
+        auto isHex8 = [](std::string_view s) {
+            if (s.size() != 8) {
+                return false;
+            }
+
+            for (const auto c : s) {
+                if (!std::isxdigit(static_cast<unsigned char>(c))) {
+                    return false;
+                }
+            }
+
+            return true;
+        };
+
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(spell_icon_dir_)) {
+            if (!entry.is_regular_file()) {
+                continue;
+            }
+
+            const auto& path = entry.path();
+
+            if (path.extension() != ".svg") {
+                continue;
+            }
+
+            const std::string stem = path.stem().string();
+
+            if (isHex8(stem)) {
+                const auto parent = path.parent_path();
+
+                if (parent != std::filesystem::path(spell_icon_dir_)) {
+                    const std::string pluginName = parent.filename().string();
+                    const auto localID = static_cast<std::uint32_t>(std::stoul(stem, nullptr, 16));
+                    const auto key = MakeStableFormKey(pluginName, localID);
+
+                    if (!key.empty()) {
+                        Image img;
+
+                        if (LoadSVG(path.string().c_str(), img)) {
+                            stable_form_icons_[key] = img;
+
+                            MAGIC_DEBUG_LOG("[TextureManager] Loaded stable spell icon: {} -> {}", path.string(), key);
+                        } else {
+                            spdlog::error("[TextureManager] Failed to load stable spell icon: {}", path.string());
+                        }
+
+                        continue;
+                    }
+                }
+
+                try {
+                    const auto formID = static_cast<RE::FormID>(std::stoul(stem, nullptr, 16));
+
+                    Image img;
+
+                    if (LoadSVG(path.string().c_str(), img)) {
+                        legacy_formid_icons_[formID] = img;
+
+                        MAGIC_DEBUG_LOG("[TextureManager] Loaded legacy runtime spell icon: {} -> FormID {:#010x}",
+                                        path.string(), formID);
+                    } else {
+                        spdlog::error("[TextureManager] Failed to load legacy spell icon: {}", path.string());
+                    }
+                } catch (...) {
+                    spdlog::warn("[TextureManager] Invalid legacy spell icon filename: {}", path.string());
+                }
+
+                continue;
+            }
+
+            const auto sep = stem.rfind("__");
+            if (sep != std::string::npos) {
+                const auto plugin = stem.substr(0, sep);
+                const auto localHex = stem.substr(sep + 2);
+
+                if (isHex8(localHex)) {
+                    const auto localID = static_cast<std::uint32_t>(std::stoul(localHex, nullptr, 16));
+                    const auto key = MakeStableFormKey(plugin, localID);
+
+                    if (!key.empty()) {
+                        Image img;
+
+                        if (LoadSVG(path.string().c_str(), img)) {
+                            stable_form_icons_[key] = img;
+
+                            MAGIC_DEBUG_LOG("[TextureManager] Loaded flat stable spell icon: {} -> {}", path.string(),
+                                            key);
+                        } else {
+                            spdlog::error("[TextureManager] Failed to load flat stable spell icon: {}", path.string());
+                        }
+                    }
+                }
+
+                continue;
+            }
+
+            MAGIC_DEBUG_LOG("[TextureManager] Ignored unique spell icon with unsupported name: {}", path.string());
+        }
+
+        MAGIC_DEBUG_LOG("[TextureManager] Loaded {} stable per-spell icon(s), {} legacy per-spell icon(s).",
+                        stable_form_icons_.size(), legacy_formid_icons_.size());
+    }
+
     const TextureManager::Image& TextureManager::GetSpellIcon(const RE::SpellItem* spell) {
         if (spell) {
-            if (auto it = formid_icons_.find(spell->GetFormID()); it != formid_icons_.end()) return it->second;
+            const auto stableKey = MakeStableFormKey(spell);
+
+            if (!stableKey.empty()) {
+                if (auto it = stable_form_icons_.find(stableKey); it != stable_form_icons_.end()) {
+                    return it->second;
+                }
+            }
+
+            if (auto it = legacy_formid_icons_.find(spell->GetFormID()); it != legacy_formid_icons_.end()) {
+                return it->second;
+            }
         }
+
         return GetIcon(ClassifySpell(spell));
     }
 
     const TextureManager::Image& TextureManager::GetIconForForm(RE::FormID formID) {
-        if (!formID) return GetIcon(SpellIconType::spell_default);
-
-        if (auto it = formid_icons_.find(formID); it != formid_icons_.end()) return it->second;
+        if (!formID) {
+            return GetIcon(SpellIconType::spell_default);
+        }
 
         auto* form = RE::TESForm::LookupByID(formID);
-        if (!form) return GetIcon(SpellIconType::spell_default);
+        if (!form) {
+            return GetIcon(SpellIconType::spell_default);
+        }
 
-        if (form->As<RE::TESShout>()) return GetIcon(SpellIconType::shout);
+        const auto stableKey = MakeStableFormKey(form);
 
-        if (auto const* spell = form->As<RE::SpellItem>()) return GetSpellIcon(spell);
+        if (!stableKey.empty()) {
+            if (auto it = stable_form_icons_.find(stableKey); it != stable_form_icons_.end()) {
+                return it->second;
+            }
+        }
+
+        if (auto it = legacy_formid_icons_.find(formID); it != legacy_formid_icons_.end()) {
+            return it->second;
+        }
+
+        if (form->As<RE::TESShout>()) {
+            return GetIcon(SpellIconType::shout);
+        }
+
+        if (auto const* spell = form->As<RE::SpellItem>()) {
+            return GetSpellIcon(spell);
+        }
 
         return GetIcon(SpellIconType::spell_default);
     }
