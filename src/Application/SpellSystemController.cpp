@@ -111,10 +111,25 @@ namespace Application {
 
             if (action.result == IntegratedMagic::SlotPressResult::Deactivated) input.SetSlotDeactivatedThisPress(*s);
 
+            if (action.restorePlan) ExecuteRestoreSnapshotPlan(*action.restorePlan);
+
+            if (action.finalizeAfterController) state.FinalizeRestoreSnapshotPlan(action.resetShoutAfterController);
+
             if (action.needsSkipEquipVars) {
+                IntegratedMagic::MagicAction::ResetSkipEquipToken();
                 IntegratedMagic::MagicAction::SetSkipEquipVars(player, true);
                 player->DrawWeaponMagicHands(true);
             }
+
+            for (auto& intent : action.spellsToEquip) {
+                IntegratedMagic::MagicAction::EquipSpellInHand(player, intent.spell, intent.hand, action.skipAnim);
+            }
+
+            if (action.shoutToEquip) IntegratedMagic::MagicAction::EquipShoutInVoice(player, action.shoutToEquip);
+
+            if (action.startShoutDispatch) IntegratedMagic::detail::DispatchShout(1.0f, 0.0f);
+
+            if (!action.spellsToEquip.empty()) state.OnEquipComplete(action.inventorySnapshotBefore);
 
             if (action.leftAttack)
                 IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 0.0f, action.leftAttack->heldSecs);
@@ -124,19 +139,6 @@ namespace Application {
                                                         action.rightAttack->heldSecs);
 
             if (action.shout) IntegratedMagic::detail::DispatchShout(0.0f, action.shout->heldSecs);
-
-            if (action.restorePlan) ExecuteRestoreSnapshotPlan(*action.restorePlan);
-
-            if (action.finalizeAfterController) state.FinalizeRestoreSnapshotPlan(action.resetShoutAfterController);
-
-            for (auto& intent : action.spellsToEquip)
-                IntegratedMagic::MagicAction::EquipSpellInHand(player, intent.spell, intent.hand, action.skipAnim);
-
-            if (action.shoutToEquip) IntegratedMagic::MagicAction::EquipShoutInVoice(player, action.shoutToEquip);
-
-            if (action.startShoutDispatch) IntegratedMagic::detail::DispatchShout(1.0f, 0.0f);
-
-            if (!action.spellsToEquip.empty()) state.OnEquipComplete(action.inventorySnapshotBefore);
         }
 
         for (auto s = input.ConsumeReleasedSlot(); s.has_value(); s = input.ConsumeReleasedSlot()) {
@@ -151,7 +153,6 @@ namespace Application {
 
         if (tag == "EnableBumper"sv) {
             const auto r = state.NotifyAttackEnabled();
-            if (auto* p = RE::PlayerCharacter::GetSingleton()) IntegratedMagic::MagicAction::DisableSkipEquipVarsNow(p);
             if (r.dispatchLeft) IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 1.0f, 0.0f);
             if (r.dispatchRight) IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Right, 1.0f, 0.0f);
         }

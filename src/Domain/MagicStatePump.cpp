@@ -413,6 +413,24 @@ namespace IntegratedMagic {
         if (_session.wasHandsDown && _session.firstInterrupt == 1) {
             ++_session.firstInterrupt;
             MAGIC_DEBUG_LOG("[State] OnCastInterrupt: weapon-draw interrupt - ignoring");
+            using enum Hand;
+            auto resetPhase = [&](Hand h) {
+                auto& hm = ModeFor(h);
+                if (_aa.Held(h) && hm.autoCastPhase == AutoCastPhase::Casting) {
+                    hm.autoCastPhase = AutoCastPhase::StartRequested;
+                    hm.waitingBeginCast = true;
+                    hm.beginCastWaitSecs = 0.f;
+                    hm.startRequestSecs = 0.f;
+                    hm.stalledCastSecs = 0.f;
+                    hm.sawBeginCastEvent = false;
+                    hm.casterInterruptPending = false;
+                    MAGIC_DEBUG_LOG("[State] OnCastInterrupt: weapon-draw -> reset {} to StartRequested",
+                                    IsLeft(h) ? "Left" : "Right");
+                }
+            };
+            resetPhase(Left);
+            resetPhase(Right);
+
             return result;
         }
 

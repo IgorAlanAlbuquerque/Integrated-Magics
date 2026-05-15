@@ -118,8 +118,7 @@ Built with [CommonLibSSE NG](https://github.com/alandtse/CommonLibVR) — suppor
 | --- | --- |
 | Skyrim SE | ✅ |
 | Skyrim AE | ✅ |
-| Skyrim GOG | ✅ |
-| Skyrim VR | ✅ |
+| Skyrim GOG | Not tested |
 
 ---
 

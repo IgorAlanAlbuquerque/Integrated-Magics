@@ -15,7 +15,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
 
     void DrawRingCenter(ImDrawList* dl, ImVec2 c, float r = 4.f);
     void DrawModifierWidget(ImDrawList* dl, ImVec2 c, bool modHeld, const HudView& v);
-    void DrawSlotHotkeyIcons(ImDrawList* dl, ImVec2 center, float slotR, const SlotView& s);
+    void DrawSlotHotkeyIcons(ImDrawList* dl, ImVec2 center, float slotR, const SlotView& s, float extraUpOffset = 0.f);
     void DrawSlotButtonLabel(ImDrawList* dl, ImVec2 center, float slotR, const SlotView& s, const HudView& v,
                              ImVec2 hudOrigin, float alpha);
 

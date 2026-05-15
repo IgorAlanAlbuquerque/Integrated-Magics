@@ -120,18 +120,12 @@ namespace IntegratedMagic::MagicAction {
         mgr->EquipSpell(player, spell, equipSlot);
     }
 
-    void DisableSkipEquipVarsNow(RE::PlayerCharacter* player) {
-        const std::uint64_t cur = g_skipToken.load(std::memory_order_relaxed);
-        if ((cur & 1uLL) == 0) return;
-        const std::uint64_t next = (cur + 1uLL) & ~1uLL;
-        g_skipToken.store(next, std::memory_order_relaxed);
-        SetSkipEquipVars(player, false);
-        MAGIC_DEBUG_LOG("[Action] DisableSkipEquipVarsNow: InstantEquipAnim = false (token {} -> {})", cur, next);
-    }
-
     void SetSkipEquipVars(RE::PlayerCharacter* pc, bool enable) {
         if (!pc) return;
+        const std::uint64_t token = (g_skipToken.fetch_add(1, std::memory_order_relaxed) + 1) | 1uLL;
+        g_skipToken.store(token, std::memory_order_relaxed);
         (void)pc->SetGraphVariableBool(kInstantAnim, enable);
+        ScheduleDisableSkipEquip(token, 500);
     }
 
     void ClearHandSpell(RE::PlayerCharacter* player, RE::SpellItem* spell, Hand hand) {
@@ -201,5 +195,12 @@ namespace IntegratedMagic::MagicAction {
         SetSkipEquipVars(player, true);
         MAGIC_DEBUG_LOG("[Action] ApplySkipEquipAnimReturn: InstantEquipAnim = true (token={})", token);
         ScheduleDisableSkipEquip(token, 500);
+    }
+
+    void ResetSkipEquipToken() {
+        uint64_t cur = g_skipToken.load(std::memory_order_relaxed);
+        if (cur & 1uLL) {
+            g_skipToken.fetch_add(1, std::memory_order_relaxed);
+        }
     }
 }
