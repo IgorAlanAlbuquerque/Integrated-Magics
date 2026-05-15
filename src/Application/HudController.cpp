@@ -1,5 +1,6 @@
 #include "Application/HudController.h"
 
+#include "Adapters/Inbound/HoveredForm.h"
 #include "Application/AssignService.h"
 #include "Application/InputController.h"
 #include "Config/ConfigAdapter.h"
@@ -12,7 +13,6 @@
 #include "Shared/Hand.h"
 #include "Shared/HudIntents.h"
 #include "Shared/InputIntents.h"
-#include "Adapters/Inbound/HoveredForm.h"
 #include "UI/HudManager.h"
 #include "UI/HudState.h"
 #include "UI/HudView.h"
@@ -274,6 +274,33 @@ namespace Application {
         }
 
         IntegratedMagic::HUD::StoreHudView(v);
+
+        if (inMagicMenu && !nowPopupOpen) {
+            static std::uint64_t s_wasDown = 0;
+            std::uint64_t nowDown = 0;
+            for (int i = 0; i < n; ++i) {
+                if (input.IsSlotHotkeyDown(i)) nowDown |= (1uLL << static_cast<std::uint64_t>(i));
+            }
+            const std::uint64_t justPressed = nowDown & ~s_wasDown;
+            s_wasDown = nowDown;
+
+            if (justPressed) {
+                const auto t = IntegratedMagic::HoveredForm::GetHoveredMagicType();
+                using HM = IntegratedMagic::HoveredForm::MagicType;
+                for (int i = 0; i < n; ++i) {
+                    if (!(justPressed & (1uLL << static_cast<std::uint64_t>(i)))) continue;
+                    if (t == HM::Shout || t == HM::Power) {
+                        IntegratedMagic::MagicAssign::TryAssignHoveredShoutToSlot(i);
+                    } else if (t == HM::TwoHandedSpell || t == HM::LeftOnlySpell) {
+                        IntegratedMagic::MagicAssign::TryAssignHoveredSpellToSlot(i, IntegratedMagic::Hand::Left);
+                    } else if (t == HM::RightOnlySpell) {
+                        IntegratedMagic::MagicAssign::TryAssignHoveredSpellToSlot(i, IntegratedMagic::Hand::Right);
+                    } else if (t != HM::None) {
+                        IntegratedMagic::MagicAssign::TryAssignHoveredSpellToSlot(i, IntegratedMagic::Hand::Left);
+                    }
+                }
+            }
+        }
 
         Input::detail::g_popupOpenForInput.store(nowPopupOpen, std::memory_order_relaxed);
     }
