@@ -2,7 +2,7 @@
 
 #include "Adapters/Inbound/EquipEventAdapter.h"
 #include "PCH.h"
-#include "Domain/SpellClassify.h"
+#include "Shared/SpellClassify.h"
 
 namespace IntegratedMagic::HoveredForm {
     namespace {

@@ -1,9 +1,10 @@
 #include <utility>
 
 #include "Config/ConfigAdapter.h"
-#include "Domain/InventoryUtil.h"
+#include "Domain/CasterUtil.h"
+#include "Shared/InventoryUtil.h"
 #include "Domain/SlotCostUtil.h"
-#include "Domain/SpellClassify.h"
+#include "Shared/SpellClassify.h"
 #include "Domain/State.h"
 #include "PCH.h"
 #include "Persistence/Slots.h"

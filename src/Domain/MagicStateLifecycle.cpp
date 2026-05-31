@@ -2,7 +2,8 @@
 #undef GetObject
 
 #include "Config/ConfigAdapter.h"
-#include "Domain/InventoryUtil.h"
+#include "Domain/CasterUtil.h"
+#include "Shared/InventoryUtil.h"
 #include "Domain/State.h"
 #include "PCH.h"
 #include "Shared/Hand.h"

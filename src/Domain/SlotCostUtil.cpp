@@ -1,6 +1,6 @@
 #include "Domain/SlotCostUtil.h"
 
-#include "Domain/InventoryUtil.h"
+#include "Shared/InventoryUtil.h"
 #include "PCH.h"
 #include "Persistence/Slots.h"
 #include "Shared/Hand.h"

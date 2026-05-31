@@ -4,9 +4,9 @@
 #include "Input/HotkeyCacheStore.h"
 #include "Input/KeyStateStore.h"
 #include "Input/ReplaySystem.h"
-#include "Shared/ReplayTypes.h"
 #include "Input/SlotEdgeStore.h"
 #include "PCH.h"
+#include "Shared/ReplayTypes.h"
 
 namespace Input::detail {
 

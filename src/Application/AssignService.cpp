@@ -1,7 +1,7 @@
 #include "Application/AssignService.h"
 
 #include "Config/ConfigAdapter.h"
-#include "Domain/SpellClassify.h"
+#include "Shared/SpellClassify.h"
 #include "PCH.h"
 #include "Persistence/Slots.h"
 #include "Shared/Hand.h"

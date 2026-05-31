@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "Domain/InventoryUtil.h"
+#include "Shared/InventoryUtil.h"
 #include "PCH.h"
 #include "Shared/AttackEnabledResult.h"
 #include "Shared/Hand.h"

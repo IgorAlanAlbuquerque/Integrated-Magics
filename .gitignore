@@ -17,3 +17,5 @@ cmake-build*
 
 # Skyrim archive files
 *.bsa
+
+.claude/settings.json
