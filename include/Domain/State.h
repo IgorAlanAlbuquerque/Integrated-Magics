@@ -276,7 +276,7 @@ namespace IntegratedMagic {
         bool RequestAutoAttackStart(Hand hand, bool clearWaitAfterEquip);
         void ConfirmAutoCastStarted(Hand hand);
         void ResetAutoCastStartState(Hand hand);
-        bool HasRealCastStarted(Hand hand, const RE::SpellItem* expectedSpell) const;
+        bool HasRealCastStarted(Hand hand, const RE::SpellItem* expectedSpell, bool silent = false) const;
         bool HasDualCastStarted(const RE::SpellItem* expectedSpell) const;
         bool IsCasterIdleForExpectedSpell(Hand hand, const RE::SpellItem* expectedSpell) const;
 

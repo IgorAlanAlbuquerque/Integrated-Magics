@@ -8,10 +8,10 @@
 #include "Application/AssignService.h"
 #include "Application/InputController.h"
 #include "Config/ConfigAdapter.h"
+#include "Config/Slots.h"
 #include "Domain/State.h"
 #include "Input/HotkeyMatcher.h"
 #include "PCH.h"
-#include "Persistence/Slots.h"
 
 namespace Application {
 
@@ -41,14 +41,28 @@ namespace Application {
             const auto aaResult = IntegratedMagic::MagicState::Get().PumpAutoAttack(dt);
 
             if (aaResult.leftAttack) {
-                MAGIC_DEBUG_LOG("[FLOW] OnFrame: dispatching aa.leftAttack power={:.2f} held={:.3f}",
-                                aaResult.leftAttack->power, aaResult.leftAttack->secsHeld);
+#ifdef DEBUG
+                static float s_lastLeftDispatchLog = -2.f;
+                const float leftHeld = aaResult.leftAttack->secsHeld;
+                if ((leftHeld < s_lastLeftDispatchLog) || (leftHeld - s_lastLeftDispatchLog >= 1.0f)) {
+                    s_lastLeftDispatchLog = leftHeld;
+                    MAGIC_DEBUG_LOG("[FLOW] OnFrame: dispatching aa.leftAttack power={:.2f} held={:.3f}",
+                                    aaResult.leftAttack->power, leftHeld);
+                }
+#endif
                 IntegratedMagic::detail::DispatchAttack(aaResult.leftAttack->hand, aaResult.leftAttack->power,
                                                         aaResult.leftAttack->secsHeld);
             }
             if (aaResult.rightAttack) {
-                MAGIC_DEBUG_LOG("[FLOW] OnFrame: dispatching aa.rightAttack power={:.2f} held={:.3f}",
-                                aaResult.rightAttack->power, aaResult.rightAttack->secsHeld);
+#ifdef DEBUG
+                static float s_lastRightDispatchLog = -2.f;
+                const float rightHeld = aaResult.rightAttack->secsHeld;
+                if ((rightHeld < s_lastRightDispatchLog) || (rightHeld - s_lastRightDispatchLog >= 1.0f)) {
+                    s_lastRightDispatchLog = rightHeld;
+                    MAGIC_DEBUG_LOG("[FLOW] OnFrame: dispatching aa.rightAttack power={:.2f} held={:.3f}",
+                                    aaResult.rightAttack->power, rightHeld);
+                }
+#endif
                 IntegratedMagic::detail::DispatchAttack(aaResult.rightAttack->hand, aaResult.rightAttack->power,
                                                         aaResult.rightAttack->secsHeld);
             }

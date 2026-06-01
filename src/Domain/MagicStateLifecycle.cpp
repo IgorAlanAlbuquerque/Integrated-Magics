@@ -3,10 +3,10 @@
 
 #include "Config/ConfigAdapter.h"
 #include "Domain/CasterUtil.h"
-#include "Shared/InventoryUtil.h"
 #include "Domain/State.h"
 #include "PCH.h"
 #include "Shared/Hand.h"
+#include "Shared/InventoryUtil.h"
 
 namespace IntegratedMagic {
     namespace {

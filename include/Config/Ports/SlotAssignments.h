@@ -7,11 +7,6 @@
 
 namespace IntegratedMagic::Config {
 
-    struct SpellTypeDefaults {
-        ActivationMode mode;
-        bool autoAttack;
-    };
-
     class ISlotAssignments {
     public:
         virtual ~ISlotAssignments() = default;

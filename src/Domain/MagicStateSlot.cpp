@@ -1,15 +1,15 @@
 #include <utility>
 
 #include "Config/ConfigAdapter.h"
+#include "Config/Slots.h"
 #include "Domain/CasterUtil.h"
-#include "Shared/InventoryUtil.h"
 #include "Domain/SlotCostUtil.h"
-#include "Shared/SpellClassify.h"
 #include "Domain/State.h"
 #include "PCH.h"
-#include "Persistence/Slots.h"
 #include "Shared/Hand.h"
 #include "Shared/InventoryType.h"
+#include "Shared/InventoryUtil.h"
+#include "Shared/SpellClassify.h"
 
 namespace IntegratedMagic {
 
@@ -202,8 +202,10 @@ namespace IntegratedMagic {
         out.hasLeft = (out.leftSpell != nullptr);
         if (!out.hasRight && !out.hasLeft) return false;
 
-        if (out.hasRight) out.rightSettings = Config::MagicConfigAdapter::Get().GetOrCreateSpellSettings(out.rightID, out.rightSpell);
-        if (out.hasLeft) out.leftSettings = Config::MagicConfigAdapter::Get().GetOrCreateSpellSettings(out.leftID, out.leftSpell);
+        if (out.hasRight)
+            out.rightSettings = Config::MagicConfigAdapter::Get().GetOrCreateSpellSettings(out.rightID, out.rightSpell);
+        if (out.hasLeft)
+            out.leftSettings = Config::MagicConfigAdapter::Get().GetOrCreateSpellSettings(out.leftID, out.leftSpell);
 
         out.needsSkipEquipVars = EnsureActiveWithSnapshot(player, slot);
         _session.modeSpellRight = out.rightSpell;

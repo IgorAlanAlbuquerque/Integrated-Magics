@@ -7,8 +7,8 @@
 #include <array>
 
 #include "Application/SpellSystemController.h"
+#include "Config/Slots.h"
 #include "PCH.h"
-#include "Persistence/Slots.h"
 #include "Shared/Hand.h"
 
 namespace IntegratedMagic::EquipSink {

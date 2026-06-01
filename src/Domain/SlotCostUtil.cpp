@@ -1,9 +1,9 @@
 #include "Domain/SlotCostUtil.h"
 
-#include "Shared/InventoryUtil.h"
+#include "Config/Slots.h"
 #include "PCH.h"
-#include "Persistence/Slots.h"
 #include "Shared/Hand.h"
+#include "Shared/InventoryUtil.h"
 
 namespace IntegratedMagic {
 

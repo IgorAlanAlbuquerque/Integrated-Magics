@@ -4,8 +4,8 @@
 #include <cmath>
 #include <limits>
 
+#include "Config/Slots.h"
 #include "PCH.h"
-#include "Persistence/Slots.h"
 
 namespace IntegratedMagic {
 

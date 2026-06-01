@@ -20,11 +20,6 @@ namespace IntegratedMagic {
         std::atomic<int> GamepadButton3{-1};
     };
 
-    struct SpellTypeDefaults {
-        ActivationMode mode{ActivationMode::Hold};
-        bool autoAttack{true};
-    };
-
     enum class HudVisibilityFlag : std::uint8_t {
         Never = 0,
         SlotActive = 1 << 0,

@@ -7,7 +7,6 @@
 #include <iomanip>
 #include <nlohmann/json.hpp>
 
-#include "Adapters/Inbound/SpellTypeDetector.h"
 #include "PCH.h"
 
 namespace {
@@ -179,7 +178,7 @@ namespace IntegratedMagic {
     }
 
     SpellSettings SpellSettingsDB::GetOrCreate(std::uint32_t spellFormID, const RE::TESForm* form,
-                                               const Config::ISlotAssignments* assignments) {
+                                               const SpellTypeDefaults* defaults) {
         std::scoped_lock _{_mtx};
 
         const std::string stableKey = MakeStableKey(form);
@@ -207,11 +206,9 @@ namespace IntegratedMagic {
 
         SpellSettings s{};
 
-        if (form && assignments) {
-            const auto type = Adapters::DetectSpellType(form);
-            const auto d = assignments->GetSpellDefaults(type);
-            s.mode = d.mode;
-            s.autoAttack = d.autoAttack;
+        if (defaults) {
+            s.mode = defaults->mode;
+            s.autoAttack = defaults->autoAttack;
         }
 
         const std::string& keyToUse = !stableKey.empty() ? stableKey : legacyKey;

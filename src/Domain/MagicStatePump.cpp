@@ -1,13 +1,13 @@
 #include <utility>
 
 #include "Config/ConfigAdapter.h"
+#include "Config/Slots.h"
 #include "Domain/CasterUtil.h"
-#include "Shared/InventoryUtil.h"
-#include "Shared/SpellClassify.h"
 #include "Domain/State.h"
 #include "PCH.h"
-#include "Persistence/Slots.h"
 #include "Shared/Hand.h"
+#include "Shared/InventoryUtil.h"
+#include "Shared/SpellClassify.h"
 
 namespace IntegratedMagic {
     PumpResult MagicState::PumpAutoAttack(float dt) {
@@ -92,7 +92,7 @@ namespace IntegratedMagic {
         MAGIC_DEBUG_LOG("[State] ConfirmAutoCastStarted: hand={}", IsLeft(hand) ? "Left" : "Right");
     }
 
-    bool MagicState::HasRealCastStarted(Hand hand, const RE::SpellItem* expectedSpell) const {
+    bool MagicState::HasRealCastStarted(Hand hand, const RE::SpellItem* expectedSpell, bool silent) const {
         auto* player = GetPlayer();
         if (!player) return false;
 
@@ -105,12 +105,12 @@ namespace IntegratedMagic {
         const auto* current = caster->currentSpell;
         const auto state = std::to_underlying(caster->state.get());
 
-        MAGIC_DEBUG_LOG(
-            "[State] HasRealCastStarted probe: hand={} caster={} current={:#010x} state={} expected={:#010x}",
-            IsLeft(hand) ? "L" : "R", caster != nullptr, current ? current->GetFormID() : 0u, state,
-            expectedSpell ? expectedSpell->GetFormID() : 0u);
-
-        if (current == expectedSpell) return true;
+        if (!silent) {
+            MAGIC_DEBUG_LOG(
+                "[State] HasRealCastStarted probe: hand={} caster={} current={:#010x} state={} expected={:#010x}",
+                IsLeft(hand) ? "L" : "R", caster != nullptr, current ? current->GetFormID() : 0u, state,
+                expectedSpell ? expectedSpell->GetFormID() : 0u);
+        }
 
         if (current != nullptr && state != 0) return true;
 
@@ -542,16 +542,26 @@ namespace IntegratedMagic {
             IsLeft(hand) ? RE::MagicSystem::CastingSource::kLeftHand : RE::MagicSystem::CastingSource::kRightHand;
 
         const auto* caster = GetMagicCaster(player, src);
+
+        const float pumpSecs = _aa.Secs(hand);
 #ifdef DEBUG
+        static float s_pumpHandLastLog[2] = {-2.f, -2.f};
+        const int pumpHi = IsLeft(hand) ? 0 : 1;
+        const bool shouldLog = (pumpSecs < s_pumpHandLastLog[pumpHi]) || (pumpSecs - s_pumpHandLastLog[pumpHi] >= 1.0f);
+        if (shouldLog) s_pumpHandLastLog[pumpHi] = pumpSecs;
+
         const auto casterCurrent = caster && caster->currentSpell ? caster->currentSpell->GetFormID() : 0u;
         const auto casterState = caster ? std::to_underlying(caster->state.get()) : -1;
+        const float casterTimer = caster ? caster->castingTimer : -1.f;
 #endif
 
-        MAGIC_DEBUG_LOG(
-            "[FLOW] PumpAutomaticHand hand={} phase={} aaHeld={} secs={:.2f} | "
-            "spell={:#010x} | casterCurrent={:#010x} casterState={}",
-            handStr, static_cast<int>(hm.autoCastPhase), _aa.Held(hand), _aa.Secs(hand), id, casterCurrent,
-            casterState);
+        if (shouldLog) {
+            MAGIC_DEBUG_LOG(
+                "[FLOW] PumpAutomaticHand hand={} phase={} aaHeld={} secs={:.2f} | "
+                "spell={:#010x} | casterCurrent={:#010x} casterState={} castingTimer={:.4f}",
+                handStr, static_cast<int>(hm.autoCastPhase), _aa.Held(hand), pumpSecs, id, casterCurrent, casterState,
+                casterTimer);
+        }
 
         if (hm.autoCastPhase == AutoCastPhase::StartRequested) {
             if (_session.isDualCasting) {
@@ -565,18 +575,20 @@ namespace IntegratedMagic {
                     ConfirmAutoCastStarted(Hand::Left);
                     ConfirmAutoCastStarted(Hand::Right);
                 } else {
-                    MAGIC_DEBUG_LOG("[FLOW] PumpAutomaticHand hand={} StartRequested -> dual caster NOT started yet",
-                                    handStr);
+                    if (shouldLog)
+                        MAGIC_DEBUG_LOG(
+                            "[FLOW] PumpAutomaticHand hand={} StartRequested -> dual caster NOT started yet", handStr);
                 }
             } else {
-                const bool casterStarted = spell && HasRealCastStarted(hand, spell);
+                const bool casterStarted = spell && HasRealCastStarted(hand, spell, !shouldLog);
                 if (casterStarted) {
                     MAGIC_DEBUG_LOG("[FLOW] PumpAutomaticHand hand={} StartRequested -> confirmed via caster probe",
                                     handStr);
                     ConfirmAutoCastStarted(hand);
                 } else {
-                    MAGIC_DEBUG_LOG("[FLOW] PumpAutomaticHand hand={} StartRequested -> caster NOT started yet",
-                                    handStr);
+                    if (shouldLog)
+                        MAGIC_DEBUG_LOG("[FLOW] PumpAutomaticHand hand={} StartRequested -> caster NOT started yet",
+                                        handStr);
                 }
             }
         }
@@ -590,8 +602,10 @@ namespace IntegratedMagic {
         }
 
         if (!IsChargeComplete(caster, spell)) {
-            MAGIC_DEBUG_LOG("[FLOW] PumpAutomaticHand hand={} charge NOT complete - chargeTime={:.3f}", handStr,
-                            spell->GetChargeTime());
+            const float chargeTime = spell->GetChargeTime();
+            if (shouldLog)
+                MAGIC_DEBUG_LOG("[FLOW] PumpAutomaticHand hand={} charge NOT complete - chargeTime={:.3f} secs={:.3f}",
+                                handStr, chargeTime, pumpSecs);
             return result;
         }
 
@@ -654,11 +668,22 @@ namespace IntegratedMagic {
             case AutoCastPhase::StartRequested: {
                 hm.startRequestSecs += add;
 
-                MAGIC_DEBUG_LOG(
-                    "[FLOW] PumpAutoStartFallback[StartRequested] hand={} aaHeld={} startRequestSecs={:.3f} "
-                    "stalledCastSecs={:.3f} retries={} sawBeginCast={} casterInterruptPending={}",
-                    handStr, _aa.Held(hand), hm.startRequestSecs, hm.stalledCastSecs, hm.beginCastRetries,
-                    hm.sawBeginCastEvent, hm.casterInterruptPending);
+#ifdef DEBUG
+                static float s_fallbackLastLog[2] = {-2.f, -2.f};
+                const int fbHi = IsLeft(hand) ? 0 : 1;
+                const float fbSecs = hm.startRequestSecs;
+                const bool fbShouldLog =
+                    (fbSecs < s_fallbackLastLog[fbHi]) || (fbSecs - s_fallbackLastLog[fbHi] >= 1.0f);
+                if (fbShouldLog) s_fallbackLastLog[fbHi] = fbSecs;
+#endif
+
+                if (fbShouldLog) {
+                    MAGIC_DEBUG_LOG(
+                        "[FLOW] PumpAutoStartFallback[StartRequested] hand={} aaHeld={} startRequestSecs={:.3f} "
+                        "stalledCastSecs={:.3f} retries={} sawBeginCast={} casterInterruptPending={}",
+                        handStr, _aa.Held(hand), hm.startRequestSecs, hm.stalledCastSecs, hm.beginCastRetries,
+                        hm.sawBeginCastEvent, hm.casterInterruptPending);
+                }
 
                 if (_session.isDualCasting) {
                     const auto* expected = _session.modeSpellLeft ? _session.modeSpellLeft : _session.modeSpellRight;
@@ -691,7 +716,7 @@ namespace IntegratedMagic {
                     return result;
                 }
 
-                if (expectedSpell && HasRealCastStarted(hand, expectedSpell)) {
+                if (expectedSpell && HasRealCastStarted(hand, expectedSpell, !fbShouldLog)) {
                     MAGIC_DEBUG_LOG(
                         "[FLOW] PumpAutoStartFallback[StartRequested] hand={} HasRealCastStarted=true -> Confirm",
                         handStr);

@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "Persistence/SpellSettingsDB.h"
+#include "Shared/SpellTypeDetector.h"
 
 namespace IntegratedMagic::Config {
 
@@ -124,7 +125,9 @@ namespace IntegratedMagic::Config {
     }
 
     SpellSettings MagicConfigAdapter::GetOrCreateSpellSettings(std::uint32_t formID, const RE::TESForm* form) {
-        return SpellSettingsDB::Get().GetOrCreate(formID, form, this);
+        const auto type = DetectSpellType(form);
+        const auto defaults = GetSpellDefaults(type);
+        return SpellSettingsDB::Get().GetOrCreate(formID, form, &defaults);
     }
 
     void MagicConfigAdapter::SetSpellSettings(std::uint32_t formID, const SpellSettings& s) {

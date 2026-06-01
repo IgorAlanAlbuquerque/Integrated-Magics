@@ -1,11 +1,11 @@
 #include "Application/AssignService.h"
 
-#include "Config/ConfigAdapter.h"
-#include "Shared/SpellClassify.h"
-#include "PCH.h"
-#include "Persistence/Slots.h"
-#include "Shared/Hand.h"
 #include "Adapters/Inbound/HoveredForm.h"
+#include "Config/ConfigAdapter.h"
+#include "Config/Slots.h"
+#include "PCH.h"
+#include "Shared/Hand.h"
+#include "Shared/SpellClassify.h"
 
 namespace IntegratedMagic::MagicAssign {
 
