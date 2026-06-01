@@ -6,7 +6,6 @@
 #include <utility>
 
 #include "Adapters/Outbound/SyntheticInput.h"
-#include "Application/AssignService.h"
 #include "Config/ConfigAdapter.h"
 #include "Domain/State.h"
 #include "Input/ExclusiveTracker.h"
@@ -16,6 +15,7 @@
 #include "Input/PhysicalReconciler.h"
 #include "Input/ReplaySystem.h"
 #include "PCH.h"
+#include "Shared/AssignService.h"
 #include "Shared/Hand.h"
 
 namespace Application {
@@ -66,7 +66,7 @@ namespace Application {
         const auto buttonResult = Input::detail::ProcessButtonEvents(a_evns, m_captureState, wantCapture, m_keys);
 
         if (buttonResult.forceExit) {
-            m_pendingForceExit = std::move(*buttonResult.forceExit);
+            m_pendingForceExit = IntegratedMagic::MagicState::Get().ForceExitNoRestore();
         }
         Input::detail::UpdateHudToggleState(m_hotkeys, m_keys);
 

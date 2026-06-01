@@ -3,7 +3,6 @@
 #include <optional>
 
 #include "PCH.h"
-#include "Shared/StateExitResult.h"
 
 struct RetainedEvent {
     RE::INPUT_DEVICE dev{RE::INPUT_DEVICE::kKeyboard};
@@ -25,7 +24,7 @@ namespace Input::detail {
     };
 
     struct ProcessButtonEventsResult {
-        std::optional<IntegratedMagic::StateExitResult> forceExit;
+        bool forceExit{false};
     };
 
 }

@@ -1,21 +1,30 @@
 #include "Application/SpellSystemController.h"
 
-#include "Shared/HoveredFormState.h"
 #include "Adapters/Outbound/EquipSlots.h"
 #include "Adapters/Outbound/MagicEquip.h"
 #include "Adapters/Outbound/RestoreEquip.h"
 #include "Adapters/Outbound/SyntheticInput.h"
-#include "Application/AssignService.h"
 #include "Application/InputController.h"
 #include "Config/ConfigAdapter.h"
 #include "Config/Slots.h"
 #include "Domain/State.h"
 #include "Input/HotkeyMatcher.h"
 #include "PCH.h"
+#include "Shared/AssignService.h"
+#include "Shared/HoveredFormState.h"
+#include "Shared/SlotMutation.h"
 
 namespace Application {
 
     namespace {
+        void ApplySlotMutation(const IntegratedMagic::SlotMutation& m) {
+            if (m.leftSpell)
+                IntegratedMagic::Slots::SetSlotSpell(m.slot, IntegratedMagic::Hand::Left, *m.leftSpell, true);
+            if (m.rightSpell)
+                IntegratedMagic::Slots::SetSlotSpell(m.slot, IntegratedMagic::Hand::Right, *m.rightSpell, true);
+            if (m.shout) IntegratedMagic::Slots::SetSlotShout(m.slot, *m.shout, true);
+        }
+
         std::optional<IntegratedMagic::Hand> SourceToHand(RE::MagicSystem::CastingSource src) {
             using enum RE::MagicSystem::CastingSource;
             switch (src) {
@@ -261,12 +270,18 @@ namespace Application {
                 !comboDown)
                 continue;
 
-            if (type == Shout || type == Power)
-                IntegratedMagic::MagicAssign::TryAssignHoveredShoutToSlot(slot);
-            else if (type == RightOnlySpell)
-                IntegratedMagic::MagicAssign::TryAssignHoveredSpellToSlot(slot, IntegratedMagic::Hand::Right);
-            else
-                IntegratedMagic::MagicAssign::TryAssignHoveredSpellToSlot(slot, IntegratedMagic::Hand::Left);
+            if (type == Shout || type == Power) {
+                if (const auto m = IntegratedMagic::MagicAssign::ComputeShoutAssignment(slot)) ApplySlotMutation(*m);
+            } else if (type == RightOnlySpell) {
+                const auto existingLeftID = IntegratedMagic::Slots::GetSlotSpell(slot, IntegratedMagic::Hand::Left);
+                if (const auto m = IntegratedMagic::MagicAssign::ComputeSpellAssignment(
+                        slot, IntegratedMagic::Hand::Right, existingLeftID))
+                    ApplySlotMutation(*m);
+            } else {
+                if (const auto m =
+                        IntegratedMagic::MagicAssign::ComputeSpellAssignment(slot, IntegratedMagic::Hand::Left, 0u))
+                    ApplySlotMutation(*m);
+            }
             break;
         }
     }

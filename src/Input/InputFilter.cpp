@@ -3,7 +3,6 @@
 #include <ranges>
 
 #include "Config/ConfigAdapter.h"
-#include "Domain/State.h"
 #include "Input/ExclusiveTracker.h"
 #include "Input/HotkeyMatcher.h"
 #include "Input/HudToggle.h"
@@ -242,7 +241,7 @@ namespace Input::detail {
             if (btn->IsDown() && player && btn->QUserEvent() == "Shout"sv) {
                 if (IsTransformPowerEquipped(player)) {
                     MAGIC_DEBUG_LOG("[Input] Shout pressed with transform -> ForceExitNoRestore");
-                    result.forceExit = IntegratedMagic::MagicState::Get().ForceExitNoRestore();
+                    result.forceExit = true;
                 }
             }
         }

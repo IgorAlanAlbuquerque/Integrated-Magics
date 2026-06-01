@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 
+#include "Shared/FontConfig.h"
+
 namespace IntegratedMagic {
 
     enum class HudLayoutType : std::uint8_t {
@@ -68,18 +70,6 @@ namespace IntegratedMagic {
         Ring = 0,
         Fill = 1,
         Both = 2,
-    };
-
-    struct FontConfig {
-        std::string path = "";
-        float size = 28.f;
-
-        bool rangePolish = false;
-        bool rangeCyrillic = false;
-        bool rangeJapanese = false;
-        bool rangeChineseSimplified = false;
-        bool rangeKorean = false;
-        bool rangeGreek = false;
     };
 
     struct SlotShapeVertex {
