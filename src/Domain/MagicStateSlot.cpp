@@ -186,6 +186,9 @@ namespace IntegratedMagic {
             _right.finished = true;
             _session.modeSpellLeft = nullptr;
             _session.modeSpellRight = nullptr;
+            _session.activeShoutID = out.shoutID;
+            _session.activeLeftID = 0;
+            _session.activeRightID = 0;
 
             MAGIC_DEBUG_LOG("[State] PrepareSlotEntry: shout slot={} shoutID={:#010x} isPower={} mode={}", slot,
                             out.shoutID, _shout.isPower, static_cast<int>(std::to_underlying(out.shoutSettings.mode)));
@@ -210,6 +213,9 @@ namespace IntegratedMagic {
         out.needsSkipEquipVars = EnsureActiveWithSnapshot(player, slot);
         _session.modeSpellRight = out.rightSpell;
         _session.modeSpellLeft = out.leftSpell;
+        _session.activeLeftID = out.leftID;
+        _session.activeRightID = out.rightID;
+        _session.activeShoutID = 0;
 
         if (out.hasRight) {
             _right.mode = out.rightSettings.mode;

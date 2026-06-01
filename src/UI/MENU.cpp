@@ -6,11 +6,12 @@
 #include <string>
 #include <utility>
 
-#include "Application/InputController.h"
 #include "Config/ConfigAdapter.h"
 #include "Config/Limits.h"
+#include "Config/Notifications.h"
 #include "Config/StyleConfig.h"
 #include "PCH.h"
+#include "Shared/CaptureState.h"
 #include "SKSEMenuFramework.h"
 #include "Shared/SpellType.h"
 #include "UI/HudManager.h"
@@ -65,8 +66,8 @@ namespace {
 
     void CancelFieldCapture() {
         if (g_fieldCapture.active) {
-            Application::InputController::Get().CancelHotkeyCapture();
-            Application::InputController::Get().SetCaptureModeActive(false);
+            CaptureState::Get().Cancel();
+            CaptureState::Get().captureActive.store(false, std::memory_order_relaxed);
             g_fieldCapture = {};
         }
     }
@@ -84,17 +85,17 @@ namespace {
         ImGuiMCP::SameLine();
 
         if (const bool isThis = g_fieldCapture.active && g_fieldCapture.field == &field; isThis) {
-            if (const int encoded = Application::InputController::Get().PollCapturedHotkey(); encoded != -1) {
+            if (const int encoded = CaptureState::Get().Poll(); encoded != -1) {
                 const bool gotKb = (encoded >= 0);
                 if (gotKb == wantKeyboard) {
                     const int val = wantKeyboard ? encoded : -(encoded + 2);
                     field.store(val, std::memory_order_relaxed);
                     dirty = true;
                     g_fieldCapture = {};
-                    Application::InputController::Get().SetCaptureModeActive(false);
+                    CaptureState::Get().captureActive.store(false, std::memory_order_relaxed);
                 } else {
-                    Application::InputController::Get().RequestHotkeyCapture();
-                    Application::InputController::Get().SetCaptureModeActive(true);
+                    CaptureState::Get().Request();
+                    CaptureState::Get().captureActive.store(true, std::memory_order_relaxed);
                 }
             }
 
@@ -107,8 +108,8 @@ namespace {
             if (g_fieldCapture.active) ImGuiMCP::BeginDisabled(true);
             if (ImGuiMCP::SmallButton(IntegratedMagic::Strings::Get("Btn_Cap", "Cap").c_str())) {
                 g_fieldCapture = {&field, wantKeyboard, true};
-                Application::InputController::Get().RequestHotkeyCapture();
-                Application::InputController::Get().SetCaptureModeActive(true);
+                CaptureState::Get().Request();
+                CaptureState::Get().captureActive.store(true, std::memory_order_relaxed);
             }
             if (g_fieldCapture.active) ImGuiMCP::EndDisabled();
         }
@@ -1414,7 +1415,7 @@ void __stdcall IntegratedMagic::MENU::DrawSettings() {
             cfg.Save();
             IntegratedMagic::StyleConfig::Get().Save();
             Config::MagicConfigAdapter::Get().FlushSpellSettingsIfDirty();
-            Application::InputController::Get().OnConfigChanged();
+            IntegratedMagic::Config::NotifyConfigSaved();
             g_pending = false;
         }
         ImGuiMCP::EndDisabled();

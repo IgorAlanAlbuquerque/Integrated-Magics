@@ -50,6 +50,8 @@ namespace Input::detail {
     }
 
     void LoadHotkeyCache_FromConfig(HotkeyCacheStore& cache, SlotEdgeStore& slots);
+    void LoadModifierBinding_FromConfig(int& kbCode, int& gpCode);
+    bool ConsumeHotkeyReloadRequest();
 
     [[nodiscard]] bool SlotComboDown(int slot, const HotkeyCacheStore& cache, const KeyStateStore& keys,
                                      const SlotEdgeStore& slots);

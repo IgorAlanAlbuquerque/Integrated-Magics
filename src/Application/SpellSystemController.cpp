@@ -5,26 +5,12 @@
 #include "Adapters/Outbound/RestoreEquip.h"
 #include "Adapters/Outbound/SyntheticInput.h"
 #include "Application/InputController.h"
-#include "Config/ConfigAdapter.h"
-#include "Config/Slots.h"
 #include "Domain/State.h"
-#include "Input/HotkeyMatcher.h"
 #include "PCH.h"
-#include "Shared/AssignService.h"
-#include "Shared/HoveredFormState.h"
-#include "Shared/SlotMutation.h"
 
 namespace Application {
 
     namespace {
-        void ApplySlotMutation(const IntegratedMagic::SlotMutation& m) {
-            if (m.leftSpell)
-                IntegratedMagic::Slots::SetSlotSpell(m.slot, IntegratedMagic::Hand::Left, *m.leftSpell, true);
-            if (m.rightSpell)
-                IntegratedMagic::Slots::SetSlotSpell(m.slot, IntegratedMagic::Hand::Right, *m.rightSpell, true);
-            if (m.shout) IntegratedMagic::Slots::SetSlotShout(m.slot, *m.shout, true);
-        }
-
         std::optional<IntegratedMagic::Hand> SourceToHand(RE::MagicSystem::CastingSource src) {
             using enum RE::MagicSystem::CastingSource;
             switch (src) {
@@ -250,42 +236,6 @@ namespace Application {
         }
     }
 
-    void SpellSystemController::TryAssignHoveredToSlotByHotkey() const {
-        auto* ui = RE::UI::GetSingleton();
-        if (!ui) return;
-        if (static const RE::BSFixedString magicMenu{"MagicMenu"}; !ui->IsMenuOpen(magicMenu)) return;
-
-        const auto type = IntegratedMagic::HoveredForm::GetHoveredMagicType();
-        if (type == IntegratedMagic::HoveredForm::MagicType::None) return;
-
-        const int n = InputController::Get().Slots().ActiveSlots();
-        const auto& hotkeys = InputController::Get().Hotkeys();
-        const auto& keys = InputController::Get().Keys();
-
-        for (int slot = 0; slot < n; ++slot) {
-            using enum IntegratedMagic::HoveredForm::MagicType;
-            const auto& hk = hotkeys.slots[static_cast<std::size_t>(slot)];
-            if (const bool comboDown =
-                    Input::detail::ComboDown(hk.kb, keys.kbDown) || Input::detail::ComboDown(hk.gp, keys.gpDown);
-                !comboDown)
-                continue;
-
-            if (type == Shout || type == Power) {
-                if (const auto m = IntegratedMagic::MagicAssign::ComputeShoutAssignment(slot)) ApplySlotMutation(*m);
-            } else if (type == RightOnlySpell) {
-                const auto existingLeftID = IntegratedMagic::Slots::GetSlotSpell(slot, IntegratedMagic::Hand::Left);
-                if (const auto m = IntegratedMagic::MagicAssign::ComputeSpellAssignment(
-                        slot, IntegratedMagic::Hand::Right, existingLeftID))
-                    ApplySlotMutation(*m);
-            } else {
-                if (const auto m =
-                        IntegratedMagic::MagicAssign::ComputeSpellAssignment(slot, IntegratedMagic::Hand::Left, 0u))
-                    ApplySlotMutation(*m);
-            }
-            break;
-        }
-    }
-
     void SpellSystemController::OnConfigChanged() const { InputController::Get().OnConfigChanged(); }
     void SpellSystemController::NotifyForeignEquip() const {
         auto& state = IntegratedMagic::MagicState::Get();
@@ -297,13 +247,9 @@ namespace Application {
     bool SpellSystemController::IsShoutActive() const { return IntegratedMagic::MagicState::Get().IsShoutActive(); }
 
     SpellSystemController::ActiveSlotContents SpellSystemController::GetActiveSlotContents() const {
-        const int slot = ActiveSlot();
-        if (slot < 0) return {};
-        return {
-            IntegratedMagic::Slots::GetSlotSpell(slot, IntegratedMagic::Hand::Left),
-            IntegratedMagic::Slots::GetSlotSpell(slot, IntegratedMagic::Hand::Right),
-            IntegratedMagic::Slots::GetSlotShout(slot),
-        };
+        auto& s = IntegratedMagic::MagicState::Get();
+        if (!s.IsActive()) return {};
+        return {s.ActiveLeftID(), s.ActiveRightID(), s.ActiveShoutID()};
     }
 
     void SpellSystemController::ExecuteRestoreSnapshotPlan(const IntegratedMagic::RestoreSnapshotPlan& plan) const {
@@ -314,8 +260,7 @@ namespace Application {
         if (!player || !mgr || !plan.valid) return;
 
         if (plan.applySkipEquipAnimReturn) {
-            const bool skip = IntegratedMagic::Config::MagicConfigAdapter::Get().SkipEquipAnimationOnReturn();
-            IntegratedMagic::MagicAction::ApplySkipEquipAnimReturn(player, skip);
+            IntegratedMagic::MagicAction::ApplySkipEquipAnimReturn(player, plan.skipEquipAnimReturn);
         }
 
         const auto* rightSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(Right);
@@ -332,8 +277,8 @@ namespace Application {
                                                       rightSlot);
 
             if (plan.equipRightSpell) {
-                const bool skip = IntegratedMagic::Config::MagicConfigAdapter::Get().SkipEquipAnimationOnReturn();
-                IntegratedMagic::MagicAction::EquipSpellInHand(player, plan.equipRightSpell, Right, skip);
+                IntegratedMagic::MagicAction::EquipSpellInHand(player, plan.equipRightSpell, Right,
+                                                               plan.skipEquipAnimReturn);
             }
         }
 
@@ -347,8 +292,8 @@ namespace Application {
             IntegratedMagic::Outbound::RestoreOneHand(player, mgr, plan.inventoryIndex, true, plan.leftObj, leftSlot);
 
             if (plan.equipLeftSpell) {
-                const bool skip = IntegratedMagic::Config::MagicConfigAdapter::Get().SkipEquipAnimationOnReturn();
-                IntegratedMagic::MagicAction::EquipSpellInHand(player, plan.equipLeftSpell, Left, skip);
+                IntegratedMagic::MagicAction::EquipSpellInHand(player, plan.equipLeftSpell, Left,
+                                                               plan.skipEquipAnimReturn);
             }
 
             if (plan.restoreRightAfterLeftOnly) {

@@ -2,10 +2,10 @@
 
 #include <vector>
 
-#include "Shared/InventoryUtil.h"
 #include "PCH.h"
 #include "Shared/AttackEnabledResult.h"
 #include "Shared/Hand.h"
+#include "Shared/InventoryUtil.h"
 #include "Shared/PumpResults.h"
 #include "Shared/RestoreSnapshotPlan.h"
 #include "Shared/SlotPressAction.h"
@@ -71,6 +71,10 @@ namespace IntegratedMagic {
 
         RE::SpellItem* modeSpellLeft{nullptr};
         RE::SpellItem* modeSpellRight{nullptr};
+
+        RE::FormID activeLeftID{0};
+        RE::FormID activeRightID{0};
+        RE::FormID activeShoutID{0};
 
         void Reset() { *this = {}; }
     };
@@ -149,6 +153,9 @@ namespace IntegratedMagic {
 
         bool IsActive() const noexcept { return _session.active; }
         int ActiveSlot() const noexcept { return _session.activeSlot; }
+        RE::FormID ActiveLeftID() const noexcept { return _session.activeLeftID; }
+        RE::FormID ActiveRightID() const noexcept { return _session.activeRightID; }
+        RE::FormID ActiveShoutID() const noexcept { return _session.activeShoutID; }
         bool IsDualCasting() const noexcept { return _session.isDualCasting; }
         bool PendingSkipFirstCastStop() const noexcept { return _cast.castStopsToSkip > 0; }
         int DualCastSkipCount() const noexcept { return _session.dualCastSkipCastStops; }
@@ -249,7 +256,8 @@ namespace IntegratedMagic {
                 _restore.dirtyRight = true;
         }
 
-        [[nodiscard]] bool EnsureActiveWithSnapshot(RE::PlayerCharacter const* player, int slot, bool raiseHandsIfSheathed = true);
+        [[nodiscard]] bool EnsureActiveWithSnapshot(RE::PlayerCharacter const* player, int slot,
+                                                    bool raiseHandsIfSheathed = true);
         void CaptureSnapshot(RE::PlayerCharacter const* player);
         [[nodiscard]] RestoreSnapshotPlan BuildRestoreSnapshotPlan(RE::PlayerCharacter* player);
         void FinalizeExitAfterController();

@@ -155,6 +155,7 @@ namespace IntegratedMagic {
 
         plan.valid = true;
         plan.applySkipEquipAnimReturn = true;
+        plan.skipEquipAnimReturn = Config::MagicConfigAdapter::Get().SkipEquipAnimationOnReturn();
         plan.inventoryIndex = BuildInventoryIndex(player);
         plan.prevExtraEquipped = _restore.prevExtraEquipped;
 

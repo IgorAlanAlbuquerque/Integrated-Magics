@@ -20,7 +20,6 @@ namespace Application {
         void NotifyPlayerDeath() const;
         void NotifyLoadGame() const;
         void NotifyMenuOpen(std::string_view menuName) const;
-        void TryAssignHoveredToSlotByHotkey() const;
         void OnConfigChanged() const;
         void NotifyForeignEquip() const;
         [[nodiscard]] bool IsSpellSystemActive() const;

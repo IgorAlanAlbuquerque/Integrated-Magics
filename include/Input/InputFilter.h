@@ -1,11 +1,11 @@
 #pragma once
-#include "Input/CaptureState.h"
 #include "Input/ExclusiveStore.h"
 #include "Input/HotkeyCacheStore.h"
 #include "Input/KeyStateStore.h"
 #include "Input/ReplaySystem.h"
 #include "Input/SlotEdgeStore.h"
 #include "PCH.h"
+#include "Shared/CaptureState.h"
 #include "Shared/ReplayTypes.h"
 
 namespace Input::detail {
