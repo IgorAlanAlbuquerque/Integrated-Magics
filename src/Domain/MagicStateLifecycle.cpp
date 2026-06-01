@@ -79,7 +79,6 @@ namespace IntegratedMagic {
 
         _session.active = true;
         _session.activeSlot = slot;
-        _session.attackEnabled = false;
         _session.modeSpellLeft = nullptr;
         _session.modeSpellRight = nullptr;
         _left = {};
@@ -215,33 +214,16 @@ namespace IntegratedMagic {
     void MagicState::FinalizeRestoreSnapshotPlan(bool resetShout) {
         MAGIC_DEBUG_LOG("[State] FinalizeImmediateExitAfterController");
 
-        _left = {};
-        _right = {};
-        _aa.Reset();
-        _cast.Reset();
-
-        _session.attackEnabled = false;
-        _session.isDualCasting = false;
-        _session.dualCastSkipCastStops = 0;
-        _session.firstInterrupt = 0;
-        _session.activeTimeoutSecs = 0.f;
-        _session.modeSpellLeft = nullptr;
-        _session.modeSpellRight = nullptr;
-
-        _delayStartLeft = {};
-        _delayStartRight = {};
-
         _restore.snapshot = {};
         _restore.prevExtraEquipped.clear();
         _restore.ClearDirty();
         _restore.ClearPending();
 
-        _session.active = false;
-        _session.activeSlot = -1;
-
         if (resetShout) {
             _shout.Reset();
         }
+
+        ResetSessionState();
     }
 
     bool MagicState::HandIsRelevant(Hand h) const {
@@ -318,29 +300,11 @@ namespace IntegratedMagic {
     }
 
     void MagicState::FinalizeExitAfterController() {
-        _left = {};
-        _right = {};
-        _aa.Reset();
-        _cast.Reset();
-
-        _session.attackEnabled = false;
-        _session.isDualCasting = false;
-        _session.dualCastSkipCastStops = 0;
-        _session.firstInterrupt = 0;
-        _session.activeTimeoutSecs = 0.f;
-
-        _session.modeSpellLeft = nullptr;
-        _session.modeSpellRight = nullptr;
-
-        _delayStartLeft = {};
-        _delayStartRight = {};
-
         _restore.snapshot.valid = false;
         _restore.prevExtraEquipped.clear();
         _restore.ClearDirty();
 
-        _session.active = false;
-        _session.activeSlot = -1;
+        ResetSessionState();
     }
 
     StateExitResult MagicState::TryFinalizeExit() {
@@ -381,8 +345,6 @@ namespace IntegratedMagic {
         result.rightAttack = stopAttack(Right);
         result.shout = stopShout();
 
-        CancelAllDelayedStarts();
-
         if (_shout.modeShoutID != 0 && _shout.isPower && _shout.finished) {
             _restore.pendingPowerRestore = true;
             _restore.pendingPowerRestoreDelaySecs = RestoreContext::kPowerRestoreDelaySec;
@@ -411,12 +373,6 @@ namespace IntegratedMagic {
             player->DrawWeaponMagicHands(false);
             _restore.pendingRestoreAfterSheathe = true;
             result.waitForSheatheRestore = true;
-            return result;
-        }
-
-        if (_session.firstInterrupt > 1) {
-            _restore.pendingRestore = true;
-            result.waitForPendingRestore = true;
             return result;
         }
 
@@ -452,9 +408,7 @@ namespace IntegratedMagic {
         }
 
         _session.activeSlot = newSlot;
-        _session.attackEnabled = false;
         _session.isDualCasting = false;
-        _session.dualCastSkipCastStops = 0;
         _session.modeSpellLeft = nullptr;
         _session.modeSpellRight = nullptr;
         _left = {};
@@ -492,8 +446,6 @@ namespace IntegratedMagic {
 
         result.leftAttack = stopAttack(Left);
         result.rightAttack = stopAttack(Right);
-
-        CancelAllDelayedStarts();
 
         if (auto* pc = GetPlayer(); pc && !pc->IsDead() && _restore.snapshot.valid) {
             auto plan = BuildRestoreSnapshotPlan(pc);

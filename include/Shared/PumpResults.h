@@ -21,9 +21,9 @@ namespace IntegratedMagic {
         bool finalizeRight{false};
     };
 
-    struct DelayedStartsResult {
-        bool dispatchLeft{false};
-        bool dispatchRight{false};
+    struct PumpCastPhaseResult {
+        bool startAttack{false};
+        std::optional<StopDispatchIntent> stopAttack;
     };
 
     struct PumpResult {
@@ -44,17 +44,13 @@ namespace IntegratedMagic {
     };
 
     using DisableHandResult = SingleHandStopResult;
-    using PumpAutomaticHandResult = SingleHandStopResult;
     using PrepareOverwriteResult = DualHandStopResult;
-
-    struct PumpAutoStartFallbackResult {
-        bool startAttack{false};
-        std::optional<StopDispatchIntent> stopAttack;
-    };
 
     struct CastInterruptResult {
         float finishedLeft{-1.f};
         float finishedRight{-1.f};
+        bool restartLeft{false};
+        bool restartRight{false};
     };
 
     struct PumpAutomaticResult {

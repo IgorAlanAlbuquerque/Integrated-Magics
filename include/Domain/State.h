@@ -25,14 +25,7 @@ namespace IntegratedMagic {
         bool valid{false};
     };
 
-    enum class AutoCastPhase : std::uint8_t {
-        Idle = 0,
-        WaitingAttackEnable,
-        StartRequested,
-        Casting,
-        WaitingChargeRelease,
-        Done
-    };
+    enum class AutoCastPhase : std::uint8_t { Idle = 0, StartRequested, Casting, WaitingChargeRelease, Done };
 
     struct HandMode {
         IntegratedMagic::ActivationMode mode{IntegratedMagic::ActivationMode::Hold};
@@ -42,32 +35,22 @@ namespace IntegratedMagic {
         bool autoActive{false};
         bool waitingChargeComplete{false};
         bool chargeComplete{false};
-        bool waitingAutoAfterEquip{false};
         bool holdFiredAndWaitingCastStop{false};
         bool finished{false};
         bool pressAutocast{false};
-        float waitingEnableBumperSecs{0.0f};
-        bool waitingBeginCast{false};
-        float beginCastWaitSecs{0.f};
-        int beginCastRetries{0};
+        float startRequestSecs{0.f};
+        float castingElapsedSecs{0.f};
         bool waitingSpellFireFinalize{false};
         float spellFireFinalizeSecs{0.f};
         AutoCastPhase autoCastPhase{AutoCastPhase::Idle};
-        float startRequestSecs{0.f};
-        float stalledCastSecs{0.f};
-        bool sawBeginCastEvent{false};
-        bool casterInterruptPending{false};
     };
 
     struct SessionState {
         bool active{false};
         int activeSlot{-1};
         bool isDualCasting{false};
-        bool attackEnabled{false};
         bool wasHandsDown{false};
         float activeTimeoutSecs{0.f};
-        int firstInterrupt{0};
-        int dualCastSkipCastStops{0};
 
         RE::SpellItem* modeSpellLeft{nullptr};
         RE::SpellItem* modeSpellRight{nullptr};
@@ -125,22 +108,15 @@ namespace IntegratedMagic {
         void Reset() { *this = {}; }
     };
 
-    struct CastFlags {
-        int castStopsToSkip{0};
-        void Reset() { *this = {}; }
-    };
-
     class MagicState {
     public:
         static MagicState& Get();
 
         [[nodiscard]] SlotPressAction OnSlotPressed(int slot);
         StateExitResult OnSlotReleased(int slot);
-        void OnEquipComplete(const InventoryIndex& snapshotBefore);
+        [[nodiscard]] AttackEnabledResult OnEquipComplete(const InventoryIndex& snapshotBefore);
 
-        void OnBeginCast(Hand hand);
         StateExitResult OnCastStop();
-        CastInterruptResult OnCastInterrupt();
         StateExitResult OnShoutStop();
         StateExitResult ForceExit();
         [[nodiscard]] StateExitResult ForceExitNoRestore();
@@ -157,8 +133,6 @@ namespace IntegratedMagic {
         RE::FormID ActiveRightID() const noexcept { return _session.activeRightID; }
         RE::FormID ActiveShoutID() const noexcept { return _session.activeShoutID; }
         bool IsDualCasting() const noexcept { return _session.isDualCasting; }
-        bool PendingSkipFirstCastStop() const noexcept { return _cast.castStopsToSkip > 0; }
-        int DualCastSkipCount() const noexcept { return _session.dualCastSkipCastStops; }
         bool IsWaitingSheatheRestore() const noexcept {
             return _restore.pendingRestoreAfterSheathe && !_restore.sheatheAnimComplete;
         }
@@ -173,15 +147,10 @@ namespace IntegratedMagic {
         void FinalizeRestoreSnapshotPlan(bool resetShout = false);
         void ResetShoutState() { _shout.Reset(); }
         void OnCasterStartCast(Hand hand, const RE::MagicItem* spell, RE::MagicSystem::CastingType type);
-        void OnCasterInterrupt(Hand hand, const RE::MagicItem* spell, bool depleteEnergy);
+        [[nodiscard]] CastInterruptResult OnCasterInterrupt(Hand hand, const RE::MagicItem* spell, bool depleteEnergy);
 
     private:
         MagicState() = default;
-
-        struct DelayedStart {
-            bool pending{false};
-            float secs{0.f};
-        };
 
         struct SlotEntry {
             RE::PlayerCharacter* player{nullptr};
@@ -204,15 +173,10 @@ namespace IntegratedMagic {
             _left = {};
             _right = {};
             _aa.Reset();
-            _cast.Reset();
-            _session.attackEnabled = false;
             _session.isDualCasting = false;
-            _session.dualCastSkipCastStops = 0;
-            _session.firstInterrupt = 0;
             _session.activeTimeoutSecs = 0.f;
             _session.modeSpellLeft = nullptr;
             _session.modeSpellRight = nullptr;
-            CancelAllDelayedStarts();
         }
 
         void ResetSessionState() {
@@ -221,25 +185,6 @@ namespace IntegratedMagic {
             _restore.ClearDirty();
             _session.active = false;
             _session.activeSlot = -1;
-        }
-
-        DelayedStart& DelayFor(Hand hand) noexcept { return hand == Hand::Left ? _delayStartLeft : _delayStartRight; }
-
-        void ScheduleDelayedStart(Hand hand) {
-            auto& d = DelayFor(hand);
-            d.pending = true;
-            d.secs = 0.f;
-        }
-
-        void CancelDelayedStart(Hand hand) {
-            auto& d = DelayFor(hand);
-            d.pending = false;
-            d.secs = 0.f;
-        }
-
-        void CancelAllDelayedStarts() {
-            _delayStartLeft = {};
-            _delayStartRight = {};
         }
 
         static RE::PlayerCharacter* GetPlayer() { return RE::PlayerCharacter::GetSingleton(); }
@@ -277,33 +222,23 @@ namespace IntegratedMagic {
         float FinishHand(Hand hand);
         void SetModeSpellsFromHand(Hand hand, RE::SpellItem* spell);
 
-        DelayedStartsResult PumpDelayedStarts(float dt);
-        PumpAutomaticHandResult PumpAutomaticHand(Hand hand);
-        PumpAutoStartFallbackResult PumpAutoStartFallback(Hand hand, float dt);
+        [[nodiscard]] PumpCastPhaseResult PumpCastPhase(Hand hand, float dt);
         StateExitResult PumpSpellFireFinalize(float dt);
         bool RequestAutoAttackStart(Hand hand, bool clearWaitAfterEquip);
         void ConfirmAutoCastStarted(Hand hand);
-        void ResetAutoCastStartState(Hand hand);
-        bool HasRealCastStarted(Hand hand, const RE::SpellItem* expectedSpell, bool silent = false) const;
-        bool HasDualCastStarted(const RE::SpellItem* expectedSpell) const;
-        bool IsCasterIdleForExpectedSpell(Hand hand, const RE::SpellItem* expectedSpell) const;
 
         template <class Fn>
         void UpdatePrevExtraEquippedForOverlay(Fn&& equipFn);
 
         HandMode _left{};
         HandMode _right{};
-        DelayedStart _delayStartLeft{};
-        DelayedStart _delayStartRight{};
 
         SessionState _session{};
         RestoreContext _restore{};
         AutoAttackState _aa{};
         ShoutState _shout{};
-        CastFlags _cast{};
         bool _inSlotSetup{false};
 
-        static constexpr float kDelayedStartSec = 0.050f;
         static constexpr float kMaxActiveTimeoutSecs = 30.f;
     };
 

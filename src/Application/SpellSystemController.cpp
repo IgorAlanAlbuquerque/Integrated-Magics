@@ -138,7 +138,13 @@ namespace Application {
 
             if (action.startShoutDispatch) IntegratedMagic::detail::DispatchShout(1.0f, 0.0f);
 
-            if (!action.spellsToEquip.empty()) state.OnEquipComplete(action.inventorySnapshotBefore);
+            if (!action.spellsToEquip.empty()) {
+                const auto eqResult = state.OnEquipComplete(action.inventorySnapshotBefore);
+                if (eqResult.dispatchLeft)
+                    IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 1.0f, 0.0f);
+                if (eqResult.dispatchRight)
+                    IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Right, 1.0f, 0.0f);
+            }
 
             if (action.leftAttack)
                 IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 0.0f, action.leftAttack->heldSecs);
@@ -168,15 +174,6 @@ namespace Application {
         if (tag == "CastStop"sv || tag == "RitualSpellOut"sv) {
             HandleExitAllResult(state.OnCastStop());
         }
-        if (tag == "InterruptCast"sv) {
-            const auto r = state.OnCastInterrupt();
-            if (r.finishedLeft != -1.f)
-                IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 0.0f, r.finishedLeft);
-            if (r.finishedRight != -1.f)
-                IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Right, 0.0f, r.finishedRight);
-        }
-        if (tag == "BeginCastRight"sv) state.OnBeginCast(Right);
-        if (tag == "BeginCastLeft"sv) state.OnBeginCast(Left);
         if (tag == "shoutStop"sv) {
             HandleExitAllResult(state.OnShoutStop());
         }
@@ -390,7 +387,13 @@ namespace Application {
                         *hand == IntegratedMagic::Hand::Left ? "Left" : "Right", spell ? spell->GetFormID() : 0u,
                         depleteEnergy);
 
-        IntegratedMagic::MagicState::Get().OnCasterInterrupt(*hand, spell, depleteEnergy);
+        const auto r = IntegratedMagic::MagicState::Get().OnCasterInterrupt(*hand, spell, depleteEnergy);
+        if (r.restartLeft) IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 1.0f, 0.0f);
+        if (r.restartRight) IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Right, 1.0f, 0.0f);
+        if (r.finishedLeft != -1.f)
+            IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 0.0f, r.finishedLeft);
+        if (r.finishedRight != -1.f)
+            IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Right, 0.0f, r.finishedRight);
     }
 
 }

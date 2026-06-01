@@ -1,85 +1,109 @@
-# R2 — Corrigir `wasHandsDown` para o caso de arma puxada
+# R2 — Absorver interrupt espúrio pós-confirmação de cast
 
-## Problema
+## Problema (pós-R1)
 
-`wasHandsDown` é setado como `true` apenas quando o weapon state é `kSheathed`:
-```cpp
-// MagicStateLifecycle.cpp:54
-_session.wasHandsDown = (ws == RE::WEAPON_STATE::kSheathed);
+Com `weaponState == kDrawn` (mãos levantadas — inclui mãos vazias em stance de combate, espada, escudo), ao equipar um spell o behavior machine faz a transição `weapon-ready stance → magic-casting stance`. Essa transição emite um `OnCasterInterrupt` espúrio com `depleteEnergy=true` diretamente no `MagicCaster`, ~50ms após o cast começar.
+
+Com R1, `OnCasterInterrupt` age imediatamente chamando `FinishHand` sempre que `phase == Casting`. Não há distinção entre interrupt real e espúrio. Resultado: o cast é morto 50ms após começar, o personagem fica parado com o spell na mão.
+
+### Evidência nos logs
+
+`weaponState=3` (kDrawn) em todos os casos. O padrão é idêntico para Flames (esquerda), Frostbite (direita), Sparks (ambas), Conjure Familiar (automático):
+
+```
+[t=31.836] RequestAutoAttackStart: ACCEPTED — aaHeld=true
+[t=31.837] OnEquipComplete: dispatchLeft=true
+[t=31.853] PumpCastPhase: StartRequested → Casting (state=1)
+[t=31.853] ConfirmAutoCastStarted: hand=Left
+[t=31.902] OnCasterInterrupt: hand=Left phase=2 depleteEnergy=true  ← espúrio (48ms depois)
+[t=31.902] FinishHand: hand=Left                                    ← mata o cast
 ```
 
-Isso determina `castStopsToSkip`:
-```cpp
-_cast.castStopsToSkip = skipAnim ? (_session.wasHandsDown ? 2 : 1) : 0;
-```
+O mesmo acontece para direita, ambas as mãos, e modo automático. O intervalo de ~48–80ms é consistente.
 
-**O bug:** Quando o jogador tem uma **arma puxada** na mão direita (`kDrawn`) e equipa um spell na mão esquerda, o behavior machine faz uma transição adicional de "weapon drawn" para "sword+magic stance". Com `skipEquipAnimation` ativo, essa transição extra causa **2 CastStops espúrios** em vez de 1. Mas como `wasHandsDown = false` (arma puxada ≠ sheathed), o código seta `castStopsToSkip = 1` — o segundo stop espúrio é tratado como stop real → cast é encerrado antes de começar.
+### Comportamento com intervenção manual
 
-Reportado como: *"When using a shield and sword, or only equipping a sword in the right hand, with the spell bound to the left hand for casting, spellcasting fails if the weapon is drawn."*
+Após o interrupt, se o jogador clicar manualmente o botão de ataque, o cast inicia e segue normalmente. O spell permanece na mão; o sistema está funcional — basta redespachar o ataque.
 
-## Quando este fix se aplica
+### O que o sistema pré-R1 fazia
 
-- `skipEquipAnimationPatch = true`
-- Slot tem spell apenas na mão esquerda (`hasLeft = true`, `hasRight = false`)
-- Jogador tem arma física (não-spell) na mão direita, **puxada** (`kDrawn`)
-- Weapon state **não é** `kSheathed` (então `wasHandsDown` seria `false`)
+`OnCastInterrupt` (evento de animação, não `OnCasterInterrupt`) tinha um contador `firstInterrupt`:
+- Sempre ignorava o **primeiro** interrupt (esse espúrio da transição)
+- Ignorava o segundo se `wasHandsDown` (transição de arma)
+- No terceiro/segundo real: `FinishHand`
+
+Com R1, o hook `OnCasterInterrupt` (nível MagicCaster) é mais confiável que o evento de animação, mas também dispara no interrupt espúrio. A solução mantém a lógica de absorver o primeiro interrupt, porém via hook direto.
+
+---
 
 ## Fix
 
-Em `EnterHand` (ou logo antes em `OnSlotPressed`), detectar se a mão oposta tem uma arma ativa puxada e ajustar o skip count:
+Absorver o **primeiro** `OnCasterInterrupt` após `ConfirmAutoCastStarted` (o espúrio da transição de stance). Redespachar o ataque para reiniciar. No segundo interrupt (se `phase == Casting` ainda), agir normalmente.
 
+### Novos campos
+
+**`HandMode` (`State.h`):**
 ```cpp
-// Em MagicStateSlot.cpp, ao calcular castStopsToSkip:
-
-// Antes (atual):
-_cast.castStopsToSkip = skipAnim ? (_session.wasHandsDown ? 2 : 1) : 0;
-
-// Depois:
-const bool opposingHandHasWeapon = HasDrawnWeaponInOpposingHand(hand);
-const bool needsExtraSkip = !_session.wasHandsDown && opposingHandHasWeapon;
-_cast.castStopsToSkip = skipAnim ? (_session.wasHandsDown || needsExtraSkip ? 2 : 1) : 0;
+bool firstCasterInterruptSeen{false};
 ```
+Resetado em `ConfirmAutoCastStarted`. Setado em `true` no primeiro interrupt (espúrio). No segundo: `FinishHand`.
 
-A função auxiliar `HasDrawnWeaponInOpposingHand(Hand hand)`:
+**`CastInterruptResult` (`PumpResults.h`):**
 ```cpp
-bool HasDrawnWeaponInOpposingHand(Hand hand) {
-    auto* pc = GetPlayer();
-    if (!pc) return false;
+bool restartLeft{false};
+bool restartRight{false};
+```
+Sinaliza que o controller deve redespachar o ataque (press inicial) para reiniciar o cast.
 
-    // Só relevante se a mão oposta não tem spell no slot atual
-    const bool leftHand = IsLeft(hand);
-    auto* entry = pc->GetEquippedEntryData(!leftHand);
-    if (!entry) return false;
+### `OnCasterInterrupt` com o fix
 
-    auto* obj = entry->GetObject();
-    if (!obj) return false;
+```cpp
+if (hm.autoCastPhase != AutoCastPhase::Casting) return result;
 
-    // Se é spell item, não é arma
-    if (obj->As<RE::SpellItem>()) return false;
-
-    // Verificar se está puxada (não sheathed)
-    const auto ws = pc->AsActorState()->GetWeaponState();
-    return ws == RE::WEAPON_STATE::kDrawn || ws == RE::WEAPON_STATE::kWantToDraw;
+if (!hm.firstCasterInterruptSeen) {
+    // Primeiro interrupt pós-cast: espúrio (transição weapon-ready → magic stance)
+    hm.firstCasterInterruptSeen = true;
+    hm.autoCastPhase = AutoCastPhase::StartRequested;
+    hm.waitingChargeComplete = false;
+    hm.chargeComplete = false;
+    // _aa.Held permanece true (PumpAutoAttack continua hold)
+    _aa.Secs(hand) = 0.f;
+    if (IsLeft(hand)) result.restartLeft = true;
+    else result.restartRight = true;
+    return result;
 }
+
+// Segundo interrupt com phase=Casting: real → terminar
+const float finished = FinishHand(hand);
+if (IsLeft(hand)) result.finishedLeft = finished;
+else result.finishedRight = finished;
 ```
+
+### Controller (`OnCastInterrupted`)
+
+```cpp
+const auto r = MagicState::Get().OnCasterInterrupt(*hand, spell, depleteEnergy);
+if (r.restartLeft)  detail::DispatchAttack(Left,  1.0f, 0.0f);  // redespachar press
+if (r.restartRight) detail::DispatchAttack(Right, 1.0f, 0.0f);
+if (r.finishedLeft  != -1.f) detail::DispatchAttack(Left,  0.0f, r.finishedLeft);
+if (r.finishedRight != -1.f) detail::DispatchAttack(Right, 0.0f, r.finishedRight);
+```
+
+---
 
 ## Passos
 
-1. Adicionar função auxiliar `HasDrawnWeaponInOpposingHand(Hand hand)` em `MagicStateSlot.cpp` (ou em `InventoryUtil`).
+1. Adicionar `firstCasterInterruptSeen{false}` em `HandMode` (`include/Domain/State.h`)
+2. Adicionar `restartLeft/restartRight` em `CastInterruptResult` (`include/Shared/PumpResults.h`)
+3. Resetar `hm.firstCasterInterruptSeen = false` em `ConfirmAutoCastStarted` (`src/Domain/MagicStatePump.cpp`)
+4. Atualizar `OnCasterInterrupt` com a lógica de absorção + restart
+5. Atualizar `SpellSystemController::OnCastInterrupted` para despachar restart
+6. Limpar `firstCasterInterruptSeen` em `FinishHand` (housekeeping)
 
-2. Atualizar o cálculo de `castStopsToSkip` em `EnterHand` para todos os três modos (Hold, Automatic, Press) — linhas 105, 128, 151 de `MagicStateSlot.cpp`.
-
-3. Adicionar log: `[State] EnterHand: opposingHandHasWeapon={} needsExtraSkip={} castStopsToSkip={}`.
-
-4. Testar: espada direita + spell esquerda com `skipEquipAnimation` ativo. O cast deve iniciar normalmente.
-
-5. Testar regressão: spell em ambas as mãos, mãos sheathed, dual cast — verificar que os casos existentes não quebraram.
-
-## Nota sobre R1
-
-Esta task é um **fix de curto prazo** para o bug específico reportado. Após a implementação de **R1** (polling de `RE::MagicCaster::state`), o mecanismo de `castStopsToSkip` inteiro é eliminado e esta task se torna obsoleta. Ainda assim, vale fazer R2 agora para o bug não ficar aberto enquanto R1 (que é maior) não está pronto.
+---
 
 ## Resultado esperado
 
-- Spell em mão esquerda com espada puxada na direita funciona com `skipEquipAnimation`
-- Sem regressão nos outros casos (mãos sheathed, spell nas duas mãos, etc.)
+- Hold + autocast com `weaponState == kDrawn`: cast inicia, mantém, termina ao soltar hotkey
+- Interrupt real (bloquear durante cast): `FinishHand` no segundo interrupt
+- Sem regressão: mãos sheathed, dual cast, modo automático

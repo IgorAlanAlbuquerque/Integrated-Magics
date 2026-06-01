@@ -6,6 +6,7 @@
 #include "Domain/SlotCostUtil.h"
 #include "Domain/State.h"
 #include "PCH.h"
+#include "Shared/AttackEnabledResult.h"
 #include "Shared/Hand.h"
 #include "Shared/InventoryType.h"
 #include "Shared/InventoryUtil.h"
@@ -50,15 +51,11 @@ namespace IntegratedMagic {
         hm.holdActive = false;
         hm.autoActive = false;
         hm.pressActive = false;
-        hm.waitingAutoAfterEquip = false;
         hm.waitingChargeComplete = false;
         hm.holdFiredAndWaitingCastStop = false;
-        hm.waitingBeginCast = false;
-        hm.beginCastWaitSecs = 0.f;
-        hm.autoCastPhase = AutoCastPhase::Done;
-        hm.beginCastRetries = 0;
         hm.startRequestSecs = 0.f;
-        hm.stalledCastSecs = 0.f;
+        hm.castingElapsedSecs = 0.f;
+        hm.autoCastPhase = AutoCastPhase::Done;
         float held = -1;
         if (_aa.Held(hand)) {
             held = (_aa.Secs(hand) > 0.f) ? _aa.Secs(hand) : 0.1f;
@@ -68,7 +65,6 @@ namespace IntegratedMagic {
             _aa.Held(hand) = false;
             _aa.Secs(hand) = 0.f;
         }
-        CancelDelayedStart(hand);
         return held;
     }
 
@@ -80,7 +76,7 @@ namespace IntegratedMagic {
         if (!hm.pressActive) FinishHand(hand);
     }
 
-    void MagicState::EnterHand(Hand hand, const SpellSettings& ss, bool skipAnim) {
+    void MagicState::EnterHand(Hand hand, const SpellSettings& ss, bool /*skipAnim*/) {
         using enum ActivationMode;
         auto& hm = ModeFor(hand);
 #ifdef DEBUG
@@ -94,70 +90,27 @@ namespace IntegratedMagic {
             case Hold:
                 hm.holdActive = true;
                 if (hm.wantAutoAttack) {
-                    hm.waitingAutoAfterEquip = true;
-                    hm.waitingEnableBumperSecs = 0.f;
-                    hm.waitingBeginCast = true;
-                    hm.beginCastWaitSecs = 0.f;
-                    hm.beginCastRetries = 0;
-                    hm.autoCastPhase = AutoCastPhase::WaitingAttackEnable;
-                    hm.startRequestSecs = 0.f;
-                    hm.stalledCastSecs = 0.f;
-                    _session.attackEnabled = false;
-                    _cast.castStopsToSkip = skipAnim ? (_session.wasHandsDown ? 2 : 1) : 0;
+                    hm.autoCastPhase = AutoCastPhase::StartRequested;
                 }
-
-                MAGIC_DEBUG_LOG(
-                    "[State] EnterHand: hand={} mode=Hold wantAutoAttack={} "
-                    "waitingAutoAfterEquip={} castStopsToSkip={} (wasHandsDown={} skipAnim={})",
-                    handStr, hm.wantAutoAttack, hm.waitingAutoAfterEquip, _cast.castStopsToSkip, _session.wasHandsDown,
-                    skipAnim);
-
+                MAGIC_DEBUG_LOG("[State] EnterHand: hand={} mode=Hold wantAutoAttack={}", handStr, hm.wantAutoAttack);
                 break;
+
             case Automatic:
                 hm.autoActive = true;
-                hm.waitingChargeComplete = true;
-                hm.waitingAutoAfterEquip = true;
                 hm.wantAutoAttack = true;
-                hm.waitingEnableBumperSecs = 0.f;
-                hm.waitingBeginCast = true;
-                hm.beginCastWaitSecs = 0.f;
-                hm.beginCastRetries = 0;
-                _session.attackEnabled = false;
-                hm.autoCastPhase = AutoCastPhase::WaitingAttackEnable;
-                hm.startRequestSecs = 0.f;
-                hm.stalledCastSecs = 0.f;
-                _cast.castStopsToSkip = skipAnim ? (_session.wasHandsDown ? 2 : 1) : 0;
-
-                MAGIC_DEBUG_LOG(
-                    "[State] EnterHand: hand={} mode=Automatic waitingChargeComplete=true "
-                    "waitingAutoAfterEquip=true castStopsToSkip={} (wasHandsDown={} skipAnim={})",
-                    handStr, _cast.castStopsToSkip, _session.wasHandsDown, skipAnim);
-
+                hm.autoCastPhase = AutoCastPhase::StartRequested;
+                MAGIC_DEBUG_LOG("[State] EnterHand: hand={} mode=Automatic", handStr);
                 break;
+
             case Press:
                 hm.pressActive = true;
                 if (hm.wantAutoAttack) {
                     hm.autoActive = true;
                     hm.pressAutocast = true;
-                    hm.waitingChargeComplete = true;
-                    hm.waitingAutoAfterEquip = true;
-                    hm.waitingEnableBumperSecs = 0.f;
-                    hm.waitingBeginCast = true;
-                    hm.beginCastWaitSecs = 0.f;
-                    hm.beginCastRetries = 0;
-                    hm.autoCastPhase = AutoCastPhase::WaitingAttackEnable;
-                    hm.startRequestSecs = 0.f;
-                    hm.stalledCastSecs = 0.f;
-                    _session.attackEnabled = false;
-                    _cast.castStopsToSkip = skipAnim ? (_session.wasHandsDown ? 2 : 1) : 0;
+                    hm.autoCastPhase = AutoCastPhase::StartRequested;
                 }
-
-                MAGIC_DEBUG_LOG(
-                    "[State] EnterHand: hand={} mode=Press wantAutoAttack={} pressAutocast={} castStopsToSkip={} "
-                    "(wasHandsDown={} skipAnim={})",
-                    handStr, hm.wantAutoAttack, hm.pressAutocast, _cast.castStopsToSkip, _session.wasHandsDown,
-                    skipAnim);
-
+                MAGIC_DEBUG_LOG("[State] EnterHand: hand={} mode=Press wantAutoAttack={} pressAutocast={}", handStr,
+                                hm.wantAutoAttack, hm.pressAutocast);
                 break;
         }
     }
@@ -302,7 +255,6 @@ namespace IntegratedMagic {
             if (_session.active && slot != _session.activeSlot) {
                 if (!CanOverwriteNow()) return action;
 
-                _session.firstInterrupt = 0;
                 mergeOverwriteIntoAction(PrepareForOverwriteToSlot(slot));
             }
 
@@ -371,7 +323,6 @@ namespace IntegratedMagic {
         if (_session.active && slot != _session.activeSlot) {
             if (!CanOverwriteNow()) return action;
 
-            _session.firstInterrupt = 0;
             mergeOverwriteIntoAction(PrepareForOverwriteToSlot(slot));
         }
 
@@ -444,37 +395,14 @@ namespace IntegratedMagic {
             _left = {};
         }
 
-        if (action.skipAnim && _cast.castStopsToSkip > 0) {
-            auto currentCasterSpell = [](Hand h) -> RE::SpellItem* {
-                auto* pc = RE::PlayerCharacter::GetSingleton();
-                if (!pc) return nullptr;
-                const auto src = (h == Hand::Left) ? RE::MagicSystem::CastingSource::kLeftHand
-                                                   : RE::MagicSystem::CastingSource::kRightHand;
-                auto* caster = GetMagicCaster(pc, src);
-                if (!caster || !caster->currentSpell) return nullptr;
-                return caster->currentSpell->As<RE::SpellItem>();
-            };
-
-            const bool rightNoOp = !e.hasRight || (currentCasterSpell(Right) == e.rightSpell);
-            const bool leftNoOp = !e.hasLeft || (currentCasterSpell(Left) == e.leftSpell);
-
-            if (rightNoOp && leftNoOp) {
-                --_cast.castStopsToSkip;
-                MAGIC_DEBUG_LOG(
-                    "[State] OnSlotPressed: no-op equip detected (spells already on casters) "
-                    "-> castStopsToSkip={} (wasHandsDown={})",
-                    _cast.castStopsToSkip, _session.wasHandsDown);
-            }
-        }
-
         return action;
     }
 
-    void MagicState::OnEquipComplete(const InventoryIndex& snapshotBefore) {
+    AttackEnabledResult MagicState::OnEquipComplete(const InventoryIndex& snapshotBefore) {
         auto* player = GetPlayer();
         if (!player) {
             _inSlotSetup = false;
-            return;
+            return {};
         }
 
         const auto after = BuildInventoryIndex(player);
@@ -486,6 +414,22 @@ namespace IntegratedMagic {
         }
 
         _inSlotSetup = false;
+
+        // Trigger attack dispatch immediately — spell is now equipped
+        AttackEnabledResult result;
+        using enum Hand;
+        auto tryStart = [&](Hand hand, bool& dispatchFlag) {
+            auto& hm = ModeFor(hand);
+            if (hm.autoCastPhase == AutoCastPhase::StartRequested) {
+                dispatchFlag = RequestAutoAttackStart(hand, false);
+            }
+        };
+        tryStart(Left, result.dispatchLeft);
+        tryStart(Right, result.dispatchRight);
+
+        MAGIC_DEBUG_LOG("[State] OnEquipComplete: dispatchLeft={} dispatchRight={}", result.dispatchLeft,
+                        result.dispatchRight);
+        return result;
     }
 
     StateExitResult MagicState::OnSlotReleased(int slot) {
