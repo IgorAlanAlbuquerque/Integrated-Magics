@@ -1,6 +1,6 @@
 #include "Application/SpellSystemController.h"
 
-#include "Adapters/Inbound/HoveredForm.h"
+#include "Shared/HoveredFormState.h"
 #include "Adapters/Outbound/EquipSlots.h"
 #include "Adapters/Outbound/MagicEquip.h"
 #include "Adapters/Outbound/RestoreEquip.h"
@@ -280,6 +280,16 @@ namespace Application {
     int SpellSystemController::ActiveSlot() const { return IntegratedMagic::MagicState::Get().ActiveSlot(); }
     bool SpellSystemController::IsInSlotSetup() const { return IntegratedMagic::MagicState::Get().IsInSlotSetup(); }
     bool SpellSystemController::IsShoutActive() const { return IntegratedMagic::MagicState::Get().IsShoutActive(); }
+
+    SpellSystemController::ActiveSlotContents SpellSystemController::GetActiveSlotContents() const {
+        const int slot = ActiveSlot();
+        if (slot < 0) return {};
+        return {
+            IntegratedMagic::Slots::GetSlotSpell(slot, IntegratedMagic::Hand::Left),
+            IntegratedMagic::Slots::GetSlotSpell(slot, IntegratedMagic::Hand::Right),
+            IntegratedMagic::Slots::GetSlotShout(slot),
+        };
+    }
 
     void SpellSystemController::ExecuteRestoreSnapshotPlan(const IntegratedMagic::RestoreSnapshotPlan& plan) const {
         using enum IntegratedMagic::Hand;

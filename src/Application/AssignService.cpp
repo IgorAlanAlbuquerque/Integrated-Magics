@@ -1,6 +1,6 @@
 #include "Application/AssignService.h"
 
-#include "Adapters/Inbound/HoveredForm.h"
+#include "Shared/HoveredFormState.h"
 #include "Config/ConfigAdapter.h"
 #include "Config/Slots.h"
 #include "PCH.h"

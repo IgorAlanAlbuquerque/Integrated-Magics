@@ -1,21 +1,32 @@
 #include "Application/HudController.h"
 
-#include "Adapters/Inbound/HoveredForm.h"
+#include <imgui.h>
+#include <imgui_impl_dx11.h>
+#include <imgui_impl_win32.h>
+
+#include <filesystem>
+
 #include "Application/AssignService.h"
 #include "Application/InputController.h"
 #include "Config/ConfigAdapter.h"
 #include "Config/Slots.h"
+#include "Config/StyleConfig.h"
 #include "Domain/SlotCooldownTracker.h"
 #include "Domain/SlotCostUtil.h"
 #include "Domain/State.h"
 #include "PCH.h"
 #include "Shared/Hand.h"
+#include "Shared/HoveredFormState.h"
 #include "Shared/HudIntents.h"
 #include "Shared/InputIntents.h"
 #include "Shared/SpellClassify.h"
+#include "UI/FontLoader.h"
 #include "UI/HudManager.h"
 #include "UI/HudState.h"
 #include "UI/HudView.h"
+#include "UI/TextureManager.h"
+
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 namespace Application {
 
@@ -303,5 +314,64 @@ namespace Application {
         }
 
         Input::detail::g_popupOpenForInput.store(nowPopupOpen, std::memory_order_relaxed);
+    }
+
+    void HudController::InitializeGraphics() {
+        IntegratedMagic::TextureManager::Init();
+
+        auto& io = ImGui::GetIO();
+        const auto& fc = IntegratedMagic::StyleConfig::Get().font;
+
+        const char* fontPath = fc.path.empty() ? nullptr : fc.path.c_str();
+        if (!fontPath || !std::filesystem::exists(fontPath)) {
+            io.Fonts->AddFontDefault();
+            MAGIC_DEBUG_LOG("[HUD] HudController::InitializeGraphics: font not found, using default");
+            return;
+        }
+
+        io.Fonts->AddFontFromFileTTF(fontPath, fc.size, nullptr, FontLoader::GetGlyphRangesDefault());
+
+        ImFontConfig mergeCfg;
+        mergeCfg.MergeMode = true;
+
+        if (fc.rangePolish)
+            io.Fonts->AddFontFromFileTTF(fontPath, fc.size, &mergeCfg, FontLoader::GetGlyphRangesPolish());
+        if (fc.rangeCyrillic)
+            io.Fonts->AddFontFromFileTTF(fontPath, fc.size, &mergeCfg, FontLoader::GetGlyphRangesCyrillic());
+        if (fc.rangeJapanese)
+            io.Fonts->AddFontFromFileTTF(fontPath, fc.size, &mergeCfg, FontLoader::GetGlyphRangesJapanese());
+        if (fc.rangeChineseSimplified)
+            io.Fonts->AddFontFromFileTTF(fontPath, fc.size, &mergeCfg, FontLoader::GetGlyphRangesChineseSimplified());
+        if (fc.rangeKorean)
+            io.Fonts->AddFontFromFileTTF(fontPath, fc.size, &mergeCfg, FontLoader::GetGlyphRangesKorean());
+        if (fc.rangeGreek)
+            io.Fonts->AddFontFromFileTTF(fontPath, fc.size, &mergeCfg, FontLoader::GetGlyphRangesGreek());
+
+        MAGIC_DEBUG_LOG("[HUD] HudController::InitializeGraphics: loaded font '{}' size {}", fontPath, fc.size);
+    }
+
+    void HudController::RenderFrame(float backbufferW, float backbufferH) {
+        IntegratedMagic::HUD::g_backbufferW.store(backbufferW, std::memory_order_relaxed);
+        IntegratedMagic::HUD::g_backbufferH.store(backbufferH, std::memory_order_relaxed);
+        ImGui::NewFrame();
+        IntegratedMagic::HUD::DrawHudFrame();
+        ImGui::EndFrame();
+        ImGui::Render();
+        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+    }
+
+    void HudController::OnWindowMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+        if (uMsg == WM_KILLFOCUS) {
+            auto& io = ImGui::GetIO();
+            io.ClearInputCharacters();
+            io.ClearInputKeys();
+        }
+        const bool popupOpen = IntegratedMagic::HUD::IsDetailPopupOpen();
+        const bool isMouseMsg =
+            (uMsg == WM_LBUTTONDOWN || uMsg == WM_LBUTTONUP || uMsg == WM_RBUTTONDOWN || uMsg == WM_RBUTTONUP ||
+             uMsg == WM_MBUTTONDOWN || uMsg == WM_MBUTTONUP || uMsg == WM_MOUSEMOVE || uMsg == WM_MOUSEWHEEL);
+        if (!isMouseMsg || popupOpen) {
+            ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam);
+        }
     }
 }

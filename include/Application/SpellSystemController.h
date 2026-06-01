@@ -7,6 +7,12 @@ namespace Application {
 
     class SpellSystemController {
     public:
+        struct ActiveSlotContents {
+            RE::FormID leftSpell{0};
+            RE::FormID rightSpell{0};
+            RE::FormID shout{0};
+        };
+
         static SpellSystemController& Get();
 
         void OnFrame(float dt, bool inputBlocked) const;
@@ -21,6 +27,7 @@ namespace Application {
         [[nodiscard]] int ActiveSlot() const;
         [[nodiscard]] bool IsInSlotSetup() const;
         [[nodiscard]] bool IsShoutActive() const;
+        [[nodiscard]] ActiveSlotContents GetActiveSlotContents() const;
         void ConsumeForceExitResult(IntegratedMagic::StateExitResult result) const;
         void OnCastStarted(RE::MagicSystem::CastingSource src, RE::MagicItem* spell,
                            RE::MagicSystem::CastingType type) const;

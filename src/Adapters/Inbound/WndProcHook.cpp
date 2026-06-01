@@ -1,15 +1,12 @@
 #include "Adapters/Inbound/WndProcHook.h"
 
 #include <imgui.h>
-#include <imgui_impl_win32.h>
 
 #include "Adapters/Inbound/HookContext.h"
+#include "Application/HudController.h"
 #include "Application/InputController.h"
-#include "Config/InputConstants.h"
+#include "Shared/InputConstants.h"
 #include "PCH.h"
-#include "UI/HudManager.h"
-
-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 namespace IntegratedMagic::Inbound::WndProcHook {
     namespace {
@@ -34,19 +31,7 @@ namespace IntegratedMagic::Inbound::WndProcHook {
                 }
 
                 if (!Application::InputController::Get().IsCaptureModeActive()) {
-                    if (uMsg == WM_KILLFOCUS) {
-                        auto& io = ImGui::GetIO();
-                        io.ClearInputCharacters();
-                        io.ClearInputKeys();
-                    }
-                    const bool popupOpen = IntegratedMagic::HUD::IsDetailPopupOpen();
-                    const bool isMouseMsg = (uMsg == WM_LBUTTONDOWN || uMsg == WM_LBUTTONUP || uMsg == WM_RBUTTONDOWN ||
-                                             uMsg == WM_RBUTTONUP || uMsg == WM_MBUTTONDOWN || uMsg == WM_MBUTTONUP ||
-                                             uMsg == WM_MOUSEMOVE || uMsg == WM_MOUSEWHEEL);
-
-                    if (!isMouseMsg || popupOpen) {
-                        ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam);
-                    }
+                    Application::HudController::Get().OnWindowMessage(hWnd, uMsg, wParam, lParam);
                 }
             }
             return g_originalWndProc(hWnd, uMsg, wParam, lParam);
