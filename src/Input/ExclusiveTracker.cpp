@@ -74,7 +74,7 @@ namespace Input::detail {
                 const bool srcIsMulti = (src == PendingSrc::Kb) ? slots.slotIsKbMultiKey[s] : slots.slotIsGpMultiKey[s];
                 const bool simPatch = patches.PressBothAtSame() && srcIsMulti;
 
-                if (requireExcl && srcIsMulti) {
+                if (requireExcl) {
                     const bool stillExcl =
                         (src == PendingSrc::Kb)
                             ? ComboExclusiveNow(hk.kb, keys.kbDown, IsAllowedExtra_Keyboard_MoveOrCamera)

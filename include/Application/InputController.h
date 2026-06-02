@@ -19,6 +19,7 @@ namespace Application {
 
         void ProcessAndFilter(RE::InputEvent** a_evns);
         void OnConfigChanged();
+        void ResetInputState();
 
         [[nodiscard]] std::optional<int> ConsumePressedSlot();
         [[nodiscard]] std::optional<int> ConsumeReleasedSlot();

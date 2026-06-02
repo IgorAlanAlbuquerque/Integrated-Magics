@@ -246,6 +246,7 @@ namespace Application {
     void SpellSystemController::NotifyLoadGame() const {
         auto& state = IntegratedMagic::MagicState::Get();
         HandleForceExitResult(state.ForceExit());
+        InputController::Get().ResetInputState();
     }
 
     void SpellSystemController::NotifyMenuOpen(std::string_view menuName) const {

@@ -113,6 +113,11 @@ namespace Application {
         Input::detail::ResetExclusiveState(m_slots, m_exclusive, m_replay, m_retained, m_deferred);
     }
 
+    void InputController::ResetInputState() {
+        MAGIC_DEBUG_LOG("[Input] ResetInputState: resetting exclusive state on game load");
+        Input::detail::ResetExclusiveState(m_slots, m_exclusive, m_replay, m_retained, m_deferred);
+    }
+
     std::optional<int> InputController::ConsumeBit(std::atomic<std::uint64_t>& mask) const {
         while (true) {
             const int n = m_slots.ActiveSlots();
