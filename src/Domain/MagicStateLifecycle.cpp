@@ -13,9 +13,6 @@ namespace IntegratedMagic {
         using WS = RE::WEAPON_STATE;
         using KS = RE::KNOCK_STATE_ENUM;
 
-        bool PlayerIsDead(RE::PlayerCharacter const* pc) { return pc->IsDead(); }
-        bool PlayerIsBlocking(RE::PlayerCharacter const* pc) { return pc->IsBlocking(); }
-
         bool PlayerIsKnockedOrStaggered(RE::PlayerCharacter* pc) {
             auto ks = pc->AsActorState()->GetKnockState();
             return ks != KS::kNormal && ks != KS::kQueued;
@@ -283,9 +280,7 @@ namespace IntegratedMagic {
         if (!_session.active) return false;
         auto* pc = GetPlayer();
         if (!pc) return true;
-        if (PlayerIsDead(pc)) return true;
         if (PlayerIsKnockedOrStaggered(pc) && (!_left.pressActive && !_right.pressActive)) return true;
-        if (PlayerIsBlocking(pc) && (!_left.pressActive && !_right.pressActive)) return true;
 #ifdef DEBUG
         const auto ws = pc->AsActorState()->GetWeaponState();
 #endif
@@ -366,6 +361,8 @@ namespace IntegratedMagic {
         result.shout = stopShout();
 
         if (_shout.modeShoutID != 0 && _shout.isPower && _shout.finished) {
+            MAGIC_DEBUG_LOG("[State] TryFinalizeExit: power done → pendingPowerRestore delay={:.3f}s",
+                            RestoreContext::kPowerRestoreDelaySec);
             _restore.pendingPowerRestore = true;
             _restore.pendingPowerRestoreDelaySecs = RestoreContext::kPowerRestoreDelaySec;
 

@@ -70,7 +70,6 @@ namespace Application {
 
             const auto autoResult = IntegratedMagic::MagicState::Get().PumpAutomatic(dt);
 
-            // releaseAttack: UP only — DOWN was scheduled via pendingRestartNextFrame, arrives next frame
             if (autoResult.releaseLeftAttack) {
                 MAGIC_DEBUG_LOG("[FLOW] OnFrame: release Left (UP only, DOWN next frame)");
                 IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 0.0f, 0.1f);
@@ -80,7 +79,6 @@ namespace Application {
                 IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Right, 0.0f, 0.1f);
             }
 
-            // startAttack: DOWN only — UP was sent last frame, this creates the rising edge
             if (autoResult.startLeftAttack) {
                 MAGIC_DEBUG_LOG("[FLOW] OnFrame: start Left (DOWN only, rising edge)");
                 IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 1.0f, 0.0f);
@@ -202,6 +200,13 @@ namespace Application {
         }
         if (tag == "blockStart"sv || tag == "BashExit"sv) {
             if (!state.IsPressMode()) {
+                HandleForceExitResult(state.ForceExit());
+            }
+        }
+
+        if (tag == "staggerStart"sv || tag == "KnockDown"sv) {
+            if (!state.IsPressMode()) {
+                MAGIC_DEBUG_LOG("[SpellSystem] AnimEvent: {} → ForceExit", tag);
                 HandleForceExitResult(state.ForceExit());
             }
         }

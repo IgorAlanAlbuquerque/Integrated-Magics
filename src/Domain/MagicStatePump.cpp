@@ -87,13 +87,11 @@ namespace IntegratedMagic {
         MAGIC_DEBUG_LOG("[State] NotifyAttackEnabled: EnableBumper received left.phase={} right.phase={}",
                         static_cast<int>(_left.autoCastPhase), static_cast<int>(_right.autoCastPhase));
 
-        // Only re-dispatch if the hand has been in StartRequested for at least 100ms, to prevent
-        // double-dispatch when EnableBumper and a spurious interrupt arrive in the same frame.
         constexpr float kMinRedispatchSecs = 0.1f;
         auto tryRedispatch = [&](Hand hand, bool& dispatchFlag) {
             auto& hm = ModeFor(hand);
             if (hm.autoCastPhase != AutoCastPhase::StartRequested) return;
-            if (hm.pendingRestartNextFrame) return;  // already scheduled
+            if (hm.pendingRestartNextFrame) return;
             if (hm.startRequestSecs < kMinRedispatchSecs) {
                 MAGIC_DEBUG_LOG("[State] NotifyAttackEnabled: hand={} skip re-dispatch (too soon secs={:.3f})",
                                 IsLeft(hand) ? "Left" : "Right", hm.startRequestSecs);
@@ -104,7 +102,8 @@ namespace IntegratedMagic {
             hm.startRequestSecs = 0.f;
             hm.pendingRestartNextFrame = true;
             dispatchFlag = true;
-            MAGIC_DEBUG_LOG("[State] NotifyAttackEnabled: hand={} → UP (DOWN next frame)", IsLeft(hand) ? "Left" : "Right");
+            MAGIC_DEBUG_LOG("[State] NotifyAttackEnabled: hand={} → UP (DOWN next frame)",
+                            IsLeft(hand) ? "Left" : "Right");
         };
 
         tryRedispatch(Left, result.dispatchLeft);
@@ -249,14 +248,12 @@ namespace IntegratedMagic {
             return result;
         }
 
-        // Deferred restart: UP was sent last frame, send DOWN now to create rising edge
         if (hm.pendingRestartNextFrame) {
             hm.pendingRestartNextFrame = false;
             _aa.Held(hand) = true;
             _aa.Secs(hand) = 0.f;
             hm.startRequestSecs = 0.f;
-            MAGIC_DEBUG_LOG("[FLOW] PumpCastPhase: hand={} deferred restart → DOWN",
-                            IsLeft(hand) ? "Left" : "Right");
+            MAGIC_DEBUG_LOG("[FLOW] PumpCastPhase: hand={} deferred restart → DOWN", IsLeft(hand) ? "Left" : "Right");
             result.startAttack = true;
             return result;
         }
@@ -307,8 +304,6 @@ namespace IntegratedMagic {
             ConfirmAutoCastStarted(hand);
         }
 
-        // Periodic re-dispatch: send UP this frame, schedule DOWN for the next frame.
-        // The behavior machine needs to see UP→DOWN as a rising edge on separate frames.
         constexpr float kRedispatchInterval = 0.15f;
         if (hm.autoCastPhase == AutoCastPhase::StartRequested) {
             const float prev = hm.startRequestSecs;
@@ -407,12 +402,24 @@ namespace IntegratedMagic {
             if (!hm.waitingSpellFireFinalize) return;
 
             hm.spellFireFinalizeSecs += dt > 0.f ? dt : 0.f;
-            MAGIC_DEBUG_LOG("[FLOW] PumpSpellFireFinalize: hand={} timer={:.3f}/{:.3f}",
-                            IsLeft(hand) ? "Left" : "Right", hm.spellFireFinalizeSecs, kSpellFireFinalizeDelay);
-            if (hm.spellFireFinalizeSecs < kSpellFireFinalizeDelay) return;
 
-            MAGIC_DEBUG_LOG("[FLOW] PumpSpellFireFinalize: hand={} delay elapsed → TryFinalizeExit",
-                            IsLeft(hand) ? "Left" : "Right");
+            bool casterIdle = true;
+            if (auto* player = GetPlayer()) {
+                const auto src = IsLeft(hand) ? RE::MagicSystem::CastingSource::kLeftHand
+                                              : RE::MagicSystem::CastingSource::kRightHand;
+                if (const auto* caster = GetMagicCaster(player, src)) {
+                    casterIdle = caster->state.get() == RE::MagicCaster::State::kNone;
+                }
+            }
+
+            MAGIC_DEBUG_LOG("[FLOW] PumpSpellFireFinalize: hand={} timer={:.3f}/{:.3f} casterIdle={}",
+                            IsLeft(hand) ? "Left" : "Right", hm.spellFireFinalizeSecs, kSpellFireFinalizeDelay,
+                            casterIdle);
+
+            if (!casterIdle && hm.spellFireFinalizeSecs < kSpellFireFinalizeDelay) return;
+
+            MAGIC_DEBUG_LOG("[FLOW] PumpSpellFireFinalize: hand={} → TryFinalizeExit (casterIdle={} timer={:.3f})",
+                            IsLeft(hand) ? "Left" : "Right", casterIdle, hm.spellFireFinalizeSecs);
             hm.waitingSpellFireFinalize = false;
             hm.spellFireFinalizeSecs = 0.f;
 
