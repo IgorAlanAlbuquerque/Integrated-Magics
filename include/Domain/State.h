@@ -5,7 +5,6 @@
 #include "PCH.h"
 #include "Shared/AttackEnabledResult.h"
 #include "Shared/Hand.h"
-#include "Shared/InventoryUtil.h"
 #include "Shared/PumpResults.h"
 #include "Shared/RestoreSnapshotPlan.h"
 #include "Shared/SlotPressAction.h"
@@ -37,7 +36,7 @@ namespace IntegratedMagic {
         bool chargeComplete{false};
         bool holdFiredAndWaitingCastStop{false};
         bool finished{false};
-        bool pressAutocast{false};
+        bool pendingRestartNextFrame{false};
         float startRequestSecs{0.f};
         float castingElapsedSecs{0.f};
         bool waitingSpellFireFinalize{false};
@@ -114,7 +113,8 @@ namespace IntegratedMagic {
 
         [[nodiscard]] SlotPressAction OnSlotPressed(int slot);
         StateExitResult OnSlotReleased(int slot);
-        [[nodiscard]] AttackEnabledResult OnEquipComplete(const InventoryIndex& snapshotBefore);
+        [[nodiscard]] AttackEnabledResult OnEquipComplete();
+        void NotifyUnexpectedUnequip(RE::TESBoundObject* base);
 
         StateExitResult OnCastStop();
         StateExitResult OnShoutStop();
@@ -227,9 +227,6 @@ namespace IntegratedMagic {
         bool RequestAutoAttackStart(Hand hand, bool clearWaitAfterEquip);
         void ConfirmAutoCastStarted(Hand hand);
 
-        template <class Fn>
-        void UpdatePrevExtraEquippedForOverlay(Fn&& equipFn);
-
         HandMode _left{};
         HandMode _right{};
 
@@ -242,20 +239,4 @@ namespace IntegratedMagic {
         static constexpr float kMaxActiveTimeoutSecs = 30.f;
     };
 
-    template <class Fn>
-    void MagicState::UpdatePrevExtraEquippedForOverlay(Fn&& equipFn) {
-        auto* player = RE::PlayerCharacter::GetSingleton();
-        if (!player) return;
-
-        auto before = BuildInventoryIndex(player);
-        std::forward<Fn>(equipFn)();
-        auto after = BuildInventoryIndex(player);
-
-        for (auto* base : before.wornBases) {
-            if (after.wornBases.contains(base)) continue;
-            const bool exists =
-                std::ranges::any_of(_restore.prevExtraEquipped, [&](auto const& e) { return e.base == base; });
-            if (!exists) _restore.prevExtraEquipped.push_back({base, nullptr});
-        }
-    }
 }

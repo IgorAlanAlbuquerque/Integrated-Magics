@@ -241,7 +241,10 @@ namespace IntegratedMagic {
 
     bool MagicState::CanOverwriteNow() const {
         using enum IntegratedMagic::ActivationMode;
-        if (!_session.active || _session.activeSlot < 0) return false;
+        if (!_session.active || _session.activeSlot < 0) {
+            MAGIC_DEBUG_LOG("[State] CanOverwriteNow: false (not active)");
+            return false;
+        }
         if (_shout.modeShoutID != 0) {
             if (_shout.finished) return false;
             const auto settings = Config::MagicConfigAdapter::Get().GetSpellSettings(_shout.modeShoutID);
@@ -253,14 +256,26 @@ namespace IntegratedMagic {
         if (!needL && !needR) return false;
         if ((needL && (_left.holdActive || _left.autoActive || _left.holdFiredAndWaitingCastStop)) ||
             (needR && (_right.holdActive || _right.autoActive || _right.holdFiredAndWaitingCastStop))) {
+            MAGIC_DEBUG_LOG("[State] CanOverwriteNow: false (hand still active - L hold={} auto={} R hold={} auto={})",
+                            _left.holdActive, _left.autoActive, _right.holdActive, _right.autoActive);
             return false;
         }
         int pressCount = 0;
         if (needL && _left.mode == Press) ++pressCount;
         if (needR && _right.mode == Press) ++pressCount;
-        if (pressCount == 0) return false;
-        if (needL && _left.mode != Press && !_left.finished) return false;
-        if (needR && _right.mode != Press && !_right.finished) return false;
+        if (pressCount == 0) {
+            MAGIC_DEBUG_LOG("[State] CanOverwriteNow: false (no press mode hands)");
+            return false;
+        }
+        if (needL && _left.mode != Press && !_left.finished) {
+            MAGIC_DEBUG_LOG("[State] CanOverwriteNow: false (Left not press and not finished)");
+            return false;
+        }
+        if (needR && _right.mode != Press && !_right.finished) {
+            MAGIC_DEBUG_LOG("[State] CanOverwriteNow: false (Right not press and not finished)");
+            return false;
+        }
+        MAGIC_DEBUG_LOG("[State] CanOverwriteNow: true (pressCount={})", pressCount);
         return true;
     }
 
@@ -283,16 +298,16 @@ namespace IntegratedMagic {
         if (_session.modeSpellRight) {
             auto* caster = GetMagicCaster(pc, RE::MagicSystem::CastingSource::kRightHand);
             if (CasterSpellMismatch(caster, _session.modeSpellRight)) {
-                MAGIC_DEBUG_LOG("[State] ShouldForceInterrupt: TRUE - Right caster spell mismatch");
-
+                MAGIC_DEBUG_LOG("[State] ShouldForceInterrupt: TRUE - Right spell mismatch (expected={:#010x} caster={})",
+                                _session.modeSpellRight->GetFormID(), caster ? "valid" : "null");
                 return true;
             }
         }
         if (_session.modeSpellLeft) {
             auto* caster = GetMagicCaster(pc, RE::MagicSystem::CastingSource::kLeftHand);
             if (CasterSpellMismatch(caster, _session.modeSpellLeft)) {
-                MAGIC_DEBUG_LOG("[State] ShouldForceInterrupt: TRUE - Left caster spell mismatch");
-
+                MAGIC_DEBUG_LOG("[State] ShouldForceInterrupt: TRUE - Left spell mismatch (expected={:#010x} caster={})",
+                                _session.modeSpellLeft->GetFormID(), caster ? "valid" : "null");
                 return true;
             }
         }
@@ -300,6 +315,7 @@ namespace IntegratedMagic {
     }
 
     void MagicState::FinalizeExitAfterController() {
+        MAGIC_DEBUG_LOG("[State] FinalizeExitAfterController: slot={}", _session.activeSlot);
         _restore.snapshot.valid = false;
         _restore.prevExtraEquipped.clear();
         _restore.ClearDirty();
@@ -322,6 +338,10 @@ namespace IntegratedMagic {
 
     StateExitResult MagicState::ExitAllNow() {
         StateExitResult result{};
+
+        MAGIC_DEBUG_LOG("[State] ExitAllNow: slot={} aaL={} aaR={} shoutHeld={} wasHandsDown={} isPower={} pendingRestore={}",
+                        _session.activeSlot, _aa.heldLeft, _aa.heldRight, _shout.held,
+                        _session.wasHandsDown, _shout.isPower, _restore.pendingRestore);
 
         using enum Hand;
 

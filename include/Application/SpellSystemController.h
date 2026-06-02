@@ -28,6 +28,7 @@ namespace Application {
         [[nodiscard]] bool IsShoutActive() const;
         [[nodiscard]] ActiveSlotContents GetActiveSlotContents() const;
         void ConsumeForceExitResult(IntegratedMagic::StateExitResult result) const;
+        void NotifyUnexpectedUnequip(RE::TESBoundObject* base) const;
         void OnCastStarted(RE::MagicSystem::CastingSource src, RE::MagicItem* spell,
                            RE::MagicSystem::CastingType type) const;
         void OnCastInterrupted(RE::MagicSystem::CastingSource src, RE::MagicItem* spell, bool depleteEnergy) const;

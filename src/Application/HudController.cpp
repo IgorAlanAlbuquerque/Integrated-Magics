@@ -151,7 +151,6 @@ namespace Application {
         const float dt = input.GetDeltaTime();
         IntegratedMagic::SlotCooldownTracker::Get().Update(dt);
 
-        // Build Domain-sourced fields of HudView; UI fills Config-sourced fields
         HudView v{};
         v.slotCount = g_slotCount.load();
         v.activeSlot = IntegratedMagic::MagicState::Get().ActiveSlot();

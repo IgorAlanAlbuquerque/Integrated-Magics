@@ -43,7 +43,7 @@ namespace IntegratedMagic::EquipSink {
             RE::BSEventNotifyControl ProcessEvent(const RE::TESEquipEvent* a_event,
                                                   RE::BSTEventSource<RE::TESEquipEvent>*) override {
                 using enum RE::BSEventNotifyControl;
-                if (!a_event || !a_event->equipped) return kContinue;
+                if (!a_event) return kContinue;
 
                 auto const* player = RE::PlayerCharacter::GetSingleton();
                 if (!player || a_event->actor.get() != player) return kContinue;
@@ -51,6 +51,17 @@ namespace IntegratedMagic::EquipSink {
                 const auto formID = a_event->baseObject;
                 auto* form = RE::TESForm::LookupByID(formID);
                 if (!form) return kContinue;
+
+                if (!a_event->equipped) {
+                    auto const& ctrl = Application::SpellSystemController::Get();
+                    if (ctrl.IsInSlotSetup() && !form->As<RE::SpellItem>() && !form->As<RE::TESShout>()) {
+                        if (auto* base = form->As<RE::TESBoundObject>()) {
+                            MAGIC_DEBUG_LOG("[EquipSink] unequip side effect {:#010x} during slot setup", formID);
+                            ctrl.NotifyUnexpectedUnequip(base);
+                        }
+                    }
+                    return kContinue;
+                }
 
                 if (form->As<RE::TESShout>() || form->As<RE::SpellItem>())
                     s_lastEquippedMagicFormID.store(formID, std::memory_order_relaxed);
@@ -95,16 +106,14 @@ namespace IntegratedMagic::EquipSink {
 
                 if (form->As<RE::TESShout>()) {
                     if (ctrl.ActiveSlot() < 0) return kContinue;
-                    if (const auto sID = ctrl.GetActiveSlotContents().shout; !sID || formID == sID)
-                        return kContinue;
+                    if (const auto sID = ctrl.GetActiveSlotContents().shout; !sID || formID == sID) return kContinue;
                     MAGIC_DEBUG_LOG("[EquipSink] foreign shout {:#010x} -> ForceExitNoRestore", formID);
                     ScheduleForceExitNoRestore();
                     return kContinue;
                 }
 
                 if (form->As<RE::TESObjectWEAP>() || form->As<RE::TESObjectARMO>() || form->As<RE::TESObjectMISC>()) {
-                    if (ctrl.ActiveSlot() < 0 || ctrl.IsInSlotSetup() || ctrl.IsShoutActive())
-                        return kContinue;
+                    if (ctrl.ActiveSlot() < 0 || ctrl.IsInSlotSetup() || ctrl.IsShoutActive()) return kContinue;
 
                     const auto contents = ctrl.GetActiveSlotContents();
                     if (form->As<RE::TESObjectWEAP>() && IsAssociatedBoundWeaponOfSlot(formID, contents))

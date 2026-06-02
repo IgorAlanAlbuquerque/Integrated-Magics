@@ -53,6 +53,7 @@ namespace IntegratedMagic {
         hm.pressActive = false;
         hm.waitingChargeComplete = false;
         hm.holdFiredAndWaitingCastStop = false;
+        hm.pendingRestartNextFrame = false;
         hm.startRequestSecs = 0.f;
         hm.castingElapsedSecs = 0.f;
         hm.autoCastPhase = AutoCastPhase::Done;
@@ -72,7 +73,11 @@ namespace IntegratedMagic {
         auto& hm = ModeFor(hand);
         hm.mode = ss.mode;
         hm.wantAutoAttack = ss.autoAttack;
-        hm.pressActive = !hm.pressActive;
+        const bool newPressActive = !hm.pressActive;
+        MAGIC_DEBUG_LOG("[State] TogglePressHand: hand={} mode={} wantAuto={} pressActive={} → {}",
+                        IsLeft(hand) ? "Left" : "Right", static_cast<int>(ss.mode), ss.autoAttack,
+                        hm.pressActive, newPressActive);
+        hm.pressActive = newPressActive;
         if (!hm.pressActive) FinishHand(hand);
     }
 
@@ -106,11 +111,9 @@ namespace IntegratedMagic {
                 hm.pressActive = true;
                 if (hm.wantAutoAttack) {
                     hm.autoActive = true;
-                    hm.pressAutocast = true;
                     hm.autoCastPhase = AutoCastPhase::StartRequested;
                 }
-                MAGIC_DEBUG_LOG("[State] EnterHand: hand={} mode=Press wantAutoAttack={} pressAutocast={}", handStr,
-                                hm.wantAutoAttack, hm.pressAutocast);
+                MAGIC_DEBUG_LOG("[State] EnterHand: hand={} mode=Press wantAutoAttack={}", handStr, hm.wantAutoAttack);
                 break;
         }
     }
@@ -358,8 +361,6 @@ namespace IntegratedMagic {
             return action;
         }
 
-        action.inventorySnapshotBefore = BuildInventoryIndex(e.player);
-
         if (e.hasRight) {
             action.spellsToEquip.push_back({e.rightSpell, Right});
             MarkDirty(Right);
@@ -398,30 +399,24 @@ namespace IntegratedMagic {
         return action;
     }
 
-    AttackEnabledResult MagicState::OnEquipComplete(const InventoryIndex& snapshotBefore) {
-        auto* player = GetPlayer();
-        if (!player) {
-            _inSlotSetup = false;
-            return {};
-        }
-
-        const auto after = BuildInventoryIndex(player);
-        for (auto* base : snapshotBefore.wornBases) {
-            if (after.wornBases.contains(base)) continue;
-            const bool exists =
-                std::ranges::any_of(_restore.prevExtraEquipped, [&](auto const& e) { return e.base == base; });
-            if (!exists) _restore.prevExtraEquipped.push_back({base, nullptr});
-        }
-
+    AttackEnabledResult MagicState::OnEquipComplete() {
+        MAGIC_DEBUG_LOG("[State] OnEquipComplete: left(auto={} phase={}) right(auto={} phase={})",
+                        _left.autoActive, static_cast<int>(_left.autoCastPhase),
+                        _right.autoActive, static_cast<int>(_right.autoCastPhase));
         _inSlotSetup = false;
 
-        // Trigger attack dispatch immediately — spell is now equipped
+        auto* player = GetPlayer();
+        if (!player) return {};
+
         AttackEnabledResult result;
         using enum Hand;
         auto tryStart = [&](Hand hand, bool& dispatchFlag) {
             auto& hm = ModeFor(hand);
             if (hm.autoCastPhase == AutoCastPhase::StartRequested) {
                 dispatchFlag = RequestAutoAttackStart(hand, false);
+            } else {
+                MAGIC_DEBUG_LOG("[State] OnEquipComplete: hand={} skip dispatch - phase={}",
+                                IsLeft(hand) ? "Left" : "Right", static_cast<int>(hm.autoCastPhase));
             }
         };
         tryStart(Left, result.dispatchLeft);
@@ -430,6 +425,16 @@ namespace IntegratedMagic {
         MAGIC_DEBUG_LOG("[State] OnEquipComplete: dispatchLeft={} dispatchRight={}", result.dispatchLeft,
                         result.dispatchRight);
         return result;
+    }
+
+    void MagicState::NotifyUnexpectedUnequip(RE::TESBoundObject* base) {
+        if (!_inSlotSetup || !base) return;
+        const bool exists =
+            std::ranges::any_of(_restore.prevExtraEquipped, [&](auto const& e) { return e.base == base; });
+        if (!exists) {
+            _restore.prevExtraEquipped.push_back({base, nullptr});
+            MAGIC_DEBUG_LOG("[State] NotifyUnexpectedUnequip: base={:#010x} (overlay side effect)", base->GetFormID());
+        }
     }
 
     StateExitResult MagicState::OnSlotReleased(int slot) {

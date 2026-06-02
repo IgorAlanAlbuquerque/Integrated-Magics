@@ -68,6 +68,7 @@ namespace IntegratedMagic {
             return false;
         }
 
+        hm.pendingRestartNextFrame = false;
         _aa.Held(hand) = true;
         _aa.Secs(hand) = 0.f;
         hm.autoCastPhase = AutoCastPhase::StartRequested;
@@ -86,15 +87,24 @@ namespace IntegratedMagic {
         MAGIC_DEBUG_LOG("[State] NotifyAttackEnabled: EnableBumper received left.phase={} right.phase={}",
                         static_cast<int>(_left.autoCastPhase), static_cast<int>(_right.autoCastPhase));
 
-        // EnableBumper signals the behaviour machine is ready to accept magic input.
-        // If a hand is still in StartRequested, re-dispatch the initial press with correct timing.
+        // Only re-dispatch if the hand has been in StartRequested for at least 100ms, to prevent
+        // double-dispatch when EnableBumper and a spurious interrupt arrive in the same frame.
+        constexpr float kMinRedispatchSecs = 0.1f;
         auto tryRedispatch = [&](Hand hand, bool& dispatchFlag) {
             auto& hm = ModeFor(hand);
             if (hm.autoCastPhase != AutoCastPhase::StartRequested) return;
+            if (hm.pendingRestartNextFrame) return;  // already scheduled
+            if (hm.startRequestSecs < kMinRedispatchSecs) {
+                MAGIC_DEBUG_LOG("[State] NotifyAttackEnabled: hand={} skip re-dispatch (too soon secs={:.3f})",
+                                IsLeft(hand) ? "Left" : "Right", hm.startRequestSecs);
+                return;
+            }
+            _aa.Held(hand) = false;
             _aa.Secs(hand) = 0.f;
             hm.startRequestSecs = 0.f;
+            hm.pendingRestartNextFrame = true;
             dispatchFlag = true;
-            MAGIC_DEBUG_LOG("[State] NotifyAttackEnabled: hand={} re-dispatch", IsLeft(hand) ? "Left" : "Right");
+            MAGIC_DEBUG_LOG("[State] NotifyAttackEnabled: hand={} → UP (DOWN next frame)", IsLeft(hand) ? "Left" : "Right");
         };
 
         tryRedispatch(Left, result.dispatchLeft);
@@ -136,23 +146,20 @@ namespace IntegratedMagic {
             result.resetShoutAfterController = result.resetShoutAfterController || src.resetShoutAfterController;
         };
 
-        // pressAutocast: reset auto flags, keep press active (spell stays equipped)
         auto handlePressAutocast = [&](Hand h) {
             auto& hm = ModeFor(h);
-            if (hm.autoActive && !hm.finished && hm.chargeComplete && hm.pressAutocast &&
+            if (hm.autoActive && !hm.finished && hm.chargeComplete && hm.pressActive &&
                 hm.autoCastPhase != AutoCastPhase::Done) {
                 hm.autoActive = false;
                 hm.chargeComplete = false;
                 hm.waitingChargeComplete = false;
-                hm.pressAutocast = false;
                 hm.autoCastPhase = AutoCastPhase::Done;
             }
         };
 
-        // Automatic mode charge complete → finish hand
         auto handleAutoComplete = [&](Hand h) {
             auto& hm = ModeFor(h);
-            if (hm.autoActive && !hm.finished && hm.chargeComplete && !hm.pressAutocast &&
+            if (hm.autoActive && !hm.finished && hm.chargeComplete && !hm.pressActive &&
                 hm.autoCastPhase != AutoCastPhase::Done) {
                 const float finished = FinishHand(h);
                 if (finished != -1.f) {
@@ -169,7 +176,6 @@ namespace IntegratedMagic {
         handleAutoComplete(Left);
         handleAutoComplete(Right);
 
-        // Hold mode: hotkey was released while charge spell was at full charge
         if (_left.holdFiredAndWaitingCastStop && !_left.finished) {
             const float finishedL = FinishHand(Left);
             if (finishedL != -1.f) result.leftAttack = StopDispatchIntent{finishedL};
@@ -238,10 +244,34 @@ namespace IntegratedMagic {
         PumpCastPhaseResult result{};
         auto& hm = ModeFor(hand);
 
-        if (!_session.active || hm.finished) return result;
+        if (!_session.active || hm.finished) {
+            hm.pendingRestartNextFrame = false;
+            return result;
+        }
+
+        // Deferred restart: UP was sent last frame, send DOWN now to create rising edge
+        if (hm.pendingRestartNextFrame) {
+            hm.pendingRestartNextFrame = false;
+            _aa.Held(hand) = true;
+            _aa.Secs(hand) = 0.f;
+            hm.startRequestSecs = 0.f;
+            MAGIC_DEBUG_LOG("[FLOW] PumpCastPhase: hand={} deferred restart → DOWN",
+                            IsLeft(hand) ? "Left" : "Right");
+            result.startAttack = true;
+            return result;
+        }
 
         const bool isAutoOrHold = hm.autoActive || (hm.holdActive && hm.wantAutoAttack);
-        if (!isAutoOrHold && !hm.holdFiredAndWaitingCastStop) return result;
+        if (!isAutoOrHold && !hm.holdFiredAndWaitingCastStop) {
+            if (hm.autoCastPhase != AutoCastPhase::Idle && hm.autoCastPhase != AutoCastPhase::Done) {
+                MAGIC_DEBUG_LOG(
+                    "[FLOW] PumpCastPhase: hand={} UNEXPECTED SKIP phase={} autoActive={} holdActive={} wantAuto={} "
+                    "holdFired={}",
+                    IsLeft(hand) ? "Left" : "Right", static_cast<int>(hm.autoCastPhase), hm.autoActive, hm.holdActive,
+                    hm.wantAutoAttack, hm.holdFiredAndWaitingCastStop);
+            }
+            return result;
+        }
 
         if (hm.autoCastPhase == AutoCastPhase::Idle || hm.autoCastPhase == AutoCastPhase::Done) return result;
 
@@ -253,7 +283,8 @@ namespace IntegratedMagic {
         const auto* caster = GetMagicCaster(player, src);
         if (!caster) return result;
 
-        const auto casterState = std::to_underlying(caster->state.get());
+        const auto castStateEnum = caster->state.get();
+        const auto casterState = std::to_underlying(castStateEnum);
 
 #ifdef DEBUG
         const char* handStr = IsLeft(hand) ? "Left" : "Right";
@@ -269,35 +300,35 @@ namespace IntegratedMagic {
         }
 #endif
 
-        // Transition: StartRequested → Casting (caster picked up the spell and started)
-        if (hm.autoCastPhase == AutoCastPhase::StartRequested && casterState >= 1) {
+        const bool castIsStable =
+            castStateEnum == RE::MagicCaster::State::kReady || castStateEnum >= RE::MagicCaster::State::kCharging;
+        if (hm.autoCastPhase == AutoCastPhase::StartRequested && castIsStable) {
             MAGIC_DEBUG_LOG("[FLOW] PumpCastPhase: hand={} StartRequested → Casting (state={})", handStr, casterState);
             ConfirmAutoCastStarted(hand);
         }
 
-        // Accumulate time in StartRequested — used for periodic re-dispatch fallback when the
-        // behaviour machine takes time to accept magic input (e.g. weapon-drawn + spell stance).
-        constexpr float kRedispatchInterval = 0.5f;
+        // Periodic re-dispatch: send UP this frame, schedule DOWN for the next frame.
+        // The behavior machine needs to see UP→DOWN as a rising edge on separate frames.
+        constexpr float kRedispatchInterval = 0.15f;
         if (hm.autoCastPhase == AutoCastPhase::StartRequested) {
             const float prev = hm.startRequestSecs;
             hm.startRequestSecs += dt > 0.f ? dt : 0.f;
             if (hm.startRequestSecs >= kRedispatchInterval &&
                 static_cast<int>(hm.startRequestSecs / kRedispatchInterval) >
                     static_cast<int>(prev / kRedispatchInterval)) {
-                MAGIC_DEBUG_LOG("[FLOW] PumpCastPhase: hand={} StartRequested for {:.2f}s → re-dispatch",
+                MAGIC_DEBUG_LOG("[FLOW] PumpCastPhase: hand={} StartRequested for {:.2f}s → UP (DOWN next frame)",
                                 IsLeft(hand) ? "L" : "R", hm.startRequestSecs);
+                _aa.Held(hand) = false;
                 _aa.Secs(hand) = 0.f;
-                result.startAttack = true;
+                hm.pendingRestartNextFrame = true;
+                result.releaseAttack = true;
             }
         }
 
-        // Accumulate time since cast was confirmed — used by OnCasterInterrupt to detect spurious interrupts.
         if (hm.autoCastPhase == AutoCastPhase::Casting) {
             hm.castingElapsedSecs += dt > 0.f ? dt : 0.f;
         }
 
-        // Charge detection — ONLY for auto modes. Hold mode keeps button held via PumpAutoAttack until
-        // OnSlotReleased fires, which handles charge-complete/holdFiredAndWaitingCastStop directly.
         if (hm.autoActive && hm.autoCastPhase == AutoCastPhase::Casting && hm.waitingChargeComplete) {
             const auto id = (_session.activeSlot >= 0) ? Slots::GetSlotSpell(_session.activeSlot, hand) : 0;
             const auto* spell = id ? RE::TESForm::LookupByID<RE::SpellItem>(id) : nullptr;
@@ -317,7 +348,6 @@ namespace IntegratedMagic {
             }
         }
 
-        // Cast ended: caster returned to Idle
         const bool autoModeEnded =
             hm.autoActive &&
             (hm.autoCastPhase == AutoCastPhase::Casting || hm.autoCastPhase == AutoCastPhase::WaitingChargeRelease) &&
@@ -328,14 +358,12 @@ namespace IntegratedMagic {
             MAGIC_DEBUG_LOG("[FLOW] PumpCastPhase: hand={} cast ended (state=0 phase={} holdFired={})", handStr,
                             static_cast<int>(hm.autoCastPhase), hm.holdFiredAndWaitingCastStop);
 
-            if (hm.pressAutocast) {
-                // Press mode one-shot: reset auto flags, keep spell equipped via pressActive
+            if (hm.pressActive) {
                 hm.autoActive = false;
                 hm.chargeComplete = false;
                 hm.waitingChargeComplete = false;
-                hm.pressAutocast = false;
                 hm.autoCastPhase = AutoCastPhase::Done;
-                MAGIC_DEBUG_LOG("[FLOW] PumpCastPhase: hand={} pressAutocast reset", handStr);
+                MAGIC_DEBUG_LOG("[FLOW] PumpCastPhase: hand={} press-autocast done, staying equipped", handStr);
             } else {
                 const float finished = FinishHand(hand);
                 if (finished != -1.f) result.stopAttack = StopDispatchIntent{finished};
@@ -379,8 +407,12 @@ namespace IntegratedMagic {
             if (!hm.waitingSpellFireFinalize) return;
 
             hm.spellFireFinalizeSecs += dt > 0.f ? dt : 0.f;
+            MAGIC_DEBUG_LOG("[FLOW] PumpSpellFireFinalize: hand={} timer={:.3f}/{:.3f}",
+                            IsLeft(hand) ? "Left" : "Right", hm.spellFireFinalizeSecs, kSpellFireFinalizeDelay);
             if (hm.spellFireFinalizeSecs < kSpellFireFinalizeDelay) return;
 
+            MAGIC_DEBUG_LOG("[FLOW] PumpSpellFireFinalize: hand={} delay elapsed → TryFinalizeExit",
+                            IsLeft(hand) ? "Left" : "Right");
             hm.waitingSpellFireFinalize = false;
             hm.spellFireFinalizeSecs = 0.f;
 
@@ -401,13 +433,17 @@ namespace IntegratedMagic {
 
         auto& hm = ModeFor(hand);
 
+        MAGIC_DEBUG_LOG(
+            "[State] OnSpellFired: hand={} autoActive={} chargeComplete={} pressActive={} finished={} isDual={}",
+            IsLeft(hand) ? "Left" : "Right", hm.autoActive, hm.chargeComplete, hm.pressActive, hm.finished,
+            _session.isDualCasting);
+
         if (!(hm.autoActive && !hm.finished && hm.chargeComplete)) return result;
 
-        if (hm.pressAutocast) {
+        if (hm.pressActive) {
             hm.autoActive = false;
             hm.chargeComplete = false;
             hm.waitingChargeComplete = false;
-            hm.pressAutocast = false;
             return result;
         }
 
@@ -493,6 +529,12 @@ namespace IntegratedMagic {
                     result.startLeftAttack = true;
                 else
                     result.startRightAttack = true;
+            }
+            if (src.releaseAttack) {
+                if (IsLeft(hand))
+                    result.releaseLeftAttack = true;
+                else
+                    result.releaseRightAttack = true;
             }
             if (src.stopAttack) {
                 if (IsLeft(hand)) {
@@ -686,26 +728,26 @@ namespace IntegratedMagic {
         if (!(hm.autoActive || (hm.holdActive && hm.wantAutoAttack))) return result;
         if (hm.finished) return result;
 
-        // Only relevant while waiting for cast to start or actively casting
-        if (hm.autoCastPhase != AutoCastPhase::StartRequested &&
-            hm.autoCastPhase != AutoCastPhase::Casting) return result;
+        if (hm.autoCastPhase != AutoCastPhase::StartRequested && hm.autoCastPhase != AutoCastPhase::Casting)
+            return result;
 
         MAGIC_DEBUG_LOG("[State] OnCasterInterrupt: hand={} phase={} depleteEnergy={} castingSecs={:.3f}",
                         IsLeft(hand) ? "Left" : "Right", static_cast<int>(hm.autoCastPhase), depleteEnergy,
                         hm.castingElapsedSecs);
 
-        // Interrupt while StartRequested: cast never confirmed — always spurious (stance-transition
-        // artifact that arrives before the frame pump can detect casterState >= 1). Re-dispatch.
         if (hm.autoCastPhase == AutoCastPhase::StartRequested) {
+            _aa.Held(hand) = false;
             _aa.Secs(hand) = 0.f;
-            MAGIC_DEBUG_LOG("[State] OnCasterInterrupt: hand={} pre-cast spurious → re-dispatch",
+            hm.pendingRestartNextFrame = true;
+            MAGIC_DEBUG_LOG("[State] OnCasterInterrupt: hand={} pre-cast spurious → UP (DOWN next frame)",
                             IsLeft(hand) ? "Left" : "Right");
-            if (IsLeft(hand)) result.restartLeft = true;
-            else result.restartRight = true;
+            if (IsLeft(hand))
+                result.releaseLeft = true;
+            else
+                result.releaseRight = true;
             return result;
         }
 
-        // Interrupt while Casting: spurious if within 0.2s of cast confirmation, real otherwise.
         constexpr float kSpuriousInterruptWindow = 0.2f;
         const bool isSpurious = (hm.castingElapsedSecs < kSpuriousInterruptWindow);
 
@@ -714,15 +756,18 @@ namespace IntegratedMagic {
             hm.waitingChargeComplete = false;
             hm.chargeComplete = false;
             hm.castingElapsedSecs = 0.f;
+            _aa.Held(hand) = false;
             _aa.Secs(hand) = 0.f;
-            MAGIC_DEBUG_LOG("[State] OnCasterInterrupt: hand={} post-cast spurious → restart",
+            hm.pendingRestartNextFrame = true;
+            MAGIC_DEBUG_LOG("[State] OnCasterInterrupt: hand={} post-cast spurious → UP (DOWN next frame)",
                             IsLeft(hand) ? "Left" : "Right");
-            if (IsLeft(hand)) result.restartLeft = true;
-            else result.restartRight = true;
+            if (IsLeft(hand))
+                result.releaseLeft = true;
+            else
+                result.releaseRight = true;
             return result;
         }
 
-        // Interrupt after 0.2s: treat as real → finish
         const float finished = FinishHand(hand);
         if (IsLeft(hand))
             result.finishedLeft = finished;
