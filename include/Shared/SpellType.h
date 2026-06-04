@@ -12,4 +12,9 @@ namespace IntegratedMagic {
     };
 
     enum class ActivationMode : std::uint32_t { Hold = 0, Press = 1, Automatic = 2 };
+
+    struct SpellTypeDefaults {
+        ActivationMode mode{ActivationMode::Hold};
+        bool autoAttack{true};
+    };
 }

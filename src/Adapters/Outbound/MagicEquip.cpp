@@ -120,18 +120,12 @@ namespace IntegratedMagic::MagicAction {
         mgr->EquipSpell(player, spell, equipSlot);
     }
 
-    void DisableSkipEquipVarsNow(RE::PlayerCharacter* player) {
-        const std::uint64_t cur = g_skipToken.load(std::memory_order_relaxed);
-        if ((cur & 1uLL) == 0) return;
-        const std::uint64_t next = (cur + 1uLL) & ~1uLL;
-        g_skipToken.store(next, std::memory_order_relaxed);
-        SetSkipEquipVars(player, false);
-        MAGIC_DEBUG_LOG("[Action] DisableSkipEquipVarsNow: InstantEquipAnim = false (token {} -> {})", cur, next);
-    }
-
     void SetSkipEquipVars(RE::PlayerCharacter* pc, bool enable) {
         if (!pc) return;
+        const std::uint64_t token = (g_skipToken.fetch_add(1, std::memory_order_relaxed) + 1) | 1uLL;
+        g_skipToken.store(token, std::memory_order_relaxed);
         (void)pc->SetGraphVariableBool(kInstantAnim, enable);
+        ScheduleDisableSkipEquip(token, 500);
     }
 
     void ClearHandSpell(RE::PlayerCharacter* player, RE::SpellItem* spell, Hand hand) {
@@ -175,6 +169,9 @@ namespace IntegratedMagic::MagicAction {
             mgr->EquipShout(player, shout);
         } else if (auto* spell = shoutOrPower->As<RE::SpellItem>(); spell && IsPowerSpell(shoutOrPower)) {
             mgr->EquipSpell(player, spell, nullptr);
+            const auto& rd = player->GetActorRuntimeData();
+            MAGIC_DEBUG_LOG("[Action] EquipShoutInVoice: power {:#010x} -> selectedPower={:#010x}",
+                            spell->GetFormID(), rd.selectedPower ? rd.selectedPower->GetFormID() : 0u);
         }
     }
 
@@ -185,6 +182,8 @@ namespace IntegratedMagic::MagicAction {
             return;
         }
         auto const& rd = player->GetActorRuntimeData();
+        MAGIC_DEBUG_LOG("[Action] ClearVoiceShout: selectedPower={:#010x}",
+                        rd.selectedPower ? rd.selectedPower->GetFormID() : 0u);
         if (auto* power = rd.selectedPower ? rd.selectedPower->As<RE::SpellItem>() : nullptr) {
             if (IsPowerSpell(power)) {
                 UnEquipSpell(player, power, 2);
@@ -201,5 +200,12 @@ namespace IntegratedMagic::MagicAction {
         SetSkipEquipVars(player, true);
         MAGIC_DEBUG_LOG("[Action] ApplySkipEquipAnimReturn: InstantEquipAnim = true (token={})", token);
         ScheduleDisableSkipEquip(token, 500);
+    }
+
+    void ResetSkipEquipToken() {
+        uint64_t cur = g_skipToken.load(std::memory_order_relaxed);
+        if (cur & 1uLL) {
+            g_skipToken.fetch_add(1, std::memory_order_relaxed);
+        }
     }
 }

@@ -2,13 +2,13 @@
 #include <atomic>
 #include <optional>
 
-#include "Input/CaptureState.h"
 #include "Input/ExclusiveStore.h"
 #include "Input/HotkeyCacheStore.h"
 #include "Input/KeyStateStore.h"
 #include "Input/ReplaySystem.h"
 #include "Input/SlotEdgeStore.h"
 #include "PCH.h"
+#include "Shared/CaptureState.h"
 #include "Shared/StateExitResult.h"
 
 namespace Application {
@@ -19,6 +19,7 @@ namespace Application {
 
         void ProcessAndFilter(RE::InputEvent** a_evns);
         void OnConfigChanged();
+        void ResetInputState();
 
         [[nodiscard]] std::optional<int> ConsumePressedSlot();
         [[nodiscard]] std::optional<int> ConsumeReleasedSlot();
@@ -42,7 +43,6 @@ namespace Application {
         [[nodiscard]] Input::SlotEdgeStore& Slots() noexcept { return m_slots; }
         [[nodiscard]] Input::ExclusiveStore& Exclusive() noexcept { return m_exclusive; }
         [[nodiscard]] Input::HotkeyCacheStore& Hotkeys() noexcept { return m_hotkeys; }
-        [[nodiscard]] CaptureState& Capture() noexcept { return m_captureState; }
         [[nodiscard]] float GetDeltaTime() const noexcept { return m_lastDt; }
         [[nodiscard]] bool IsInputBlocked() const;
 
@@ -54,10 +54,10 @@ namespace Application {
     private:
         InputController() = default;
 
-        CaptureState m_captureState{};
-        bool m_captureModeActive{false};
         bool m_prevBlocked{false};
         bool m_cacheInitialized{false};
+        int m_modifierKbCode{-1};
+        int m_modifierGpCode{-1};
         Input::KeyStateStore m_keys{};
         Input::SlotEdgeStore m_slots{};
         Input::ExclusiveStore m_exclusive{};

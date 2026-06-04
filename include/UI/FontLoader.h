@@ -3,6 +3,8 @@
 
 namespace FontLoader {
 
+    void LoadFontsFromConfig();
+
     inline const ImWchar* GetGlyphRangesDefault() { return ImGui::GetIO().Fonts->GetGlyphRangesDefault(); }
 
     inline const ImWchar* GetGlyphRangesJapanese() { return ImGui::GetIO().Fonts->GetGlyphRangesJapanese(); }

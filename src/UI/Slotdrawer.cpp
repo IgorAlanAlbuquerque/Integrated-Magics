@@ -707,7 +707,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
                      IM_COL32(255, 255, 255, alpha));
     }
 
-    void DrawSlotHotkeyIcons(ImDrawList* dl, ImVec2 center, float slotR, const SlotView& s) {
+    void DrawSlotHotkeyIcons(ImDrawList* dl, ImVec2 center, float slotR, const SlotView& s, float extraUpOffset) {
         const auto& st = StyleConfig::Get();
         const auto iconType = st.buttonIconType;
 
@@ -742,7 +742,7 @@ namespace IntegratedMagic::HUD::SlotDrawer {
 
         const float totalW = validCount * kIconSize + (validCount - 1) * kSpacing;
         const float startX = center.x - totalW * 0.5f;
-        const float startY = center.y - slotR - kMarginY - kIconSize;
+        const float startY = center.y - slotR - kMarginY - kIconSize - extraUpOffset;
 
         for (int k = 0; k < validCount; ++k) {
             const float x = startX + k * (kIconSize + kSpacing);
@@ -796,6 +796,30 @@ namespace IntegratedMagic::HUD::SlotDrawer {
         const float margin = st.buttonLabelMargin;
         const float totalW = validCount * iconSize + (validCount - 1) * spacing;
 
+        const ImVec2 labelDir = [&]() -> ImVec2 {
+            switch (st.buttonLabelCorner) {
+                case ButtonLabelCorner::Top:
+                    return {0.f, -1.f};
+                case ButtonLabelCorner::Bottom:
+                    return {0.f, 1.f};
+                case ButtonLabelCorner::Left:
+                    return {-1.f, 0.f};
+                case ButtonLabelCorner::Right:
+                    return {1.f, 0.f};
+                case ButtonLabelCorner::TowardCenter: {
+                    const float dx = hudOrigin.x - center.x, dy = hudOrigin.y - center.y;
+                    const float len = std::sqrt(dx * dx + dy * dy);
+                    return len > 0.5f ? ImVec2{dx / len, dy / len} : ImVec2{0.f, -1.f};
+                }
+                case ButtonLabelCorner::AwayFromCenter:
+                default: {
+                    const float dx = center.x - hudOrigin.x, dy = center.y - hudOrigin.y;
+                    const float len = std::sqrt(dx * dx + dy * dy);
+                    return len > 0.5f ? ImVec2{dx / len, dy / len} : ImVec2{0.f, 1.f};
+                }
+            }
+        }();
+
         float startX = 0.f;
         float startY = 0.f;
         switch (st.buttonLabelCorner) {
@@ -815,32 +839,14 @@ namespace IntegratedMagic::HUD::SlotDrawer {
                 startX = center.x + slotR + margin;
                 startY = center.y - iconSize * 0.5f;
                 break;
-            case ButtonLabelCorner::TowardCenter: {
-                const float dx = hudOrigin.x - center.x;
-                const float dy = hudOrigin.y - center.y;
-                if (const float len = std::sqrt(dx * dx + dy * dy); len > 0.5f) {
-                    const float ax = center.x + (dx / len) * (slotR + margin + iconSize * 0.5f);
-                    const float ay = center.y + (dy / len) * (slotR + margin + iconSize * 0.5f);
-                    startX = ax - totalW * 0.5f;
-                    startY = ay - iconSize * 0.5f;
-                } else {
-                    startX = center.x - totalW * 0.5f;
-                    startY = center.y - slotR - margin - iconSize;
-                }
-                break;
-            }
-            case ButtonLabelCorner::AwayFromCenter: {
-                const float dx = center.x - hudOrigin.x;
-                const float dy = center.y - hudOrigin.y;
-                if (const float len = std::sqrt(dx * dx + dy * dy); len > 0.5f) {
-                    const float ax = center.x + (dx / len) * (slotR + margin + iconSize * 0.5f);
-                    const float ay = center.y + (dy / len) * (slotR + margin + iconSize * 0.5f);
-                    startX = ax - totalW * 0.5f;
-                    startY = ay - iconSize * 0.5f;
-                } else {
-                    startX = center.x - totalW * 0.5f;
-                    startY = center.y + slotR + margin;
-                }
+            case ButtonLabelCorner::TowardCenter:
+            case ButtonLabelCorner::AwayFromCenter:
+            default: {
+                const float dist = slotR + margin + iconSize * 0.5f;
+                const float ax = center.x + labelDir.x * dist;
+                const float ay = center.y + labelDir.y * dist;
+                startX = ax - totalW * 0.5f;
+                startY = ay - iconSize * 0.5f;
                 break;
             }
         }
@@ -985,22 +991,48 @@ namespace IntegratedMagic::HUD::SlotDrawer {
 
         float textPadTop = 0.f, textPadBottom = 0.f, textPadLeft = 0.f, textPadRight = 0.f;
         if (st.showSpellNamesInHud) {
-            const float textReserve = ImGui::GetTextLineHeight() * 2.f + 8.f + st.spellNamePadding;
+            const float textHeightReserve = ImGui::GetTextLineHeight() * 2.f + 8.f + st.spellNamePadding;
+
+            const auto CalcMaxLabelWidth = [&]() -> float {
+                float maxW = 0.f;
+                for (int i = 0; i < n; ++i) {
+                    const auto& sv = v.slots[i];
+                    float w = 0.f;
+                    if (sv.shoutFormID || sv.isTwoHanded) {
+                        if (sv.labelForm) w = ImGui::CalcTextSize(sv.labelForm->GetName()).x;
+                    } else {
+                        const bool same =
+                            sv.rightSpell && sv.leftSpell && (sv.rightSpell->GetFormID() == sv.leftSpell->GetFormID());
+                        const bool onlyOne = (sv.rightSpell != nullptr) != (sv.leftSpell != nullptr);
+                        if (same || onlyOne) {
+                            if (const auto* sp = sv.rightSpell ? sv.rightSpell : sv.leftSpell)
+                                w = ImGui::CalcTextSize(sp->GetName()).x;
+                        } else if (sv.leftSpell && sv.rightSpell) {
+                            const std::string combined =
+                                std::string(sv.leftSpell->GetName()) + " | " + sv.rightSpell->GetName();
+                            w = ImGui::CalcTextSize(combined.c_str()).x;
+                        }
+                    }
+                    maxW = std::max(maxW, w);
+                }
+                return maxW + st.spellNamePadding + 8.f;
+            };
+
             switch (st.spellNamePosition) {
                 case ButtonLabelCorner::Top:
-                    textPadTop = textReserve;
+                    textPadTop = textHeightReserve;
                     break;
                 case ButtonLabelCorner::Bottom:
-                    textPadBottom = textReserve;
+                    textPadBottom = textHeightReserve;
                     break;
                 case ButtonLabelCorner::Left:
-                    textPadLeft = textReserve;
+                    textPadLeft = CalcMaxLabelWidth();
                     break;
                 case ButtonLabelCorner::Right:
-                    textPadRight = textReserve;
+                    textPadRight = CalcMaxLabelWidth();
                     break;
                 default:
-                    textPadTop = textPadBottom = textPadLeft = textPadRight = textReserve;
+                    textPadTop = textPadBottom = textPadLeft = textPadRight = textHeightReserve;
                     break;
             }
         }
@@ -1113,8 +1145,50 @@ namespace IntegratedMagic::HUD::SlotDrawer {
                     return len > 0.5f ? ImVec2{dx / len, dy / len} : ImVec2{0.f, -1.f};
                 }();
 
+                const ImVec2 nameDir = [&]() -> ImVec2 {
+                    switch (st.spellNamePosition) {
+                        case ButtonLabelCorner::Top:
+                            return {0.f, -1.f};
+                        case ButtonLabelCorner::Bottom:
+                            return {0.f, 1.f};
+                        case ButtonLabelCorner::Left:
+                            return {-1.f, 0.f};
+                        case ButtonLabelCorner::Right:
+                            return {1.f, 0.f};
+                        case ButtonLabelCorner::TowardCenter:
+                            return toCenter;
+                        case ButtonLabelCorner::AwayFromCenter:
+                            return {-toCenter.x, -toCenter.y};
+                        default:
+                            return {0.f, 0.f};
+                    }
+                }();
+
+                const ImVec2 labelDir = [&]() -> ImVec2 {
+                    switch (st.buttonLabelCorner) {
+                        case ButtonLabelCorner::Top:
+                            return {0.f, -1.f};
+                        case ButtonLabelCorner::Bottom:
+                            return {0.f, 1.f};
+                        case ButtonLabelCorner::Left:
+                            return {-1.f, 0.f};
+                        case ButtonLabelCorner::Right:
+                            return {1.f, 0.f};
+                        case ButtonLabelCorner::TowardCenter:
+                            return toCenter;
+                        case ButtonLabelCorner::AwayFromCenter:
+                            return {-toCenter.x, -toCenter.y};
+                        default:
+                            return {0.f, 0.f};
+                    }
+                }();
+
+                const float dot = labelDir.x * nameDir.x + labelDir.y * nameDir.y;
+                const float extraNamePad = (dot > 0.1f) ? (st.buttonLabelIconSize + st.buttonLabelMargin) : 0.f;
+
                 auto drawLabel = [&](const char* name) {
-                    DrawSpellLabel(name, center, slotR, toCenter, st.spellNamePosition, st.spellNamePadding);
+                    DrawSpellLabel(name, center, slotR, toCenter, st.spellNamePosition,
+                                   st.spellNamePadding + extraNamePad);
                 };
 
                 if (sv.shoutFormID || sv.isTwoHanded) {

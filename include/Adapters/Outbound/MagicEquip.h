@@ -9,6 +9,6 @@ namespace IntegratedMagic::MagicAction {
     void EquipShoutInVoice(RE::PlayerCharacter* player, RE::TESForm* shoutOrPower);
     void ClearVoiceShout(RE::PlayerCharacter* player);
     void ApplySkipEquipAnimReturn(RE::PlayerCharacter* player, bool skipAnimOnReturn);
-    void DisableSkipEquipVarsNow(RE::PlayerCharacter* player);
     void SetSkipEquipVars(RE::PlayerCharacter* pc, bool enable);
+    void ResetSkipEquipToken();
 }

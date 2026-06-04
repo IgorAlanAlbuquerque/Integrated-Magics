@@ -328,7 +328,7 @@ namespace IntegratedMagic::HUD::PopupDrawer {
         const LayoutVec2 bh =
             SlotLayout::BoundingHalf(st.popupLayout, n, st.popupSlotRadius, dynPopupR, st.popupSlotGap, st.gridColumns);
         const float textReserve =
-            st.showSpellNamesInHud ? (ImGui::GetTextLineHeight() * 2.f + 8.f + st.spellNamePadding) : 0.f;
+            st.showSpellNamesInHud ? (ImGui::GetTextLineHeight() * 1.6f + st.spellNamePadding) : 0.f;
 
         const float popupHalfX = bh.x + kGlowPad + st.modeWidgetW + 12.f + textReserve;
         const float popupHalfY = bh.y + kGlowPad + st.modeWidgetW + 12.f + textReserve;
@@ -371,7 +371,6 @@ namespace IntegratedMagic::HUD::PopupDrawer {
                 SlotDrawer::DrawSlotVisual(dl, center, st.popupSlotRadius, activeSlot == i,
                                            sv.isTwoHanded ? nullptr : sv.rightSpell,
                                            sv.isTwoHanded ? nullptr : sv.leftSpell, dispShoutID, true);
-                SlotDrawer::DrawSlotHotkeyIcons(dl, center, st.popupSlotRadius, sv);
 
                 const ImVec2 toCenter = [&]() -> ImVec2 {
                     const float dx = ringCenter.x - center.x;
@@ -380,16 +379,50 @@ namespace IntegratedMagic::HUD::PopupDrawer {
                     return len > 0.5f ? ImVec2{dx / len, dy / len} : ImVec2{0.f, -1.f};
                 }();
 
+                const ImVec2 nameDir = [&]() -> ImVec2 {
+                    switch (st.spellNamePosition) {
+                        case ButtonLabelCorner::Top:
+                            return {0.f, -1.f};
+                        case ButtonLabelCorner::Bottom:
+                            return {0.f, 1.f};
+                        case ButtonLabelCorner::Left:
+                            return {-1.f, 0.f};
+                        case ButtonLabelCorner::Right:
+                            return {1.f, 0.f};
+                        case ButtonLabelCorner::TowardCenter:
+                            return toCenter;
+                        case ButtonLabelCorner::AwayFromCenter:
+                            return {-toCenter.x, -toCenter.y};
+                        default:
+                            return {0.f, 0.f};
+                    }
+                }();
+
+                constexpr float kHotkeyReserve = 28.f + 4.f;
+                constexpr float kModeWidgetReserve = 38.f + 4.f;
+                const float extraNamePad = (nameDir.y < -0.1f)  ? kHotkeyReserve
+                                           : (nameDir.y > 0.1f) ? kModeWidgetReserve
+                                                                : 0.f;
+
+                SlotDrawer::DrawSlotHotkeyIcons(dl, center, st.popupSlotRadius, sv);
+
                 auto drawLabel = [&](const char* name) {
                     DrawSpellLabel(name, center, st.popupSlotRadius, toCenter, st.spellNamePosition,
-                                   st.spellNamePadding);
+                                   st.spellNamePadding + extraNamePad);
                 };
 
                 if (sv.shoutFormID || sv.isTwoHanded) {
                     drawLabel(sv.labelForm ? sv.labelForm->GetName() : "???");
                 } else if (sv.rightSpell || sv.leftSpell) {
-                    if (sv.leftSpell) drawLabel(sv.leftSpell->GetName());
-                    if (sv.rightSpell && sv.rightSpell != sv.leftSpell) drawLabel(sv.rightSpell->GetName());
+                    const bool same =
+                        sv.rightSpell && sv.leftSpell && (sv.rightSpell->GetFormID() == sv.leftSpell->GetFormID());
+                    const bool onlyOne = (sv.rightSpell != nullptr) != (sv.leftSpell != nullptr);
+                    if (same || onlyOne) {
+                        drawLabel((sv.rightSpell ? sv.rightSpell : sv.leftSpell)->GetName());
+                    } else {
+                        std::string combined = std::string(sv.leftSpell->GetName()) + " | " + sv.rightSpell->GetName();
+                        drawLabel(combined.c_str());
+                    }
                 }
 
                 const float dx = g_mousePos.x - center.x;

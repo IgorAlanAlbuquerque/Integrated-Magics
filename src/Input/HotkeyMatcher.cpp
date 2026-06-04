@@ -4,6 +4,7 @@
 #include <ranges>
 
 #include "Config/ConfigAdapter.h"
+#include "Config/Notifications.h"
 #include "PCH.h"
 
 namespace Input::detail {
@@ -38,6 +39,19 @@ namespace Input::detail {
         const auto hudBinding = bindings.GetHudToggleBinding();
         cache.hud.kb = hudBinding.kb;
         cache.hud.gp = hudBinding.gp;
+    }
+
+    void LoadModifierBinding_FromConfig(int& kbCode, int& gpCode) {
+        const auto& cfg = IntegratedMagic::Config::MagicConfigAdapter::Get();
+        const int kbPos = cfg.ModifierKbPosition();
+        const int gpPos = cfg.ModifierGpPosition();
+        const auto binding = cfg.GetSlotBinding(0);
+        kbCode = (kbPos >= 1 && kbPos <= 3) ? binding.kb[kbPos - 1] : -1;
+        gpCode = (gpPos >= 1 && gpPos <= 3) ? binding.gp[gpPos - 1] : -1;
+    }
+
+    bool ConsumeHotkeyReloadRequest() {
+        return IntegratedMagic::Config::ConsumeConfigSaved();
     }
 
     bool SlotComboDown(int slot, const HotkeyCacheStore& cache, const KeyStateStore& keys, const SlotEdgeStore& slots) {

@@ -2,7 +2,8 @@
 
 #include "Adapters/Inbound/EquipEventAdapter.h"
 #include "PCH.h"
-#include "Domain/SpellClassify.h"
+#include "Shared/HoveredFormState.h"
+#include "Shared/SpellClassify.h"
 
 namespace IntegratedMagic::HoveredForm {
     namespace {
@@ -23,52 +24,51 @@ namespace IntegratedMagic::HoveredForm {
             return 0;
         }
 
-    }
+        RE::FormID QueryHoveredFormID() {
+            auto* ui = RE::UI::GetSingleton();
+            if (!ui || !ui->IsMenuOpen(RE::MagicMenu::MENU_NAME)) return 0;
 
-    RE::FormID GetHoveredFormID() {
-        auto* ui = RE::UI::GetSingleton();
-        if (!ui || !ui->IsMenuOpen(RE::MagicMenu::MENU_NAME)) return 0;
+            auto menu = ui->GetMenu<RE::MagicMenu>();
+            if (!menu || !menu->uiMovie) return 0;
 
-        auto menu = ui->GetMenu<RE::MagicMenu>();
-        if (!menu || !menu->uiMovie) return 0;
+            auto* movie = menu->uiMovie.get();
 
-        auto* movie = menu->uiMovie.get();
+            RE::FormID id = TryGFxFormID(movie, "_root.Menu_mc.inventoryLists.itemList.selectedEntry.formId");
+            if (!id) id = TryGFxFormID(movie, "_root.Menu_mc.itemList.selectedEntry.formId");
+            if (!id) id = TryGFxFormID(movie, "_root.Menu_mc.List_mc.selectedEntry.formId");
+            if (!id) id = TryGFxFormID(movie, "_root.Menu_mc.selectedEntry.formId");
 
-        RE::FormID id = TryGFxFormID(movie, "_root.Menu_mc.inventoryLists.itemList.selectedEntry.formId");
-        if (!id) id = TryGFxFormID(movie, "_root.Menu_mc.itemList.selectedEntry.formId");
-        if (!id) id = TryGFxFormID(movie, "_root.Menu_mc.List_mc.selectedEntry.formId");
-        if (!id) id = TryGFxFormID(movie, "_root.Menu_mc.selectedEntry.formId");
+            if (!id) id = EquipSink::GetLastEquippedMagicFormID();
 
-        if (!id) id = EquipSink::GetLastEquippedMagicFormID();
+            return id;
+        }
 
-        return id;
-    }
+        MagicType ClassifyFormID(RE::FormID formID) {
+            if (!formID) return MagicType::None;
 
-    MagicType GetHoveredMagicType() {
-        const auto formID = GetHoveredFormID();
-        if (!formID) {
+            auto* form = RE::TESForm::LookupByID(formID);
+            if (!form) return MagicType::None;
+
+            if (form->As<RE::TESShout>()) return MagicType::Shout;
+
+            if (auto const* spell = form->As<RE::SpellItem>()) {
+                using ST = RE::MagicSystem::SpellType;
+                const auto t = spell->GetSpellType();
+                if (t == ST::kPower || t == ST::kLesserPower) return MagicType::Power;
+
+                using namespace SpellClassify;
+                if (IsTwoHandedSpell(spell)) return MagicType::TwoHandedSpell;
+                if (IsRightHandOnlySpell(spell)) return MagicType::RightOnlySpell;
+                if (IsLeftHandOnlySpell(spell)) return MagicType::LeftOnlySpell;
+                return MagicType::Spell;
+            }
+
             return MagicType::None;
         }
-
-        auto* form = RE::TESForm::LookupByID(formID);
-        if (!form) {
-            return MagicType::None;
-        }
-
-        if (form->As<RE::TESShout>()) return MagicType::Shout;
-
-        if (auto const* spell = form->As<RE::SpellItem>()) {
-            using ST = RE::MagicSystem::SpellType;
-            const auto t = spell->GetSpellType();
-            if (t == ST::kPower || t == ST::kLesserPower) return MagicType::Power;
-
-            using namespace SpellClassify;
-            if (IsTwoHandedSpell(spell)) return MagicType::TwoHandedSpell;
-            if (IsRightHandOnlySpell(spell)) return MagicType::RightOnlySpell;
-            if (IsLeftHandOnlySpell(spell)) return MagicType::LeftOnlySpell;
-            return MagicType::Spell;
-        }
-        return MagicType::None;
     }
 
+    void UpdateCachedState() {
+        const RE::FormID formID = QueryHoveredFormID();
+        SetHoveredFormState(formID, ClassifyFormID(formID));
+    }
 }

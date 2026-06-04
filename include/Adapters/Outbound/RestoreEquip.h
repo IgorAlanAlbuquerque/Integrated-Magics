@@ -1,7 +1,7 @@
 #pragma once
 #include <vector>
 
-#include "Domain/InventoryUtil.h"
+#include "Shared/InventoryType.h"
 #include "PCH.h"
 
 namespace IntegratedMagic::Outbound {

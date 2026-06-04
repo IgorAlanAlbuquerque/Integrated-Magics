@@ -11,6 +11,7 @@ namespace IntegratedMagic {
         bool valid{false};
 
         bool applySkipEquipAnimReturn{false};
+        bool skipEquipAnimReturn{false};
 
         InventoryIndex inventoryIndex{};
 

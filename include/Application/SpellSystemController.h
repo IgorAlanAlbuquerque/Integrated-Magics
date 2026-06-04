@@ -7,6 +7,12 @@ namespace Application {
 
     class SpellSystemController {
     public:
+        struct ActiveSlotContents {
+            RE::FormID leftSpell{0};
+            RE::FormID rightSpell{0};
+            RE::FormID shout{0};
+        };
+
         static SpellSystemController& Get();
 
         void OnFrame(float dt, bool inputBlocked) const;
@@ -14,14 +20,15 @@ namespace Application {
         void NotifyPlayerDeath() const;
         void NotifyLoadGame() const;
         void NotifyMenuOpen(std::string_view menuName) const;
-        void TryAssignHoveredToSlotByHotkey() const;
         void OnConfigChanged() const;
         void NotifyForeignEquip() const;
         [[nodiscard]] bool IsSpellSystemActive() const;
         [[nodiscard]] int ActiveSlot() const;
         [[nodiscard]] bool IsInSlotSetup() const;
         [[nodiscard]] bool IsShoutActive() const;
+        [[nodiscard]] ActiveSlotContents GetActiveSlotContents() const;
         void ConsumeForceExitResult(IntegratedMagic::StateExitResult result) const;
+        void NotifyUnexpectedUnequip(RE::TESBoundObject* base) const;
         void OnCastStarted(RE::MagicSystem::CastingSource src, RE::MagicItem* spell,
                            RE::MagicSystem::CastingType type) const;
         void OnCastInterrupted(RE::MagicSystem::CastingSource src, RE::MagicItem* spell, bool depleteEnergy) const;

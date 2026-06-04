@@ -6,8 +6,6 @@
 #include <utility>
 
 #include "Adapters/Outbound/SyntheticInput.h"
-#include "Application/AssignService.h"
-#include "Config/ConfigAdapter.h"
 #include "Domain/State.h"
 #include "Input/ExclusiveTracker.h"
 #include "Input/HotkeyMatcher.h"
@@ -16,6 +14,7 @@
 #include "Input/PhysicalReconciler.h"
 #include "Input/ReplaySystem.h"
 #include "PCH.h"
+#include "Shared/AssignService.h"
 #include "Shared/Hand.h"
 
 namespace Application {
@@ -30,7 +29,14 @@ namespace Application {
 
         if (!m_cacheInitialized) {
             Input::detail::LoadHotkeyCache_FromConfig(m_hotkeys, m_slots);
+            Input::detail::LoadModifierBinding_FromConfig(m_modifierKbCode, m_modifierGpCode);
             m_cacheInitialized = true;
+        }
+
+        if (Input::detail::ConsumeHotkeyReloadRequest()) {
+            Input::detail::LoadHotkeyCache_FromConfig(m_hotkeys, m_slots);
+            Input::detail::LoadModifierBinding_FromConfig(m_modifierKbCode, m_modifierGpCode);
+            Input::detail::ResetExclusiveState(m_slots, m_exclusive, m_replay, m_retained, m_deferred);
         }
 
         for (int i = 0; i < m_slots.ActiveSlots(); ++i) {
@@ -45,7 +51,7 @@ namespace Application {
         Input::detail::ReconcilePhysicalKeyState(m_keys, m_slots, m_exclusive, m_replay, m_retained, m_deferred,
                                                  spellSystemActive);
 
-        bool wantCapture = m_captureState.captureRequested.load(std::memory_order_relaxed);
+        bool wantCapture = CaptureState::Get().captureRequested.load(std::memory_order_relaxed);
         const bool wantCaptureBefore = wantCapture;
         const float dt = CalculateDeltaTime();
         m_lastDt = dt;
@@ -63,10 +69,10 @@ namespace Application {
         }
         m_prevBlocked = blocked;
 
-        const auto buttonResult = Input::detail::ProcessButtonEvents(a_evns, m_captureState, wantCapture, m_keys);
+        const auto buttonResult = Input::detail::ProcessButtonEvents(a_evns, CaptureState::Get(), wantCapture, m_keys);
 
         if (buttonResult.forceExit) {
-            m_pendingForceExit = std::move(*buttonResult.forceExit);
+            m_pendingForceExit = IntegratedMagic::MagicState::Get().ForceExitNoRestore();
         }
         Input::detail::UpdateHudToggleState(m_hotkeys, m_keys);
 
@@ -103,6 +109,12 @@ namespace Application {
 
     void InputController::OnConfigChanged() {
         Input::detail::LoadHotkeyCache_FromConfig(m_hotkeys, m_slots);
+        Input::detail::LoadModifierBinding_FromConfig(m_modifierKbCode, m_modifierGpCode);
+        Input::detail::ResetExclusiveState(m_slots, m_exclusive, m_replay, m_retained, m_deferred);
+    }
+
+    void InputController::ResetInputState() {
+        MAGIC_DEBUG_LOG("[Input] ResetInputState: resetting exclusive state on game load");
         Input::detail::ResetExclusiveState(m_slots, m_exclusive, m_replay, m_retained, m_deferred);
     }
 
@@ -147,24 +159,12 @@ namespace Application {
     }
 
     bool InputController::IsModifierHeld() {
-        const auto& bindings = IntegratedMagic::Config::MagicConfigAdapter::Get();
-        const int kbPos = bindings.ModifierKbPosition();
-        const int gpPos = bindings.ModifierGpPosition();
-
-        if (kbPos > 0) {
-            const auto binding = bindings.GetSlotBinding(0);
-            const int code = kbPos == 1 ? binding.kb[0] : kbPos == 2 ? binding.kb[1] : binding.kb[2];
-            if (code >= 0 && code < kMaxCode &&
-                m_keys.kbDown[static_cast<std::size_t>(code)].load(std::memory_order_relaxed))
-                return true;
-        }
-        if (gpPos > 0) {
-            const auto binding = bindings.GetSlotBinding(0);
-            const int code = gpPos == 1 ? binding.gp[0] : gpPos == 2 ? binding.gp[1] : binding.gp[2];
-            if (code >= 0 && code < kMaxCode &&
-                m_keys.gpDown[static_cast<std::size_t>(code)].load(std::memory_order_relaxed))
-                return true;
-        }
+        if (m_modifierKbCode >= 0 && m_modifierKbCode < kMaxCode &&
+            m_keys.kbDown[static_cast<std::size_t>(m_modifierKbCode)].load(std::memory_order_relaxed))
+            return true;
+        if (m_modifierGpCode >= 0 && m_modifierGpCode < kMaxCode &&
+            m_keys.gpDown[static_cast<std::size_t>(m_modifierGpCode)].load(std::memory_order_relaxed))
+            return true;
         return false;
     }
 
@@ -172,36 +172,30 @@ namespace Application {
         return g_hudTogglePending.exchange(false, std::memory_order_relaxed);
     }
 
-    void InputController::RequestHotkeyCapture() {
-        m_captureState.captureRequested.store(true, std::memory_order_relaxed);
-        m_captureState.capturedEncoded.store(-1, std::memory_order_relaxed);
-    }
-    void InputController::CancelHotkeyCapture() {
-        m_captureState.captureRequested.store(false, std::memory_order_relaxed);
-        m_captureState.capturedEncoded.store(-1, std::memory_order_relaxed);
-    }
-    int InputController::PollCapturedHotkey() {
-        if (const int v = m_captureState.capturedEncoded.load(std::memory_order_relaxed); v != -1) {
-            m_captureState.capturedEncoded.store(-1, std::memory_order_relaxed);
-            return v;
-        }
-        return -1;
-    }
+    void InputController::RequestHotkeyCapture() { CaptureState::Get().Request(); }
+    void InputController::CancelHotkeyCapture() { CaptureState::Get().Cancel(); }
+    int InputController::PollCapturedHotkey() { return CaptureState::Get().Poll(); }
 
-    void InputController::SetCaptureModeActive(bool active) { m_captureModeActive = active; }
-    bool InputController::IsCaptureModeActive() const { return m_captureModeActive; }
+    void InputController::SetCaptureModeActive(bool active) {
+        CaptureState::Get().captureActive.store(active, std::memory_order_relaxed);
+    }
+    bool InputController::IsCaptureModeActive() const {
+        return CaptureState::Get().captureActive.load(std::memory_order_relaxed);
+    }
 
     void InputController::InjectCapturedScancode(int scancode) {
-        if (!m_captureState.captureRequested.load(std::memory_order_relaxed)) return;
-        m_captureState.capturedEncoded.store(scancode, std::memory_order_relaxed);
-        m_captureState.captureRequested.store(false, std::memory_order_relaxed);
-        SetCaptureModeActive(false);
+        auto& cap = CaptureState::Get();
+        if (!cap.captureRequested.load(std::memory_order_relaxed)) return;
+        cap.capturedEncoded.store(scancode, std::memory_order_relaxed);
+        cap.captureRequested.store(false, std::memory_order_relaxed);
+        cap.captureActive.store(false, std::memory_order_relaxed);
     }
     void InputController::InjectCapturedGamepad(int buttonIndex) {
-        if (!m_captureState.captureRequested.load(std::memory_order_relaxed)) return;
-        m_captureState.capturedEncoded.store(-(buttonIndex + 2), std::memory_order_relaxed);
-        m_captureState.captureRequested.store(false, std::memory_order_relaxed);
-        SetCaptureModeActive(false);
+        auto& cap = CaptureState::Get();
+        if (!cap.captureRequested.load(std::memory_order_relaxed)) return;
+        cap.capturedEncoded.store(-(buttonIndex + 2), std::memory_order_relaxed);
+        cap.captureRequested.store(false, std::memory_order_relaxed);
+        cap.captureActive.store(false, std::memory_order_relaxed);
     }
 
     float InputController::CalculateDeltaTime() {

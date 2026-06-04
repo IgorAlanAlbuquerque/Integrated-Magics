@@ -1,8 +1,9 @@
-#include "Persistence/Slots.h"
+#include "Config/Slots.h"
 
 #include "Config/ConfigAdapter.h"
 #include "PCH.h"
 #include "Persistence/SpellSettingsDB.h"
+#include "Shared/SpellTypeDetector.h"
 
 namespace IntegratedMagic::Slots {
     std::uint32_t GetSlotCount() { return static_cast<std::uint32_t>(Config::MagicConfigAdapter::Get().SlotCount()); }
@@ -24,7 +25,8 @@ namespace IntegratedMagic::Slots {
 
         if (spellFormID != 0u) {
             auto const* form = RE::TESForm::LookupByID(spellFormID);
-            (void)SpellSettingsDB::Get().GetOrCreate(spellFormID, form, &adapter);
+            const auto defaults = adapter.GetSpellDefaults(DetectSpellType(form));
+            (void)SpellSettingsDB::Get().GetOrCreate(spellFormID, form, &defaults);
         }
 
         if (saveNow) {
@@ -47,7 +49,8 @@ namespace IntegratedMagic::Slots {
 
         if (shoutFormID != 0u) {
             auto const* form = RE::TESForm::LookupByID(shoutFormID);
-            (void)SpellSettingsDB::Get().GetOrCreate(shoutFormID, form, &adapter);
+            const auto defaults = adapter.GetSpellDefaults(DetectSpellType(form));
+            (void)SpellSettingsDB::Get().GetOrCreate(shoutFormID, form, &defaults);
         }
 
         if (saveNow) {

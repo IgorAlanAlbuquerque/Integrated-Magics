@@ -10,23 +10,24 @@
 #include <utility>
 
 #include "Adapters/Inbound/HookContext.h"
+#include "Adapters/Inbound/HoveredForm.h"
+#include "Application/HudController.h"
 #include "Application/InputController.h"
-#include "Config/InputConstants.h"
+#include "Shared/InputConstants.h"
 #include "HookUtil.hpp"
 #include "PCH.h"
-#include "UI/HudManager.h"
-#include "UI/HudState.h"
 
 namespace IntegratedMagic::Inbound::DXGIPresentHook {
     namespace {
-        void UpdateBackbufferSize() {
+        std::pair<float, float> QueryBackbufferSize() {
             ID3D11RenderTargetView* rtv = nullptr;
             HookContext::g_deviceContext->OMGetRenderTargets(1, &rtv, nullptr);
             if (!rtv) {
                 spdlog::warn("[HUD] No RTV bound");
-                return;
+                return {0.f, 0.f};
             }
 
+            float w = 0.f, h = 0.f;
             ID3D11Resource* res = nullptr;
             rtv->GetResource(&res);
             if (res) {
@@ -34,15 +35,14 @@ namespace IntegratedMagic::Inbound::DXGIPresentHook {
                 if (SUCCEEDED(res->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&tex)))) {
                     D3D11_TEXTURE2D_DESC desc{};
                     tex->GetDesc(&desc);
-                    IntegratedMagic::HUD::g_backbufferW.store(static_cast<float>(desc.Width),
-                                                              std::memory_order_relaxed);
-                    IntegratedMagic::HUD::g_backbufferH.store(static_cast<float>(desc.Height),
-                                                              std::memory_order_relaxed);
+                    w = static_cast<float>(desc.Width);
+                    h = static_cast<float>(desc.Height);
                     tex->Release();
                 }
                 res->Release();
             }
             rtv->Release();
+            return {w, h};
         }
 
         int PollGamepadCapture() {
@@ -81,14 +81,6 @@ namespace IntegratedMagic::Inbound::DXGIPresentHook {
             if (gpIdx >= 0) input.InjectCapturedGamepad(gpIdx);
         }
 
-        void RenderHudFrame() {
-            ImGui::NewFrame();
-            IntegratedMagic::HUD::DrawHudFrame();
-            ImGui::EndFrame();
-            ImGui::Render();
-            ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-        }
-
         struct Impl {
             using FuncType = void (*)(std::uint32_t);
             static inline REL::Relocation<FuncType> func;
@@ -104,9 +96,10 @@ namespace IntegratedMagic::Inbound::DXGIPresentHook {
                 ImGui_ImplDX11_NewFrame();
                 ImGui_ImplWin32_NewFrame();
 
-                UpdateBackbufferSize();
+                const auto [w, h] = QueryBackbufferSize();
                 PollCapturedInput();
-                RenderHudFrame();
+                HoveredForm::UpdateCachedState();
+                Application::HudController::Get().RenderFrame(w, h);
             }
         };
     }

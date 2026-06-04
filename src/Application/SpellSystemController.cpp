@@ -1,17 +1,14 @@
 #include "Application/SpellSystemController.h"
 
-#include "Adapters/Inbound/HoveredForm.h"
 #include "Adapters/Outbound/EquipSlots.h"
 #include "Adapters/Outbound/MagicEquip.h"
 #include "Adapters/Outbound/RestoreEquip.h"
 #include "Adapters/Outbound/SyntheticInput.h"
-#include "Application/AssignService.h"
 #include "Application/InputController.h"
-#include "Config/ConfigAdapter.h"
+#include "Config/Slots.h"
+#include "Domain/SlotCooldownTracker.h"
 #include "Domain/State.h"
-#include "Input/HotkeyMatcher.h"
 #include "PCH.h"
-#include "Persistence/Slots.h"
 
 namespace Application {
 
@@ -41,14 +38,28 @@ namespace Application {
             const auto aaResult = IntegratedMagic::MagicState::Get().PumpAutoAttack(dt);
 
             if (aaResult.leftAttack) {
-                MAGIC_DEBUG_LOG("[FLOW] OnFrame: dispatching aa.leftAttack power={:.2f} held={:.3f}",
-                                aaResult.leftAttack->power, aaResult.leftAttack->secsHeld);
+#ifdef DEBUG
+                static float s_lastLeftDispatchLog = -2.f;
+                const float leftHeld = aaResult.leftAttack->secsHeld;
+                if ((leftHeld < s_lastLeftDispatchLog) || (leftHeld - s_lastLeftDispatchLog >= 1.0f)) {
+                    s_lastLeftDispatchLog = leftHeld;
+                    MAGIC_DEBUG_LOG("[FLOW] OnFrame: dispatching aa.leftAttack power={:.2f} held={:.3f}",
+                                    aaResult.leftAttack->power, leftHeld);
+                }
+#endif
                 IntegratedMagic::detail::DispatchAttack(aaResult.leftAttack->hand, aaResult.leftAttack->power,
                                                         aaResult.leftAttack->secsHeld);
             }
             if (aaResult.rightAttack) {
-                MAGIC_DEBUG_LOG("[FLOW] OnFrame: dispatching aa.rightAttack power={:.2f} held={:.3f}",
-                                aaResult.rightAttack->power, aaResult.rightAttack->secsHeld);
+#ifdef DEBUG
+                static float s_lastRightDispatchLog = -2.f;
+                const float rightHeld = aaResult.rightAttack->secsHeld;
+                if ((rightHeld < s_lastRightDispatchLog) || (rightHeld - s_lastRightDispatchLog >= 1.0f)) {
+                    s_lastRightDispatchLog = rightHeld;
+                    MAGIC_DEBUG_LOG("[FLOW] OnFrame: dispatching aa.rightAttack power={:.2f} held={:.3f}",
+                                    aaResult.rightAttack->power, rightHeld);
+                }
+#endif
                 IntegratedMagic::detail::DispatchAttack(aaResult.rightAttack->hand, aaResult.rightAttack->power,
                                                         aaResult.rightAttack->secsHeld);
             }
@@ -61,13 +72,21 @@ namespace Application {
 
             const auto autoResult = IntegratedMagic::MagicState::Get().PumpAutomatic(dt);
 
-            if (autoResult.startLeftAttack) {
-                MAGIC_DEBUG_LOG("[FLOW] OnFrame: dispatching startLeftAttack value=1.0 held=0.0");
-                IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 1.0f, 0.0f);
+            if (autoResult.releaseLeftAttack) {
+                MAGIC_DEBUG_LOG("[FLOW] OnFrame: release Left (UP only, DOWN next frame)");
+                IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 0.0f, 0.1f);
+            }
+            if (autoResult.releaseRightAttack) {
+                MAGIC_DEBUG_LOG("[FLOW] OnFrame: release Right (UP only, DOWN next frame)");
+                IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Right, 0.0f, 0.1f);
             }
 
+            if (autoResult.startLeftAttack) {
+                MAGIC_DEBUG_LOG("[FLOW] OnFrame: start Left (DOWN only, rising edge)");
+                IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 1.0f, 0.0f);
+            }
             if (autoResult.startRightAttack) {
-                MAGIC_DEBUG_LOG("[FLOW] OnFrame: dispatching startRightAttack value=1.0 held=0.0");
+                MAGIC_DEBUG_LOG("[FLOW] OnFrame: start Right (DOWN only, rising edge)");
                 IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Right, 1.0f, 0.0f);
             }
 
@@ -111,9 +130,36 @@ namespace Application {
 
             if (action.result == IntegratedMagic::SlotPressResult::Deactivated) input.SetSlotDeactivatedThisPress(*s);
 
+            if (action.restorePlan) ExecuteRestoreSnapshotPlan(*action.restorePlan);
+
+            if (action.finalizeAfterController) state.FinalizeRestoreSnapshotPlan(action.resetShoutAfterController);
+
             if (action.needsSkipEquipVars) {
+                IntegratedMagic::MagicAction::ResetSkipEquipToken();
                 IntegratedMagic::MagicAction::SetSkipEquipVars(player, true);
                 player->DrawWeaponMagicHands(true);
+            }
+
+            for (auto& intent : action.spellsToEquip) {
+                IntegratedMagic::MagicAction::EquipSpellInHand(player, intent.spell, intent.hand, action.skipAnim);
+            }
+
+            if (action.shoutToEquip) IntegratedMagic::MagicAction::EquipShoutInVoice(player, action.shoutToEquip);
+
+            if (action.startShoutDispatch) IntegratedMagic::detail::DispatchShout(1.0f, 0.0f);
+
+            if (!action.spellsToEquip.empty()) {
+                const auto eqResult = state.OnEquipComplete();
+                MAGIC_DEBUG_LOG("[SpellSystem] DispatchSlotEvents: OnEquipComplete → dispatchL={} dispatchR={}",
+                                eqResult.dispatchLeft, eqResult.dispatchRight);
+                if (eqResult.dispatchLeft) {
+                    MAGIC_DEBUG_LOG("[SpellSystem] DispatchSlotEvents: → DispatchAttack Left 1.0 (equip)");
+                    IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 1.0f, 0.0f);
+                }
+                if (eqResult.dispatchRight) {
+                    MAGIC_DEBUG_LOG("[SpellSystem] DispatchSlotEvents: → DispatchAttack Right 1.0 (equip)");
+                    IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Right, 1.0f, 0.0f);
+                }
             }
 
             if (action.leftAttack)
@@ -124,19 +170,6 @@ namespace Application {
                                                         action.rightAttack->heldSecs);
 
             if (action.shout) IntegratedMagic::detail::DispatchShout(0.0f, action.shout->heldSecs);
-
-            if (action.restorePlan) ExecuteRestoreSnapshotPlan(*action.restorePlan);
-
-            if (action.finalizeAfterController) state.FinalizeRestoreSnapshotPlan(action.resetShoutAfterController);
-
-            for (auto& intent : action.spellsToEquip)
-                IntegratedMagic::MagicAction::EquipSpellInHand(player, intent.spell, intent.hand, action.skipAnim);
-
-            if (action.shoutToEquip) IntegratedMagic::MagicAction::EquipShoutInVoice(player, action.shoutToEquip);
-
-            if (action.startShoutDispatch) IntegratedMagic::detail::DispatchShout(1.0f, 0.0f);
-
-            if (!action.spellsToEquip.empty()) state.OnEquipComplete(action.inventorySnapshotBefore);
         }
 
         for (auto s = input.ConsumeReleasedSlot(); s.has_value(); s = input.ConsumeReleasedSlot()) {
@@ -146,32 +179,36 @@ namespace Application {
     }
 
     void SpellSystemController::NotifyAnimEvent(std::string_view tag) const {
+        MAGIC_DEBUG_LOG("[SpellSystem] AnimEvent: {}", tag);
         using enum IntegratedMagic::Hand;
         auto& state = IntegratedMagic::MagicState::Get();
 
         if (tag == "EnableBumper"sv) {
             const auto r = state.NotifyAttackEnabled();
-            if (auto* p = RE::PlayerCharacter::GetSingleton()) IntegratedMagic::MagicAction::DisableSkipEquipVarsNow(p);
-            if (r.dispatchLeft) IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 1.0f, 0.0f);
-            if (r.dispatchRight) IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Right, 1.0f, 0.0f);
+            if (r.dispatchLeft) {
+                MAGIC_DEBUG_LOG("[SpellSystem] NotifyAttackEnabled: → release Left (UP only, DOWN next frame)");
+                IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 0.0f, 0.1f);
+            }
+            if (r.dispatchRight) {
+                MAGIC_DEBUG_LOG("[SpellSystem] NotifyAttackEnabled: → release Right (UP only, DOWN next frame)");
+                IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Right, 0.0f, 0.1f);
+            }
         }
         if (tag == "CastStop"sv || tag == "RitualSpellOut"sv) {
             HandleExitAllResult(state.OnCastStop());
         }
-        if (tag == "InterruptCast"sv) {
-            const auto r = state.OnCastInterrupt();
-            if (r.finishedLeft != -1.f)
-                IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 0.0f, r.finishedLeft);
-            if (r.finishedRight != -1.f)
-                IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Right, 0.0f, r.finishedRight);
-        }
-        if (tag == "BeginCastRight"sv) state.OnBeginCast(Right);
-        if (tag == "BeginCastLeft"sv) state.OnBeginCast(Left);
         if (tag == "shoutStop"sv) {
             HandleExitAllResult(state.OnShoutStop());
         }
         if (tag == "blockStart"sv || tag == "BashExit"sv) {
             if (!state.IsPressMode()) {
+                HandleForceExitResult(state.ForceExit());
+            }
+        }
+
+        if (tag == "staggerStart"sv || tag == "KnockDown"sv) {
+            if (!state.IsPressMode()) {
+                MAGIC_DEBUG_LOG("[SpellSystem] AnimEvent: {} → ForceExit", tag);
                 HandleForceExitResult(state.ForceExit());
             }
         }
@@ -211,6 +248,7 @@ namespace Application {
     void SpellSystemController::NotifyLoadGame() const {
         auto& state = IntegratedMagic::MagicState::Get();
         HandleForceExitResult(state.ForceExit());
+        InputController::Get().ResetInputState();
     }
 
     void SpellSystemController::NotifyMenuOpen(std::string_view menuName) const {
@@ -226,36 +264,6 @@ namespace Application {
         }
     }
 
-    void SpellSystemController::TryAssignHoveredToSlotByHotkey() const {
-        auto* ui = RE::UI::GetSingleton();
-        if (!ui) return;
-        if (static const RE::BSFixedString magicMenu{"MagicMenu"}; !ui->IsMenuOpen(magicMenu)) return;
-
-        const auto type = IntegratedMagic::HoveredForm::GetHoveredMagicType();
-        if (type == IntegratedMagic::HoveredForm::MagicType::None) return;
-
-        const int n = InputController::Get().Slots().ActiveSlots();
-        const auto& hotkeys = InputController::Get().Hotkeys();
-        const auto& keys = InputController::Get().Keys();
-
-        for (int slot = 0; slot < n; ++slot) {
-            using enum IntegratedMagic::HoveredForm::MagicType;
-            const auto& hk = hotkeys.slots[static_cast<std::size_t>(slot)];
-            if (const bool comboDown =
-                    Input::detail::ComboDown(hk.kb, keys.kbDown) || Input::detail::ComboDown(hk.gp, keys.gpDown);
-                !comboDown)
-                continue;
-
-            if (type == Shout || type == Power)
-                IntegratedMagic::MagicAssign::TryAssignHoveredShoutToSlot(slot);
-            else if (type == RightOnlySpell)
-                IntegratedMagic::MagicAssign::TryAssignHoveredSpellToSlot(slot, IntegratedMagic::Hand::Right);
-            else
-                IntegratedMagic::MagicAssign::TryAssignHoveredSpellToSlot(slot, IntegratedMagic::Hand::Left);
-            break;
-        }
-    }
-
     void SpellSystemController::OnConfigChanged() const { InputController::Get().OnConfigChanged(); }
     void SpellSystemController::NotifyForeignEquip() const {
         auto& state = IntegratedMagic::MagicState::Get();
@@ -266,7 +274,17 @@ namespace Application {
     bool SpellSystemController::IsInSlotSetup() const { return IntegratedMagic::MagicState::Get().IsInSlotSetup(); }
     bool SpellSystemController::IsShoutActive() const { return IntegratedMagic::MagicState::Get().IsShoutActive(); }
 
+    SpellSystemController::ActiveSlotContents SpellSystemController::GetActiveSlotContents() const {
+        auto& s = IntegratedMagic::MagicState::Get();
+        if (!s.IsActive()) return {};
+        return {s.ActiveLeftID(), s.ActiveRightID(), s.ActiveShoutID()};
+    }
+
     void SpellSystemController::ExecuteRestoreSnapshotPlan(const IntegratedMagic::RestoreSnapshotPlan& plan) const {
+        MAGIC_DEBUG_LOG(
+            "[SpellSystem] ExecuteRestoreSnapshotPlan: valid={} restoreR={} restoreL={} clearVoice={} prevExtra={}",
+            plan.valid, plan.restoreRightHand, plan.restoreLeftHand, plan.clearVoiceShout,
+            plan.prevExtraEquipped.size());
         using enum IntegratedMagic::Hand;
 
         auto* player = RE::PlayerCharacter::GetSingleton();
@@ -274,8 +292,7 @@ namespace Application {
         if (!player || !mgr || !plan.valid) return;
 
         if (plan.applySkipEquipAnimReturn) {
-            const bool skip = IntegratedMagic::Config::MagicConfigAdapter::Get().SkipEquipAnimationOnReturn();
-            IntegratedMagic::MagicAction::ApplySkipEquipAnimReturn(player, skip);
+            IntegratedMagic::MagicAction::ApplySkipEquipAnimReturn(player, plan.skipEquipAnimReturn);
         }
 
         const auto* rightSlot = IntegratedMagic::EquipUtil::GetHandEquipSlot(Right);
@@ -292,8 +309,8 @@ namespace Application {
                                                       rightSlot);
 
             if (plan.equipRightSpell) {
-                const bool skip = IntegratedMagic::Config::MagicConfigAdapter::Get().SkipEquipAnimationOnReturn();
-                IntegratedMagic::MagicAction::EquipSpellInHand(player, plan.equipRightSpell, Right, skip);
+                IntegratedMagic::MagicAction::EquipSpellInHand(player, plan.equipRightSpell, Right,
+                                                               plan.skipEquipAnimReturn);
             }
         }
 
@@ -307,8 +324,8 @@ namespace Application {
             IntegratedMagic::Outbound::RestoreOneHand(player, mgr, plan.inventoryIndex, true, plan.leftObj, leftSlot);
 
             if (plan.equipLeftSpell) {
-                const bool skip = IntegratedMagic::Config::MagicConfigAdapter::Get().SkipEquipAnimationOnReturn();
-                IntegratedMagic::MagicAction::EquipSpellInHand(player, plan.equipLeftSpell, Left, skip);
+                IntegratedMagic::MagicAction::EquipSpellInHand(player, plan.equipLeftSpell, Left,
+                                                               plan.skipEquipAnimReturn);
             }
 
             if (plan.restoreRightAfterLeftOnly) {
@@ -318,6 +335,36 @@ namespace Application {
         }
 
         if (plan.clearVoiceShout) {
+            // Major powers (kPower) have a 24h in-game cooldown. voiceRecoveryTime is 0 for powers
+            // in Skyrim SE (only set for shouts), so we compute the duration from the timescale.
+            {
+                const auto& rd = player->GetActorRuntimeData();
+                if (rd.selectedPower) {
+                    if (auto* power = rd.selectedPower->As<RE::SpellItem>()) {
+                        if (power->GetSpellType() == RE::MagicSystem::SpellType::kPower) {
+                            const RE::FormID formID = power->GetFormID();
+                            float timescale = 20.0f;
+                            if (auto* cal = RE::Calendar::GetSingleton()) {
+                                const float ts = cal->GetTimescale();
+                                if (ts >= 1.0f) timescale = ts;
+                            }
+                            const float totalCooldown = 86400.0f / timescale;
+                            const int n = static_cast<int>(IntegratedMagic::Slots::GetSlotCount());
+                            for (int i = 0; i < n; ++i) {
+                                if (IntegratedMagic::Slots::GetSlotShout(i) == formID) {
+                                    IntegratedMagic::SlotCooldownTracker::Get().StartPowerCooldown(
+                                        i, formID, totalCooldown);
+                                    MAGIC_DEBUG_LOG(
+                                        "[SpellSystem] StartPowerCooldown: slot={} formID={:#010x} "
+                                        "totalCooldown={:.1f}s (timescale={:.1f})",
+                                        i, formID, totalCooldown, timescale);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             IntegratedMagic::MagicAction::ClearVoiceShout(player);
             if (plan.equipVoiceForm) {
                 IntegratedMagic::MagicAction::EquipShoutInVoice(player, plan.equipVoiceForm);
@@ -332,6 +379,11 @@ namespace Application {
     }
 
     void SpellSystemController::HandleExitAllResult(IntegratedMagic::StateExitResult result) const {
+        MAGIC_DEBUG_LOG(
+            "[SpellSystem] HandleExitAllResult: L={} R={} shout={} restore={} finalize={} waitSheathe={} waitPower={}",
+            result.leftAttack.has_value(), result.rightAttack.has_value(), result.shout.has_value(),
+            result.restorePlan.has_value(), result.finalizeAfterController, result.waitForSheatheRestore,
+            result.waitForPowerRestore);
         using enum IntegratedMagic::Hand;
         auto& state = IntegratedMagic::MagicState::Get();
 
@@ -357,6 +409,9 @@ namespace Application {
     }
 
     void SpellSystemController::HandleForceExitResult(IntegratedMagic::StateExitResult result) const {
+        MAGIC_DEBUG_LOG("[SpellSystem] HandleForceExitResult: L={} R={} restore={} finalize={} resetShout={}",
+                        result.leftAttack.has_value(), result.rightAttack.has_value(), result.restorePlan.has_value(),
+                        result.finalizeAfterController, result.resetShoutAfterController);
         using enum IntegratedMagic::Hand;
         auto& state = IntegratedMagic::MagicState::Get();
 
@@ -378,6 +433,10 @@ namespace Application {
                 state.ResetShoutState();
             }
         }
+    }
+
+    void SpellSystemController::NotifyUnexpectedUnequip(RE::TESBoundObject* base) const {
+        IntegratedMagic::MagicState::Get().NotifyUnexpectedUnequip(base);
     }
 
     void SpellSystemController::ConsumeForceExitResult(IntegratedMagic::StateExitResult result) const {
@@ -405,7 +464,19 @@ namespace Application {
                         *hand == IntegratedMagic::Hand::Left ? "Left" : "Right", spell ? spell->GetFormID() : 0u,
                         depleteEnergy);
 
-        IntegratedMagic::MagicState::Get().OnCasterInterrupt(*hand, spell, depleteEnergy);
+        const auto r = IntegratedMagic::MagicState::Get().OnCasterInterrupt(*hand, spell, depleteEnergy);
+        if (r.releaseLeft) {
+            MAGIC_DEBUG_LOG("[SpellSystem] OnCastInterrupted: → release Left (UP only, DOWN next frame)");
+            IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 0.0f, 0.1f);
+        }
+        if (r.releaseRight) {
+            MAGIC_DEBUG_LOG("[SpellSystem] OnCastInterrupted: → release Right (UP only, DOWN next frame)");
+            IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Right, 0.0f, 0.1f);
+        }
+        if (r.finishedLeft != -1.f)
+            IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Left, 0.0f, r.finishedLeft);
+        if (r.finishedRight != -1.f)
+            IntegratedMagic::detail::DispatchAttack(IntegratedMagic::Hand::Right, 0.0f, r.finishedRight);
     }
 
 }

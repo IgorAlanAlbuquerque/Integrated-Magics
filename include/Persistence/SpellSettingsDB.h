@@ -9,7 +9,6 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "Config/Ports/SlotAssignments.h"
 #include "Shared/ConfigPath.h"
 #include "Shared/SpellSettings.h"
 #include "Shared/SpellType.h"
@@ -34,7 +33,7 @@ namespace IntegratedMagic {
         void Save() const;
 
         SpellSettings GetOrCreate(std::uint32_t spellFormID, const RE::TESForm* form,
-                                  const Config::ISlotAssignments* assignments = nullptr);
+                                  const SpellTypeDefaults* defaults = nullptr);
         [[nodiscard]] std::optional<SpellSettings> Get(std::uint32_t spellFormID) const;
         void Set(std::uint32_t spellFormID, const SpellSettings& s);
         [[nodiscard]] bool IsDirty() const;

@@ -19,7 +19,8 @@ namespace IntegratedMagic::HUD {
         if (g_hudShouldDraw.load()) {
             ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0.f, 0.f});
-            if (!g_softBlocked.load()) SlotDrawer::DrawSmallHUD(ImGui::GetIO());
+            const bool showSmall = (!g_softBlocked.load() || g_inMagicMenu.load()) && !g_popupOpen.load();
+            if (showSmall) SlotDrawer::DrawSmallHUD(ImGui::GetIO());
             ImGui::PopStyleVar(2);
         }
 

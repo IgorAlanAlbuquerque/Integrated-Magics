@@ -2,18 +2,16 @@
 #undef GetObject
 
 #include "Config/ConfigAdapter.h"
-#include "Domain/InventoryUtil.h"
+#include "Domain/CasterUtil.h"
 #include "Domain/State.h"
 #include "PCH.h"
 #include "Shared/Hand.h"
+#include "Shared/InventoryUtil.h"
 
 namespace IntegratedMagic {
     namespace {
         using WS = RE::WEAPON_STATE;
         using KS = RE::KNOCK_STATE_ENUM;
-
-        bool PlayerIsDead(RE::PlayerCharacter const* pc) { return pc->IsDead(); }
-        bool PlayerIsBlocking(RE::PlayerCharacter const* pc) { return pc->IsBlocking(); }
 
         bool PlayerIsKnockedOrStaggered(RE::PlayerCharacter* pc) {
             auto ks = pc->AsActorState()->GetKnockState();
@@ -78,7 +76,6 @@ namespace IntegratedMagic {
 
         _session.active = true;
         _session.activeSlot = slot;
-        _session.attackEnabled = false;
         _session.modeSpellLeft = nullptr;
         _session.modeSpellRight = nullptr;
         _left = {};
@@ -154,6 +151,7 @@ namespace IntegratedMagic {
 
         plan.valid = true;
         plan.applySkipEquipAnimReturn = true;
+        plan.skipEquipAnimReturn = Config::MagicConfigAdapter::Get().SkipEquipAnimationOnReturn();
         plan.inventoryIndex = BuildInventoryIndex(player);
         plan.prevExtraEquipped = _restore.prevExtraEquipped;
 
@@ -213,33 +211,16 @@ namespace IntegratedMagic {
     void MagicState::FinalizeRestoreSnapshotPlan(bool resetShout) {
         MAGIC_DEBUG_LOG("[State] FinalizeImmediateExitAfterController");
 
-        _left = {};
-        _right = {};
-        _aa.Reset();
-        _cast.Reset();
-
-        _session.attackEnabled = false;
-        _session.isDualCasting = false;
-        _session.dualCastSkipCastStops = 0;
-        _session.firstInterrupt = 0;
-        _session.activeTimeoutSecs = 0.f;
-        _session.modeSpellLeft = nullptr;
-        _session.modeSpellRight = nullptr;
-
-        _delayStartLeft = {};
-        _delayStartRight = {};
-
         _restore.snapshot = {};
         _restore.prevExtraEquipped.clear();
         _restore.ClearDirty();
         _restore.ClearPending();
 
-        _session.active = false;
-        _session.activeSlot = -1;
-
         if (resetShout) {
             _shout.Reset();
         }
+
+        ResetSessionState();
     }
 
     bool MagicState::HandIsRelevant(Hand h) const {
@@ -257,7 +238,10 @@ namespace IntegratedMagic {
 
     bool MagicState::CanOverwriteNow() const {
         using enum IntegratedMagic::ActivationMode;
-        if (!_session.active || _session.activeSlot < 0) return false;
+        if (!_session.active || _session.activeSlot < 0) {
+            MAGIC_DEBUG_LOG("[State] CanOverwriteNow: false (not active)");
+            return false;
+        }
         if (_shout.modeShoutID != 0) {
             if (_shout.finished) return false;
             const auto settings = Config::MagicConfigAdapter::Get().GetSpellSettings(_shout.modeShoutID);
@@ -269,14 +253,26 @@ namespace IntegratedMagic {
         if (!needL && !needR) return false;
         if ((needL && (_left.holdActive || _left.autoActive || _left.holdFiredAndWaitingCastStop)) ||
             (needR && (_right.holdActive || _right.autoActive || _right.holdFiredAndWaitingCastStop))) {
+            MAGIC_DEBUG_LOG("[State] CanOverwriteNow: false (hand still active - L hold={} auto={} R hold={} auto={})",
+                            _left.holdActive, _left.autoActive, _right.holdActive, _right.autoActive);
             return false;
         }
         int pressCount = 0;
         if (needL && _left.mode == Press) ++pressCount;
         if (needR && _right.mode == Press) ++pressCount;
-        if (pressCount == 0) return false;
-        if (needL && _left.mode != Press && !_left.finished) return false;
-        if (needR && _right.mode != Press && !_right.finished) return false;
+        if (pressCount == 0) {
+            MAGIC_DEBUG_LOG("[State] CanOverwriteNow: false (no press mode hands)");
+            return false;
+        }
+        if (needL && _left.mode != Press && !_left.finished) {
+            MAGIC_DEBUG_LOG("[State] CanOverwriteNow: false (Left not press and not finished)");
+            return false;
+        }
+        if (needR && _right.mode != Press && !_right.finished) {
+            MAGIC_DEBUG_LOG("[State] CanOverwriteNow: false (Right not press and not finished)");
+            return false;
+        }
+        MAGIC_DEBUG_LOG("[State] CanOverwriteNow: true (pressCount={})", pressCount);
         return true;
     }
 
@@ -284,9 +280,7 @@ namespace IntegratedMagic {
         if (!_session.active) return false;
         auto* pc = GetPlayer();
         if (!pc) return true;
-        if (PlayerIsDead(pc)) return true;
         if (PlayerIsKnockedOrStaggered(pc) && (!_left.pressActive && !_right.pressActive)) return true;
-        if (PlayerIsBlocking(pc) && (!_left.pressActive && !_right.pressActive)) return true;
 #ifdef DEBUG
         const auto ws = pc->AsActorState()->GetWeaponState();
 #endif
@@ -299,16 +293,16 @@ namespace IntegratedMagic {
         if (_session.modeSpellRight) {
             auto* caster = GetMagicCaster(pc, RE::MagicSystem::CastingSource::kRightHand);
             if (CasterSpellMismatch(caster, _session.modeSpellRight)) {
-                MAGIC_DEBUG_LOG("[State] ShouldForceInterrupt: TRUE - Right caster spell mismatch");
-
+                MAGIC_DEBUG_LOG("[State] ShouldForceInterrupt: TRUE - Right spell mismatch (expected={:#010x} caster={})",
+                                _session.modeSpellRight->GetFormID(), caster ? "valid" : "null");
                 return true;
             }
         }
         if (_session.modeSpellLeft) {
             auto* caster = GetMagicCaster(pc, RE::MagicSystem::CastingSource::kLeftHand);
             if (CasterSpellMismatch(caster, _session.modeSpellLeft)) {
-                MAGIC_DEBUG_LOG("[State] ShouldForceInterrupt: TRUE - Left caster spell mismatch");
-
+                MAGIC_DEBUG_LOG("[State] ShouldForceInterrupt: TRUE - Left spell mismatch (expected={:#010x} caster={})",
+                                _session.modeSpellLeft->GetFormID(), caster ? "valid" : "null");
                 return true;
             }
         }
@@ -316,29 +310,12 @@ namespace IntegratedMagic {
     }
 
     void MagicState::FinalizeExitAfterController() {
-        _left = {};
-        _right = {};
-        _aa.Reset();
-        _cast.Reset();
-
-        _session.attackEnabled = false;
-        _session.isDualCasting = false;
-        _session.dualCastSkipCastStops = 0;
-        _session.firstInterrupt = 0;
-        _session.activeTimeoutSecs = 0.f;
-
-        _session.modeSpellLeft = nullptr;
-        _session.modeSpellRight = nullptr;
-
-        _delayStartLeft = {};
-        _delayStartRight = {};
-
+        MAGIC_DEBUG_LOG("[State] FinalizeExitAfterController: slot={}", _session.activeSlot);
         _restore.snapshot.valid = false;
         _restore.prevExtraEquipped.clear();
         _restore.ClearDirty();
 
-        _session.active = false;
-        _session.activeSlot = -1;
+        ResetSessionState();
     }
 
     StateExitResult MagicState::TryFinalizeExit() {
@@ -356,6 +333,10 @@ namespace IntegratedMagic {
 
     StateExitResult MagicState::ExitAllNow() {
         StateExitResult result{};
+
+        MAGIC_DEBUG_LOG("[State] ExitAllNow: slot={} aaL={} aaR={} shoutHeld={} wasHandsDown={} isPower={} pendingRestore={}",
+                        _session.activeSlot, _aa.heldLeft, _aa.heldRight, _shout.held,
+                        _session.wasHandsDown, _shout.isPower, _restore.pendingRestore);
 
         using enum Hand;
 
@@ -379,9 +360,9 @@ namespace IntegratedMagic {
         result.rightAttack = stopAttack(Right);
         result.shout = stopShout();
 
-        CancelAllDelayedStarts();
-
         if (_shout.modeShoutID != 0 && _shout.isPower && _shout.finished) {
+            MAGIC_DEBUG_LOG("[State] TryFinalizeExit: power done → pendingPowerRestore delay={:.3f}s",
+                            RestoreContext::kPowerRestoreDelaySec);
             _restore.pendingPowerRestore = true;
             _restore.pendingPowerRestoreDelaySecs = RestoreContext::kPowerRestoreDelaySec;
 
@@ -409,12 +390,6 @@ namespace IntegratedMagic {
             player->DrawWeaponMagicHands(false);
             _restore.pendingRestoreAfterSheathe = true;
             result.waitForSheatheRestore = true;
-            return result;
-        }
-
-        if (_session.firstInterrupt > 1) {
-            _restore.pendingRestore = true;
-            result.waitForPendingRestore = true;
             return result;
         }
 
@@ -450,9 +425,7 @@ namespace IntegratedMagic {
         }
 
         _session.activeSlot = newSlot;
-        _session.attackEnabled = false;
         _session.isDualCasting = false;
-        _session.dualCastSkipCastStops = 0;
         _session.modeSpellLeft = nullptr;
         _session.modeSpellRight = nullptr;
         _left = {};
@@ -490,8 +463,6 @@ namespace IntegratedMagic {
 
         result.leftAttack = stopAttack(Left);
         result.rightAttack = stopAttack(Right);
-
-        CancelAllDelayedStarts();
 
         if (auto* pc = GetPlayer(); pc && !pc->IsDead() && _restore.snapshot.valid) {
             auto plan = BuildRestoreSnapshotPlan(pc);

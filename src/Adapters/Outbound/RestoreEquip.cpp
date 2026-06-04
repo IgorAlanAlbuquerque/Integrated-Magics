@@ -4,6 +4,7 @@
 
 #include "Adapters/Outbound/RestoreEquip.h"
 
+#include "Shared/InventoryUtil.h"
 #include "PCH.h"
 
 namespace IntegratedMagic::Outbound {

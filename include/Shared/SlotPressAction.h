@@ -6,7 +6,6 @@
 #include "PCH.h"
 #include "Shared/DispatchIntents.h"
 #include "Shared/Hand.h"
-#include "Shared/InventoryType.h"
 #include "Shared/RestoreSnapshotPlan.h"
 #include "Shared/SlotPressResult.h"
 
@@ -24,7 +23,6 @@ namespace IntegratedMagic {
         RE::TESForm* shoutToEquip{nullptr};
         bool startShoutDispatch{false};
         bool skipAnim{false};
-        InventoryIndex inventorySnapshotBefore{};
 
         std::optional<StopDispatchIntent> leftAttack;
         std::optional<StopDispatchIntent> rightAttack;

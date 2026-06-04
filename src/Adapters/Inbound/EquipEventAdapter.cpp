@@ -8,7 +8,6 @@
 
 #include "Application/SpellSystemController.h"
 #include "PCH.h"
-#include "Persistence/Slots.h"
 #include "Shared/Hand.h"
 
 namespace IntegratedMagic::EquipSink {
@@ -16,12 +15,11 @@ namespace IntegratedMagic::EquipSink {
     static std::atomic<RE::FormID> s_lastEquippedMagicFormID{0};  // NOSONAR
 
     namespace {
-        bool IsAssociatedBoundWeaponOfSlot(RE::FormID weaponFormID, int activeSlot) {
-            if (activeSlot < 0 || !weaponFormID) return false;
-            const std::array<RE::FormID, 2> slotIDs = {
-                Slots::GetSlotSpell(activeSlot, Hand::Left),
-                Slots::GetSlotSpell(activeSlot, Hand::Right),
-            };
+        using Contents = Application::SpellSystemController::ActiveSlotContents;
+
+        bool IsAssociatedBoundWeaponOfSlot(RE::FormID weaponFormID, const Contents& contents) {
+            if (!weaponFormID) return false;
+            const std::array<RE::FormID, 2> slotIDs = {contents.leftSpell, contents.rightSpell};
             for (const auto spellID : slotIDs) {
                 if (!spellID) continue;
                 const auto* spell = RE::TESForm::LookupByID<RE::SpellItem>(spellID);
@@ -44,37 +42,49 @@ namespace IntegratedMagic::EquipSink {
         public:
             RE::BSEventNotifyControl ProcessEvent(const RE::TESEquipEvent* a_event,
                                                   RE::BSTEventSource<RE::TESEquipEvent>*) override {
-                if (!a_event || !a_event->equipped) return RE::BSEventNotifyControl::kContinue;
+                using enum RE::BSEventNotifyControl;
+                if (!a_event) return kContinue;
 
                 auto const* player = RE::PlayerCharacter::GetSingleton();
-                if (!player || a_event->actor.get() != player) return RE::BSEventNotifyControl::kContinue;
+                if (!player || a_event->actor.get() != player) return kContinue;
 
                 const auto formID = a_event->baseObject;
                 auto* form = RE::TESForm::LookupByID(formID);
-                if (!form) return RE::BSEventNotifyControl::kContinue;
+                if (!form) return kContinue;
+
+                if (!a_event->equipped) {
+                    auto const& ctrl = Application::SpellSystemController::Get();
+                    if (ctrl.IsInSlotSetup() && !form->As<RE::SpellItem>() && !form->As<RE::TESShout>()) {
+                        if (auto* base = form->As<RE::TESBoundObject>()) {
+                            MAGIC_DEBUG_LOG("[EquipSink] unequip side effect {:#010x} during slot setup", formID);
+                            ctrl.NotifyUnexpectedUnequip(base);
+                        }
+                    }
+                    return kContinue;
+                }
 
                 if (form->As<RE::TESShout>() || form->As<RE::SpellItem>())
                     s_lastEquippedMagicFormID.store(formID, std::memory_order_relaxed);
 
                 auto const& ctrl = Application::SpellSystemController::Get();
-                if (!ctrl.IsSpellSystemActive()) return RE::BSEventNotifyControl::kContinue;
+                if (!ctrl.IsSpellSystemActive()) return kContinue;
 
                 if (auto const* spell = form->As<RE::SpellItem>()) {
-                    const int activeSlot = ctrl.ActiveSlot();
-                    if (activeSlot < 0 || ctrl.IsInSlotSetup()) return RE::BSEventNotifyControl::kContinue;
+                    if (ctrl.ActiveSlot() < 0 || ctrl.IsInSlotSetup()) return kContinue;
 
-                    const auto lID = Slots::GetSlotSpell(activeSlot, Hand::Left);
-                    const auto rID = Slots::GetSlotSpell(activeSlot, Hand::Right);
-                    const auto sID = Slots::GetSlotShout(activeSlot);
-                    if (formID == lID || formID == rID || formID == sID) return RE::BSEventNotifyControl::kContinue;
+                    const auto contents = ctrl.GetActiveSlotContents();
+                    const auto lID = contents.leftSpell;
+                    const auto rID = contents.rightSpell;
+                    const auto sID = contents.shout;
+                    if (formID == lID || formID == rID || formID == sID) return kContinue;
 
                     if (const bool isPower = spell->GetSpellType() == RE::MagicSystem::SpellType::kPower ||
                                              spell->GetSpellType() == RE::MagicSystem::SpellType::kLesserPower;
                         isPower) {
-                        if (!sID) return RE::BSEventNotifyControl::kContinue;
+                        if (!sID) return kContinue;
                         MAGIC_DEBUG_LOG("[EquipSink] foreign power {:#010x} -> ForceExitNoRestore", formID);
                         ScheduleForceExitNoRestore();
-                        return RE::BSEventNotifyControl::kContinue;
+                        return kContinue;
                     }
 
                     const RE::FormID rightNow =
@@ -87,41 +97,38 @@ namespace IntegratedMagic::EquipSink {
                                 ? player->GetEquippedEntryData(true)->GetObject()->GetFormID()
                                 : 0;
                         !(rightNow == formID && rID != 0) && !(leftNow == formID && lID != 0))
-                        return RE::BSEventNotifyControl::kContinue;
+                        return kContinue;
 
                     MAGIC_DEBUG_LOG("[EquipSink] foreign spell {:#010x} conflicts -> ForceExitNoRestore", formID);
                     ScheduleForceExitNoRestore();
-                    return RE::BSEventNotifyControl::kContinue;
+                    return kContinue;
                 }
 
                 if (form->As<RE::TESShout>()) {
-                    const int activeSlot = ctrl.ActiveSlot();
-                    if (activeSlot < 0) return RE::BSEventNotifyControl::kContinue;
-                    if (const auto sID = Slots::GetSlotShout(activeSlot); !sID || formID == sID)
-                        return RE::BSEventNotifyControl::kContinue;
+                    if (ctrl.ActiveSlot() < 0) return kContinue;
+                    if (const auto sID = ctrl.GetActiveSlotContents().shout; !sID || formID == sID) return kContinue;
                     MAGIC_DEBUG_LOG("[EquipSink] foreign shout {:#010x} -> ForceExitNoRestore", formID);
                     ScheduleForceExitNoRestore();
-                    return RE::BSEventNotifyControl::kContinue;
+                    return kContinue;
                 }
 
                 if (form->As<RE::TESObjectWEAP>() || form->As<RE::TESObjectARMO>() || form->As<RE::TESObjectMISC>()) {
-                    const int activeSlot = ctrl.ActiveSlot();
-                    if (activeSlot < 0 || ctrl.IsInSlotSetup() || ctrl.IsShoutActive())
-                        return RE::BSEventNotifyControl::kContinue;
+                    if (ctrl.ActiveSlot() < 0 || ctrl.IsInSlotSetup() || ctrl.IsShoutActive()) return kContinue;
 
-                    if (form->As<RE::TESObjectWEAP>() && IsAssociatedBoundWeaponOfSlot(formID, activeSlot))
-                        return RE::BSEventNotifyControl::kContinue;
+                    const auto contents = ctrl.GetActiveSlotContents();
+                    if (form->As<RE::TESObjectWEAP>() && IsAssociatedBoundWeaponOfSlot(formID, contents))
+                        return kContinue;
 
-                    const auto lID = Slots::GetSlotSpell(activeSlot, Hand::Left);
-                    const auto rID = Slots::GetSlotSpell(activeSlot, Hand::Right);
+                    const auto lID = contents.leftSpell;
+                    const auto rID = contents.rightSpell;
 
                     if (auto const* armature = form->As<RE::TESObjectARMO>()) {
                         if (const bool isShield = armature->HasPartOf(RE::BGSBipedObjectForm::BipedObjectSlot::kShield);
                             !isShield || !lID)
-                            return RE::BSEventNotifyControl::kContinue;
+                            return kContinue;
                         MAGIC_DEBUG_LOG("[EquipSink] shield {:#010x} conflicts -> ForceExitNoRestore", formID);
                         ScheduleForceExitNoRestore();
-                        return RE::BSEventNotifyControl::kContinue;
+                        return kContinue;
                     }
 
                     const RE::FormID rightNow =
@@ -134,13 +141,13 @@ namespace IntegratedMagic::EquipSink {
                                 ? player->GetEquippedEntryData(true)->GetObject()->GetFormID()
                                 : 0;
                         !(rightNow == formID && rID != 0) && !(leftNow == formID && lID != 0))
-                        return RE::BSEventNotifyControl::kContinue;
+                        return kContinue;
 
                     MAGIC_DEBUG_LOG("[EquipSink] weapon/misc {:#010x} conflicts -> ForceExitNoRestore", formID);
                     ScheduleForceExitNoRestore();
                 }
 
-                return RE::BSEventNotifyControl::kContinue;
+                return kContinue;
             }
 
             static MagicEquipSink* GetSingleton() {
