@@ -5,6 +5,8 @@
 #include "Adapters/Outbound/RestoreEquip.h"
 #include "Adapters/Outbound/SyntheticInput.h"
 #include "Application/InputController.h"
+#include "Config/Slots.h"
+#include "Domain/SlotCooldownTracker.h"
 #include "Domain/State.h"
 #include "PCH.h"
 
@@ -333,6 +335,36 @@ namespace Application {
         }
 
         if (plan.clearVoiceShout) {
+            // Major powers (kPower) have a 24h in-game cooldown. voiceRecoveryTime is 0 for powers
+            // in Skyrim SE (only set for shouts), so we compute the duration from the timescale.
+            {
+                const auto& rd = player->GetActorRuntimeData();
+                if (rd.selectedPower) {
+                    if (auto* power = rd.selectedPower->As<RE::SpellItem>()) {
+                        if (power->GetSpellType() == RE::MagicSystem::SpellType::kPower) {
+                            const RE::FormID formID = power->GetFormID();
+                            float timescale = 20.0f;
+                            if (auto* cal = RE::Calendar::GetSingleton()) {
+                                const float ts = cal->GetTimescale();
+                                if (ts >= 1.0f) timescale = ts;
+                            }
+                            const float totalCooldown = 86400.0f / timescale;
+                            const int n = static_cast<int>(IntegratedMagic::Slots::GetSlotCount());
+                            for (int i = 0; i < n; ++i) {
+                                if (IntegratedMagic::Slots::GetSlotShout(i) == formID) {
+                                    IntegratedMagic::SlotCooldownTracker::Get().StartPowerCooldown(
+                                        i, formID, totalCooldown);
+                                    MAGIC_DEBUG_LOG(
+                                        "[SpellSystem] StartPowerCooldown: slot={} formID={:#010x} "
+                                        "totalCooldown={:.1f}s (timescale={:.1f})",
+                                        i, formID, totalCooldown, timescale);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             IntegratedMagic::MagicAction::ClearVoiceShout(player);
             if (plan.equipVoiceForm) {
                 IntegratedMagic::MagicAction::EquipShoutInVoice(player, plan.equipVoiceForm);

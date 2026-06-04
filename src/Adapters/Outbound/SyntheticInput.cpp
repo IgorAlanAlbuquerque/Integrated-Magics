@@ -51,13 +51,25 @@ namespace IntegratedMagic::detail {
     static void FireShoutDirect(float value, float heldSecs) {
         auto* pc = RE::PlayerControls::GetSingleton();
         if (!pc || !pc->shoutHandler) return;
-        if (!pc->shoutHandler->IsInputEventHandlingEnabled()) return;
+        if (!pc->shoutHandler->IsInputEventHandlingEnabled()) {
+            MAGIC_DEBUG_LOG("[SyntheticInput] FireShoutDirect: blocked - IsInputEventHandlingEnabled=false (value={:.2f})", value);
+            return;
+        }
 
         auto* ev = RE::ButtonEvent::Create(RE::INPUT_DEVICE::kKeyboard, kShoutUserEvent, 0, value, heldSecs);
         if (!ev) return;
         ev->next = nullptr;
 
-        if (pc->shoutHandler->CanProcess(ev)) pc->shoutHandler->ProcessButton(ev, &pc->data);
+        const bool canProcess = pc->shoutHandler->CanProcess(ev);
+        if (value == 0.0f) {
+            auto* player = RE::PlayerCharacter::GetSingleton();
+            const RE::FormID selPower = (player && player->GetActorRuntimeData().selectedPower)
+                                            ? player->GetActorRuntimeData().selectedPower->GetFormID()
+                                            : 0u;
+            MAGIC_DEBUG_LOG("[SyntheticInput] FireShoutDirect: stopShout held={:.3f} canProcess={} selectedPower={:#010x}",
+                            heldSecs, canProcess, selPower);
+        }
+        if (canProcess) pc->shoutHandler->ProcessButton(ev, &pc->data);
     }
 
     void DispatchAttack(Hand hand, float value, float heldSecs) {

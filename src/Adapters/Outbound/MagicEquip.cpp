@@ -169,6 +169,9 @@ namespace IntegratedMagic::MagicAction {
             mgr->EquipShout(player, shout);
         } else if (auto* spell = shoutOrPower->As<RE::SpellItem>(); spell && IsPowerSpell(shoutOrPower)) {
             mgr->EquipSpell(player, spell, nullptr);
+            const auto& rd = player->GetActorRuntimeData();
+            MAGIC_DEBUG_LOG("[Action] EquipShoutInVoice: power {:#010x} -> selectedPower={:#010x}",
+                            spell->GetFormID(), rd.selectedPower ? rd.selectedPower->GetFormID() : 0u);
         }
     }
 
@@ -179,6 +182,8 @@ namespace IntegratedMagic::MagicAction {
             return;
         }
         auto const& rd = player->GetActorRuntimeData();
+        MAGIC_DEBUG_LOG("[Action] ClearVoiceShout: selectedPower={:#010x}",
+                        rd.selectedPower ? rd.selectedPower->GetFormID() : 0u);
         if (auto* power = rd.selectedPower ? rd.selectedPower->As<RE::SpellItem>() : nullptr) {
             if (IsPowerSpell(power)) {
                 UnEquipSpell(player, power, 2);

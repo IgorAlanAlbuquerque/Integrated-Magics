@@ -28,36 +28,42 @@ namespace IntegratedMagic {
             return 1.0f;
         }
 
-        RE::TESShout* LookupShout(RE::FormID shoutID) {
-            if (!shoutID) return nullptr;
-            return RE::TESForm::LookupByID<RE::TESShout>(shoutID);
-        }
+        struct VoiceSlotResult {
+            int slot{-1};
+            RE::FormID formID{0};
+            bool isPower{false};
+        };
 
-        bool IsSameShoutForm(RE::FormID slotFormID, RE::FormID equippedFormID) {
-            return slotFormID != 0 && equippedFormID != 0 && slotFormID == equippedFormID;
-        }
-
-        int FindSlotForCurrentlyEquippedShout() {
+        VoiceSlotResult FindEquippedVoiceSlot() {
             auto* player = RE::PlayerCharacter::GetSingleton();
-            if (!player) return -1;
+            if (!player) return {};
 
-            RE::FormID equippedShoutID = 0;
+            RE::FormID equippedID = 0;
+            bool isPower = false;
 
             const auto& rd = player->GetActorRuntimeData();
             if (auto* selected = rd.selectedPower; selected) {
                 if (auto* shout = selected->As<RE::TESShout>()) {
-                    equippedShoutID = shout->GetFormID();
+                    equippedID = shout->GetFormID();
+                } else if (auto* power = selected->As<RE::SpellItem>()) {
+                    using ST = RE::MagicSystem::SpellType;
+                    const auto t = power->GetSpellType();
+                    if (t == ST::kPower || t == ST::kLesserPower) {
+                        equippedID = power->GetFormID();
+                        isPower = true;
+                    }
                 }
             }
 
-            if (!equippedShoutID) return -1;
+            if (!equippedID) return {};
 
             const int slotCount = static_cast<int>(Slots::GetSlotCount());
             for (int i = 0; i < slotCount; ++i) {
-                if (Slots::GetSlotShout(i) == equippedShoutID) return i;
+                if (Slots::GetSlotShout(i) == equippedID)
+                    return {i, equippedID, isPower};
             }
 
-            return -1;
+            return {};
         }
 
         struct UsedVariationResult {
@@ -110,7 +116,7 @@ namespace IntegratedMagic {
         }
     }
 
-    void SlotCooldownTracker::Update(float) {
+    void SlotCooldownTracker::Update(float dt) {
         const float currentRemaining = GetRemainingShoutCooldown();
         const bool wasCoolingDown = _prevRemainingCooldown > kCooldownEpsilon;
         const bool isCoolingDown = currentRemaining > kCooldownEpsilon;
@@ -122,22 +128,32 @@ namespace IntegratedMagic {
         }
 
         if (justStarted) {
-            const int slot = FindSlotForCurrentlyEquippedShout();
-            if (slot >= 0 && slot < kMaxTrackedSlots) {
-                const RE::FormID shoutID = Slots::GetSlotShout(slot);
-                const auto used = InferUsedVariation(shoutID, currentRemaining);
-
-                auto& st = _slots[slot];
-                st.trackedFormID = shoutID;
-                st.variationIndex = used.index;
-                st.totalCooldown = used.totalCooldown;
-                st.remainingCooldown = currentRemaining;
+            const auto found = FindEquippedVoiceSlot();
+            MAGIC_DEBUG_LOG("[Cooldown] justStarted: voiceTimer={:.1f}s found.slot={} found.formID={:#010x} found.isPower={}",
+                            currentRemaining, found.slot, found.formID, found.isPower);
+            if (found.slot >= 0 && found.slot < kMaxTrackedSlots) {
+                auto& st = _slots[found.slot];
+                st.trackedFormID = found.formID;
+                st.isPower = found.isPower;
                 st.onCooldown = true;
                 st.justFinished = false;
 
-                MAGIC_DEBUG_LOG(
-                    "[Cooldown] start: slot={} shoutID={:#010x} remaining={:.3f} variation={} total={:.3f} raw={:.3f}",
-                    slot, shoutID, currentRemaining, used.index, used.totalCooldown, used.rawRecovery);
+                if (found.isPower) {
+                    st.variationIndex = -1;
+                    st.totalCooldown = currentRemaining;
+                    st.remainingCooldown = currentRemaining;
+                    MAGIC_DEBUG_LOG("[Cooldown] power start: slot={} formID={:#010x} total={:.1f}s",
+                                    found.slot, found.formID, currentRemaining);
+                } else {
+                    const auto used = InferUsedVariation(found.formID, currentRemaining);
+                    st.variationIndex = used.index;
+                    st.totalCooldown = used.totalCooldown;
+                    st.remainingCooldown = currentRemaining;
+                    MAGIC_DEBUG_LOG("[Cooldown] shout start: slot={} shoutID={:#010x} remaining={:.3f} "
+                                    "variation={} total={:.3f} raw={:.3f}",
+                                    found.slot, found.formID, currentRemaining,
+                                    used.index, used.totalCooldown, used.rawRecovery);
+                }
             }
         }
 
@@ -151,6 +167,30 @@ namespace IntegratedMagic {
                 MAGIC_DEBUG_LOG("[Cooldown] slot={} shout changed old={:#010x} new={:#010x} -> clear", i,
                                 st.trackedFormID, currentSlotShout);
                 st = {};
+                continue;
+            }
+
+            if (st.isPower) {
+                // Powers: voiceRecoveryTime is 0 in SE for powers — decrement with real frame time
+                if (st.onCooldown) {
+                    const float prevRemaining = st.remainingCooldown;
+                    st.remainingCooldown -= dt;
+                    // Log every 30 seconds to confirm the timer is advancing
+                    const int prevBucket = static_cast<int>(prevRemaining / 30.0f);
+                    const int currBucket = static_cast<int>(st.remainingCooldown / 30.0f);
+                    if (currBucket != prevBucket) {
+                        MAGIC_DEBUG_LOG("[Cooldown] power tick: slot={} formID={:#010x} remaining={:.0f}s/{:.0f}s progress={:.1f}%",
+                                        i, st.trackedFormID, st.remainingCooldown, st.totalCooldown,
+                                        ComputeProgress(st.remainingCooldown, st.totalCooldown) * 100.0f);
+                    }
+                    if (st.remainingCooldown <= kCooldownEpsilon) {
+                        st.justFinished = true;
+                        st.remainingCooldown = 0.0f;
+                        st.onCooldown = false;
+                        MAGIC_DEBUG_LOG("[Cooldown] power finish: slot={} formID={:#010x} total={:.1f}s",
+                                        i, st.trackedFormID, st.totalCooldown);
+                    }
+                }
                 continue;
             }
 
@@ -175,6 +215,21 @@ namespace IntegratedMagic {
         _prevRemainingCooldown = currentRemaining;
     }
 
+    void SlotCooldownTracker::StartPowerCooldown(int slot, RE::FormID formID, float totalCooldown) {
+        if (slot < 0 || slot >= kMaxTrackedSlots || !formID || totalCooldown <= kCooldownEpsilon) return;
+        auto& st = _slots[slot];
+        if (st.onCooldown && st.trackedFormID == formID) return;  // already tracking from justStarted path
+        st.trackedFormID = formID;
+        st.isPower = true;
+        st.onCooldown = true;
+        st.justFinished = false;
+        st.variationIndex = -1;
+        st.totalCooldown = totalCooldown;
+        st.remainingCooldown = totalCooldown;
+        MAGIC_DEBUG_LOG("[Cooldown] power start (restore-path): slot={} formID={:#010x} total={:.1f}s",
+                        slot, formID, totalCooldown);
+    }
+
     SlotCooldownInfo SlotCooldownTracker::GetSlotInfo(int slot) const {
         SlotCooldownInfo out{};
 
@@ -187,6 +242,7 @@ namespace IntegratedMagic {
         out.remainingCooldown = st.remainingCooldown;
         out.onCooldown = st.onCooldown;
         out.justFinished = st.justFinished;
+        out.isPower = st.isPower;
         out.progress = ComputeProgress(st.remainingCooldown, st.totalCooldown);
 
         return out;
