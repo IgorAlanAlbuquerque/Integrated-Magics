@@ -11,8 +11,8 @@
 #include "Config/Notifications.h"
 #include "Config/StyleConfig.h"
 #include "PCH.h"
-#include "Shared/CaptureState.h"
 #include "SKSEMenuFramework.h"
+#include "Shared/CaptureState.h"
 #include "Shared/SpellType.h"
 #include "UI/HudManager.h"
 #include "UI/PolyFill.h"
@@ -1394,6 +1394,20 @@ namespace {
                                                     "0.2 seconds of each other.\n"
                                                     "Holding one key and pressing the other later will not activate\n"
                                                     "the slot.")
+                          .c_str());
+        }
+
+        if (bool v5 = cfg.skipChannelingPatch;
+            ImGuiMCP::Checkbox(IntegratedMagic::Strings::Get("Item_SkipChanneling", "Skip channeling").c_str(), &v5)) {
+            cfg.skipChannelingPatch = v5;
+            dirty = true;
+        }
+        if (ImGuiMCP::IsItemHovered()) {
+            ImGuiMCP::SetTooltip(
+                "%s", IntegratedMagic::Strings::Get("Tooltip_SkipChanneling",
+                                                    "When enabled, Cast spells in Automatic mode fire instantly\n"
+                                                    "without the charging animation.\n"
+                                                    "Only affects Fire-and-Forget spells (not Concentration or Bound).")
                           .c_str());
         }
     }

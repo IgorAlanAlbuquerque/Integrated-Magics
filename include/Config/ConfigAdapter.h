@@ -45,6 +45,7 @@ namespace IntegratedMagic::Config {
 
         bool SkipEquipAnimation() const override;
         bool SkipEquipAnimationOnReturn() const override;
+        bool SkipChanneling() const override;
         [[nodiscard]] std::optional<SpellSettings> GetSpellSettings(std::uint32_t formID) const override;
         SpellSettings GetOrCreateSpellSettings(std::uint32_t formID, const RE::TESForm* form) override;
         void SetSpellSettings(std::uint32_t formID, const SpellSettings& s) override;

@@ -157,6 +157,7 @@ void IntegratedMagic::MagicConfig::Load() {
     skipEquipAnimationOnReturnPatch = _getBool(ini, "Patches", "SkipEquipAnimationOnReturn", false);
     requireExclusiveHotkeyPatch = _getBool(ini, "Patches", "RequireExclusiveHotkeyPatch", false);
     pressBothAtSamePatch = _getBool(ini, "Patches", "PressBothAtSamePatch", false);
+    skipChannelingPatch = _getBool(ini, "Patches", "SkipChannelingPatch", false);
 
     modifierKeyboardPosition = std::clamp(_getInt(ini, "Modifier", "KeyboardPosition", 0), 0, 3);
     modifierGamepadPosition = std::clamp(_getInt(ini, "Modifier", "GamepadPosition", 0), 0, 3);
@@ -204,6 +205,7 @@ void IntegratedMagic::MagicConfig::Save() const {
     ini.SetBoolValue("Patches", "SkipEquipAnimationOnReturn", skipEquipAnimationOnReturnPatch);
     ini.SetBoolValue("Patches", "RequireExclusiveHotkeyPatch", requireExclusiveHotkeyPatch);
     ini.SetBoolValue("Patches", "PressBothAtSamePatch", pressBothAtSamePatch);
+    ini.SetBoolValue("Patches", "SkipChannelingPatch", skipChannelingPatch);
 
     ini.SetLongValue("Modifier", "KeyboardPosition", modifierKeyboardPosition);
     ini.SetLongValue("Modifier", "GamepadPosition", modifierGamepadPosition);

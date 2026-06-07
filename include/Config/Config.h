@@ -42,6 +42,7 @@ namespace IntegratedMagic {
         bool skipEquipAnimationOnReturnPatch{false};
         bool requireExclusiveHotkeyPatch{false};
         bool pressBothAtSamePatch{false};
+        bool skipChannelingPatch{false};
 
         int modifierKeyboardPosition{0};
         int modifierGamepadPosition{0};

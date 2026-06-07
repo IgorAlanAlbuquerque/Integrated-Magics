@@ -171,11 +171,9 @@ namespace IntegratedMagic {
             }
 
             if (st.isPower) {
-                // Powers: voiceRecoveryTime is 0 in SE for powers — decrement with real frame time
                 if (st.onCooldown) {
                     const float prevRemaining = st.remainingCooldown;
                     st.remainingCooldown -= dt;
-                    // Log every 30 seconds to confirm the timer is advancing
                     const int prevBucket = static_cast<int>(prevRemaining / 30.0f);
                     const int currBucket = static_cast<int>(st.remainingCooldown / 30.0f);
                     if (currBucket != prevBucket) {
@@ -218,7 +216,7 @@ namespace IntegratedMagic {
     void SlotCooldownTracker::StartPowerCooldown(int slot, RE::FormID formID, float totalCooldown) {
         if (slot < 0 || slot >= kMaxTrackedSlots || !formID || totalCooldown <= kCooldownEpsilon) return;
         auto& st = _slots[slot];
-        if (st.onCooldown && st.trackedFormID == formID) return;  // already tracking from justStarted path
+        if (st.onCooldown && st.trackedFormID == formID) return;
         st.trackedFormID = formID;
         st.isPower = true;
         st.onCooldown = true;

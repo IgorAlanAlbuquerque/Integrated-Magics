@@ -170,8 +170,8 @@ namespace IntegratedMagic::MagicAction {
         } else if (auto* spell = shoutOrPower->As<RE::SpellItem>(); spell && IsPowerSpell(shoutOrPower)) {
             mgr->EquipSpell(player, spell, nullptr);
             const auto& rd = player->GetActorRuntimeData();
-            MAGIC_DEBUG_LOG("[Action] EquipShoutInVoice: power {:#010x} -> selectedPower={:#010x}",
-                            spell->GetFormID(), rd.selectedPower ? rd.selectedPower->GetFormID() : 0u);
+            MAGIC_DEBUG_LOG("[Action] EquipShoutInVoice: power {:#010x} -> selectedPower={:#010x}", spell->GetFormID(),
+                            rd.selectedPower ? rd.selectedPower->GetFormID() : 0u);
         }
     }
 

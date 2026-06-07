@@ -335,8 +335,6 @@ namespace Application {
         }
 
         if (plan.clearVoiceShout) {
-            // Major powers (kPower) have a 24h in-game cooldown. voiceRecoveryTime is 0 for powers
-            // in Skyrim SE (only set for shouts), so we compute the duration from the timescale.
             {
                 const auto& rd = player->GetActorRuntimeData();
                 if (rd.selectedPower) {
@@ -352,8 +350,8 @@ namespace Application {
                             const int n = static_cast<int>(IntegratedMagic::Slots::GetSlotCount());
                             for (int i = 0; i < n; ++i) {
                                 if (IntegratedMagic::Slots::GetSlotShout(i) == formID) {
-                                    IntegratedMagic::SlotCooldownTracker::Get().StartPowerCooldown(
-                                        i, formID, totalCooldown);
+                                    IntegratedMagic::SlotCooldownTracker::Get().StartPowerCooldown(i, formID,
+                                                                                                   totalCooldown);
                                     MAGIC_DEBUG_LOG(
                                         "[SpellSystem] StartPowerCooldown: slot={} formID={:#010x} "
                                         "totalCooldown={:.1f}s (timescale={:.1f})",

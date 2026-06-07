@@ -119,6 +119,7 @@ namespace IntegratedMagic::Config {
 
     bool MagicConfigAdapter::SkipEquipAnimation() const { return Cfg().skipEquipAnimationPatch; }
     bool MagicConfigAdapter::SkipEquipAnimationOnReturn() const { return Cfg().skipEquipAnimationOnReturnPatch; }
+    bool MagicConfigAdapter::SkipChanneling() const { return Cfg().skipChannelingPatch; }
 
     std::optional<SpellSettings> MagicConfigAdapter::GetSpellSettings(std::uint32_t formID) const {
         return SpellSettingsDB::Get().Get(formID);

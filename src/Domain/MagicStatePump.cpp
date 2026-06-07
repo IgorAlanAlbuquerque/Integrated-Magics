@@ -328,8 +328,24 @@ namespace IntegratedMagic {
             const auto id = (_session.activeSlot >= 0) ? Slots::GetSlotSpell(_session.activeSlot, hand) : 0;
             const auto* spell = id ? RE::TESForm::LookupByID<RE::SpellItem>(id) : nullptr;
 
-            if (spell && IsChargeComplete(caster, spell)) {
-                MAGIC_DEBUG_LOG("[FLOW] PumpCastPhase: hand={} charge complete → WaitingChargeRelease", handStr);
+            const bool skipCh = Config::MagicConfigAdapter::Get().SkipChanneling();
+            bool chargeComplete = false;
+            if (spell) {
+                if (skipCh && castStateEnum == RE::MagicCaster::State::kCharging &&
+                    spell->GetChargeTime() > 0.f) {
+                    // Advance timer so the game transitions kCharging → kReady next frame.
+                    // Don't release yet: releasing in kCharging always cancels the cast.
+                    if (auto* mc = GetMagicCaster(player, src)) {
+                        mc->castingTimer = spell->GetChargeTime() + 0.01f;
+                    }
+                } else {
+                    chargeComplete = IsChargeComplete(caster, spell);
+                }
+            }
+
+            if (chargeComplete) {
+                MAGIC_DEBUG_LOG("[FLOW] PumpCastPhase: hand={} charge complete (skipCh={}) → WaitingChargeRelease",
+                                handStr, skipCh);
                 hm.autoCastPhase = AutoCastPhase::WaitingChargeRelease;
                 hm.waitingChargeComplete = false;
                 hm.chargeComplete = true;
