@@ -298,7 +298,7 @@ namespace IntegratedMagic {
 #endif
 
         const bool castIsStable =
-            castStateEnum == RE::MagicCaster::State::kReady || castStateEnum >= RE::MagicCaster::State::kCharging;
+            std::to_underlying(castStateEnum) >= std::to_underlying(RE::MagicCaster::State::kUnk02);
         if (hm.autoCastPhase == AutoCastPhase::StartRequested && castIsStable) {
             MAGIC_DEBUG_LOG("[FLOW] PumpCastPhase: hand={} StartRequested → Casting (state={})", handStr, casterState);
             ConfirmAutoCastStarted(hand);
@@ -311,12 +311,19 @@ namespace IntegratedMagic {
             if (hm.startRequestSecs >= kRedispatchInterval &&
                 static_cast<int>(hm.startRequestSecs / kRedispatchInterval) >
                     static_cast<int>(prev / kRedispatchInterval)) {
-                MAGIC_DEBUG_LOG("[FLOW] PumpCastPhase: hand={} StartRequested for {:.2f}s → UP (DOWN next frame)",
-                                IsLeft(hand) ? "L" : "R", hm.startRequestSecs);
-                _aa.Held(hand) = false;
-                _aa.Secs(hand) = 0.f;
-                hm.pendingRestartNextFrame = true;
-                result.releaseAttack = true;
+                const Hand other = IsLeft(hand) ? Hand::Right : Hand::Left;
+                const bool otherIsCharging =
+                    _session.isDualCasting && ModeFor(other).autoCastPhase > AutoCastPhase::StartRequested;
+                if (otherIsCharging) {
+                    hm.startRequestSecs = 0.f;
+                } else {
+                    MAGIC_DEBUG_LOG("[FLOW] PumpCastPhase: hand={} StartRequested for {:.2f}s → UP (DOWN next frame)",
+                                    IsLeft(hand) ? "L" : "R", hm.startRequestSecs);
+                    _aa.Held(hand) = false;
+                    _aa.Secs(hand) = 0.f;
+                    hm.pendingRestartNextFrame = true;
+                    result.releaseAttack = true;
+                }
             }
         }
 
@@ -331,12 +338,15 @@ namespace IntegratedMagic {
             const bool skipCh = Config::MagicConfigAdapter::Get().SkipChanneling();
             bool chargeComplete = false;
             if (spell) {
-                if (skipCh && castStateEnum == RE::MagicCaster::State::kCharging &&
-                    spell->GetChargeTime() > 0.f) {
-                    // Advance timer so the game transitions kCharging → kReady next frame.
-                    // Don't release yet: releasing in kCharging always cancels the cast.
+                if (skipCh && castStateEnum == RE::MagicCaster::State::kUnk02 && spell->GetChargeTime() > 0.f) {
                     if (auto* mc = GetMagicCaster(player, src)) {
-                        mc->castingTimer = spell->GetChargeTime() + 0.01f;
+                        const float manaToDrain = mc->currentSpellCost * mc->castingTimer;
+                        if (manaToDrain > 0.f) {
+                            if (auto* avo = player->AsActorValueOwner()) {
+                                avo->DamageActorValue(RE::ActorValue::kMagicka, manaToDrain);
+                            }
+                        }
+                        mc->castingTimer = 0.f;
                     }
                 } else {
                     chargeComplete = IsChargeComplete(caster, spell);
