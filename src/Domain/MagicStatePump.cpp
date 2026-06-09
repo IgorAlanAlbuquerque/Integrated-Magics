@@ -249,6 +249,26 @@ namespace IntegratedMagic {
         }
 
         if (hm.pendingRestartNextFrame) {
+            // Check if the caster already entered kUnk02 while we were waiting to restart.
+            // Dispatching a DOWN in this state immediately interrupts the charge.
+            {
+                auto* p = GetPlayer();
+                const auto s = IsLeft(hand) ? RE::MagicSystem::CastingSource::kLeftHand
+                                            : RE::MagicSystem::CastingSource::kRightHand;
+                const auto* c = p ? GetMagicCaster(p, s) : nullptr;
+                if (c && std::to_underlying(c->state.get()) >=
+                             std::to_underlying(RE::MagicCaster::State::kUnk02)) {
+                    hm.pendingRestartNextFrame = false;
+                    hm.startRequestSecs = 0.f;
+                    hm.autoCastPhase = AutoCastPhase::Casting;
+                    hm.waitingChargeComplete = true;
+                    hm.castingElapsedSecs = 0.f;
+                    hm.needsManualFireInKReady = true;
+                    MAGIC_DEBUG_LOG("[FLOW] PumpCastPhase: hand={} restart skipped — caster in kUnk02, confirming cast",
+                                    IsLeft(hand) ? "L" : "R");
+                    return result;
+                }
+            }
             hm.pendingRestartNextFrame = false;
             _aa.Held(hand) = true;
             _aa.Secs(hand) = 0.f;
@@ -314,7 +334,17 @@ namespace IntegratedMagic {
                 const Hand other = IsLeft(hand) ? Hand::Right : Hand::Left;
                 const bool otherIsCharging =
                     _session.isDualCasting && ModeFor(other).autoCastPhase > AutoCastPhase::StartRequested;
-                if (otherIsCharging) {
+                // If this hand's caster is already charging, releasing would cancel the cast.
+                // Confirm the phase and fire the spell manually when kReady is reached.
+                if (castIsStable) {
+                    hm.startRequestSecs = 0.f;
+                    hm.autoCastPhase = AutoCastPhase::Casting;
+                    hm.waitingChargeComplete = true;
+                    hm.castingElapsedSecs = 0.f;
+                    hm.needsManualFireInKReady = true;
+                    MAGIC_DEBUG_LOG("[FLOW] PumpCastPhase: hand={} timeout suppressed — caster in kUnk02, confirming cast",
+                                    IsLeft(hand) ? "L" : "R");
+                } else if (otherIsCharging) {
                     hm.startRequestSecs = 0.f;
                 } else {
                     MAGIC_DEBUG_LOG("[FLOW] PumpCastPhase: hand={} StartRequested for {:.2f}s → UP (DOWN next frame)",
@@ -365,6 +395,13 @@ namespace IntegratedMagic {
                     result.stopAttack = StopDispatchIntent{held};
                     _aa.Held(hand) = false;
                     _aa.Secs(hand) = 0.f;
+                } else if (hm.needsManualFireInKReady) {
+                    // Attack was never held (interrupted before DOWN took effect). Trigger the
+                    // spell by dispatching a stopAttack from kReady.
+                    hm.needsManualFireInKReady = false;
+                    result.stopAttack = StopDispatchIntent{0.1f};
+                    MAGIC_DEBUG_LOG("[FLOW] PumpCastPhase: hand={} needsManualFireInKReady → stopAttack to fire from kReady",
+                                    handStr);
                 }
             }
         }

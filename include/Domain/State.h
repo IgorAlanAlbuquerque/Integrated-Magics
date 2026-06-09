@@ -37,6 +37,7 @@ namespace IntegratedMagic {
         bool holdFiredAndWaitingCastStop{false};
         bool finished{false};
         bool pendingRestartNextFrame{false};
+        bool needsManualFireInKReady{false};
         float startRequestSecs{0.f};
         float castingElapsedSecs{0.f};
         bool waitingSpellFireFinalize{false};
