@@ -92,6 +92,16 @@ namespace IntegratedMagic {
             auto& hm = ModeFor(hand);
             if (hm.autoCastPhase != AutoCastPhase::StartRequested) return;
             if (hm.pendingRestartNextFrame) return;
+            if (_aa.Held(hand)) {
+                // Attack is already held — EnableBumper activates this ongoing hold naturally.
+                // Dispatching UP here would arrive in the same game frame as the next DOWN,
+                // causing an immediate caster interrupt that loops forever.
+                // Just reset the timeout so it doesn't fire before the caster reaches kUnk02.
+                hm.startRequestSecs = 0.f;
+                MAGIC_DEBUG_LOG("[State] NotifyAttackEnabled: hand={} attack held → keeping DOWN, resetting timer",
+                                IsLeft(hand) ? "Left" : "Right");
+                return;
+            }
             if (hm.startRequestSecs < kMinRedispatchSecs) {
                 MAGIC_DEBUG_LOG("[State] NotifyAttackEnabled: hand={} skip re-dispatch (too soon secs={:.3f})",
                                 IsLeft(hand) ? "Left" : "Right", hm.startRequestSecs);
@@ -249,15 +259,14 @@ namespace IntegratedMagic {
         }
 
         if (hm.pendingRestartNextFrame) {
-            // Check if the caster already entered kUnk02 while we were waiting to restart.
-            // Dispatching a DOWN in this state immediately interrupts the charge.
-            {
+            // For dual cast only: skip DOWN if caster is already charging to preserve timing sync.
+            // For single-hand, dispatching DOWN normally is correct — the retry cycle handles it.
+            if (_session.isDualCasting) {
                 auto* p = GetPlayer();
                 const auto s = IsLeft(hand) ? RE::MagicSystem::CastingSource::kLeftHand
                                             : RE::MagicSystem::CastingSource::kRightHand;
                 const auto* c = p ? GetMagicCaster(p, s) : nullptr;
-                if (c && std::to_underlying(c->state.get()) >=
-                             std::to_underlying(RE::MagicCaster::State::kUnk02)) {
+                if (c && std::to_underlying(c->state.get()) >= std::to_underlying(RE::MagicCaster::State::kUnk02)) {
                     hm.pendingRestartNextFrame = false;
                     hm.startRequestSecs = 0.f;
                     hm.autoCastPhase = AutoCastPhase::Casting;
@@ -334,16 +343,22 @@ namespace IntegratedMagic {
                 const Hand other = IsLeft(hand) ? Hand::Right : Hand::Left;
                 const bool otherIsCharging =
                     _session.isDualCasting && ModeFor(other).autoCastPhase > AutoCastPhase::StartRequested;
-                // If this hand's caster is already charging, releasing would cancel the cast.
-                // Confirm the phase and fire the spell manually when kReady is reached.
                 if (castIsStable) {
-                    hm.startRequestSecs = 0.f;
-                    hm.autoCastPhase = AutoCastPhase::Casting;
-                    hm.waitingChargeComplete = true;
-                    hm.castingElapsedSecs = 0.f;
-                    hm.needsManualFireInKReady = true;
-                    MAGIC_DEBUG_LOG("[FLOW] PumpCastPhase: hand={} timeout suppressed — caster in kUnk02, confirming cast",
-                                    IsLeft(hand) ? "L" : "R");
+                    if (_session.isDualCasting) {
+                        hm.startRequestSecs = 0.f;
+                        hm.autoCastPhase = AutoCastPhase::Casting;
+                        hm.waitingChargeComplete = true;
+                        hm.castingElapsedSecs = 0.f;
+                        hm.needsManualFireInKReady = true;
+                        MAGIC_DEBUG_LOG(
+                            "[FLOW] PumpCastPhase: hand={} timeout suppressed — caster in kUnk02, confirming cast",
+                            IsLeft(hand) ? "L" : "R");
+                    } else {
+                        hm.startRequestSecs = 0.f;
+                        MAGIC_DEBUG_LOG(
+                            "[FLOW] PumpCastPhase: hand={} timeout — kUnk02 single-hand, resetting timer",
+                            IsLeft(hand) ? "L" : "R");
+                    }
                 } else if (otherIsCharging) {
                     hm.startRequestSecs = 0.f;
                 } else {
@@ -400,8 +415,9 @@ namespace IntegratedMagic {
                     // spell by dispatching a stopAttack from kReady.
                     hm.needsManualFireInKReady = false;
                     result.stopAttack = StopDispatchIntent{0.1f};
-                    MAGIC_DEBUG_LOG("[FLOW] PumpCastPhase: hand={} needsManualFireInKReady → stopAttack to fire from kReady",
-                                    handStr);
+                    MAGIC_DEBUG_LOG(
+                        "[FLOW] PumpCastPhase: hand={} needsManualFireInKReady → stopAttack to fire from kReady",
+                        handStr);
                 }
             }
         }
@@ -514,6 +530,7 @@ namespace IntegratedMagic {
             hm.autoActive = false;
             hm.chargeComplete = false;
             hm.waitingChargeComplete = false;
+            hm.autoCastPhase = AutoCastPhase::Done;
             return result;
         }
 
@@ -694,6 +711,29 @@ namespace IntegratedMagic {
 
         mergePumpPhase(Left, PumpCastPhase(Left, dt));
         mergePumpPhase(Right, PumpCastPhase(Right, dt));
+
+        // Dual-cast sync: if one hand is releasing for a restart (timeout or interrupt handled
+        // inside PumpCastPhase), release the other hand too so both go DOWN on the same frame.
+        // Without this the behavior machine sees one hand alone while the other is UP, breaks
+        // dual-cast mode, and fires two individual casts.
+        if (_session.isDualCasting) {
+            auto syncForRestart = [&](bool thisReleasing, bool& otherReleasing, Hand other) {
+                if (!thisReleasing || otherReleasing) return;
+                auto& otherHm = ModeFor(other);
+                if (otherHm.finished || otherHm.autoCastPhase != AutoCastPhase::StartRequested) return;
+                if (!_aa.Held(other) || otherHm.pendingRestartNextFrame) return;
+                _aa.Held(other) = false;
+                _aa.Secs(other) = 0.f;
+                otherHm.startRequestSecs = 0.f;
+                otherHm.pendingRestartNextFrame = true;
+                otherReleasing = true;
+                MAGIC_DEBUG_LOG("[FLOW] PumpAutomatic: dual-cast sync → {} restarting, syncing {} UP (DOWN next frame)",
+                                IsLeft(other) ? "Right" : "Left", IsLeft(other) ? "Left" : "Right");
+            };
+            syncForRestart(result.releaseLeftAttack, result.releaseRightAttack, Right);
+            syncForRestart(result.releaseRightAttack, result.releaseLeftAttack, Left);
+        }
+
         mergeExit(PumpSpellFireFinalize(dt));
 
         if (!_session.active) return result;
@@ -815,6 +855,27 @@ namespace IntegratedMagic {
                 result.releaseLeft = true;
             else
                 result.releaseRight = true;
+
+            // Dual-cast sync: releasing one hand breaks dual-cast mode in the behavior machine.
+            // Release the other hand too so both restart DOWN on the same frame.
+            if (_session.isDualCasting) {
+                const Hand other = IsLeft(hand) ? Hand::Right : Hand::Left;
+                auto& otherHm = ModeFor(other);
+                if (!otherHm.finished && otherHm.autoCastPhase == AutoCastPhase::StartRequested &&
+                    _aa.Held(other) && !otherHm.pendingRestartNextFrame) {
+                    _aa.Held(other) = false;
+                    _aa.Secs(other) = 0.f;
+                    otherHm.startRequestSecs = 0.f;
+                    otherHm.pendingRestartNextFrame = true;
+                    MAGIC_DEBUG_LOG("[State] OnCasterInterrupt: dual-cast sync → also releasing {} UP (DOWN next frame)",
+                                    IsLeft(other) ? "Left" : "Right");
+                    if (IsLeft(other))
+                        result.releaseLeft = true;
+                    else
+                        result.releaseRight = true;
+                }
+            }
+
             return result;
         }
 
@@ -822,6 +883,15 @@ namespace IntegratedMagic {
         const bool isSpurious = (hm.castingElapsedSecs < kSpuriousInterruptWindow);
 
         if (isSpurious) {
+            // If the cast was confirmed externally (no synthetic hold), the interrupt is a
+            // side-effect of releasing the prior UP. The cast is progressing on its own —
+            // resetting to StartRequested here would add a full restart cycle and desync
+            // dual-cast timing.
+            if (hm.needsManualFireInKReady) {
+                MAGIC_DEBUG_LOG("[State] OnCasterInterrupt: hand={} needsManualFire spurious → ignored",
+                                IsLeft(hand) ? "Left" : "Right");
+                return result;
+            }
             hm.autoCastPhase = AutoCastPhase::StartRequested;
             hm.waitingChargeComplete = false;
             hm.chargeComplete = false;

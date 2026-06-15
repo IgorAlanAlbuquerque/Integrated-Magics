@@ -284,7 +284,11 @@ namespace IntegratedMagic {
 #ifdef DEBUG
         const auto ws = pc->AsActorState()->GetWeaponState();
 #endif
-        if (!_restore.pendingRestoreAfterSheathe && _shout.modeShoutID == 0 && PlayerIsSheathingOrSheathed(pc)) {
+        // For a left-only cast started from a sheathed position, the right weapon stays
+        // sheathed throughout intentionally — suppress the sheathed-state check.
+        const bool leftOnlyFromSheathed = _session.wasHandsDown && (_session.modeSpellRight == nullptr);
+        if (!leftOnlyFromSheathed && !_restore.pendingRestoreAfterSheathe && _shout.modeShoutID == 0 &&
+            PlayerIsSheathingOrSheathed(pc)) {
             MAGIC_DEBUG_LOG("[State] ShouldForceInterrupt: TRUE - player sheathing/sheathed weaponState={}",
                             static_cast<int>(std::to_underlying(ws)));
             return true;
