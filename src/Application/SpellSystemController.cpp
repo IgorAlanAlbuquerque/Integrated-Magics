@@ -137,9 +137,6 @@ namespace Application {
             if (action.needsSkipEquipVars) {
                 IntegratedMagic::MagicAction::ResetSkipEquipToken();
                 IntegratedMagic::MagicAction::SetSkipEquipVars(player, true);
-                // Skip DrawWeaponMagicHands for left-only casts: raising both hands would
-                // draw the right weapon unnecessarily. The spell equip animation handles
-                // left-hand raising on its own.
                 const bool hasRightSpell = std::any_of(
                     action.spellsToEquip.begin(), action.spellsToEquip.end(),
                     [](const IntegratedMagic::EquipIntent& i) { return i.hand == IntegratedMagic::Hand::Right; });

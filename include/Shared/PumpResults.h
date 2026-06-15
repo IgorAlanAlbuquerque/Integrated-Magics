@@ -22,8 +22,8 @@ namespace IntegratedMagic {
     };
 
     struct PumpCastPhaseResult {
-        bool startAttack{false};      // deferred DOWN: re-enable hold and dispatch DOWN
-        bool releaseAttack{false};    // UP only: dispatch UP, DOWN deferred via pendingRestartNextFrame
+        bool startAttack{false};    
+        bool releaseAttack{false};   
         std::optional<StopDispatchIntent> stopAttack;
     };
 
@@ -50,14 +50,14 @@ namespace IntegratedMagic {
     struct CastInterruptResult {
         float finishedLeft{-1.f};
         float finishedRight{-1.f};
-        bool releaseLeft{false};   // UP only; DOWN deferred via pendingRestartNextFrame
+        bool releaseLeft{false};
         bool releaseRight{false};
     };
 
     struct PumpAutomaticResult {
-        bool startLeftAttack{false};   // deferred DOWN (UP was sent last frame)
+        bool startLeftAttack{false};
         bool startRightAttack{false};
-        bool releaseLeftAttack{false};  // UP only (DOWN deferred to next frame)
+        bool releaseLeftAttack{false};
         bool releaseRightAttack{false};
 
         std::optional<StopDispatchIntent> stopLeftAttack;

@@ -93,10 +93,6 @@ namespace IntegratedMagic {
             if (hm.autoCastPhase != AutoCastPhase::StartRequested) return;
             if (hm.pendingRestartNextFrame) return;
             if (_aa.Held(hand)) {
-                // Attack is already held — EnableBumper activates this ongoing hold naturally.
-                // Dispatching UP here would arrive in the same game frame as the next DOWN,
-                // causing an immediate caster interrupt that loops forever.
-                // Just reset the timeout so it doesn't fire before the caster reaches kUnk02.
                 hm.startRequestSecs = 0.f;
                 MAGIC_DEBUG_LOG("[State] NotifyAttackEnabled: hand={} attack held → keeping DOWN, resetting timer",
                                 IsLeft(hand) ? "Left" : "Right");
@@ -259,8 +255,6 @@ namespace IntegratedMagic {
         }
 
         if (hm.pendingRestartNextFrame) {
-            // For dual cast only: skip DOWN if caster is already charging to preserve timing sync.
-            // For single-hand, dispatching DOWN normally is correct — the retry cycle handles it.
             if (_session.isDualCasting) {
                 auto* p = GetPlayer();
                 const auto s = IsLeft(hand) ? RE::MagicSystem::CastingSource::kLeftHand
@@ -411,8 +405,6 @@ namespace IntegratedMagic {
                     _aa.Held(hand) = false;
                     _aa.Secs(hand) = 0.f;
                 } else if (hm.needsManualFireInKReady) {
-                    // Attack was never held (interrupted before DOWN took effect). Trigger the
-                    // spell by dispatching a stopAttack from kReady.
                     hm.needsManualFireInKReady = false;
                     result.stopAttack = StopDispatchIntent{0.1f};
                     MAGIC_DEBUG_LOG(
@@ -657,15 +649,21 @@ namespace IntegratedMagic {
         if (_restore.pendingRestoreAfterSheathe) {
             if (auto* player = GetPlayer()) {
                 _restore.sheatheWaitSecs += dt > 0.f ? dt : 0.f;
-                const bool timedOut = _restore.sheatheWaitSecs >= RestoreContext::kSheatheWaitTimeoutSec;
-                const bool giveUp = player->IsInCombat() ||
-                                    player->AsActorState()->GetWeaponState() == RE::WEAPON_STATE::kWantToDraw ||
-                                    timedOut;
+
+                const auto ws = player->AsActorState()->GetWeaponState();
+                const bool sheatheInProgress =
+                    ws == RE::WEAPON_STATE::kWantToSheathe || ws == RE::WEAPON_STATE::kSheathing;
+                const bool timedOut =
+                    _restore.sheatheWaitSecs >= RestoreContext::kSheatheWaitTimeoutSec && !sheatheInProgress;
+                const bool giveUp =
+                    player->IsInCombat() || ws == RE::WEAPON_STATE::kWantToDraw || timedOut;
 
                 if (_restore.sheatheAnimComplete || giveUp) {
                     _restore.sheatheWaitSecs = 0.f;
 
-                    MAGIC_DEBUG_LOG("[State] PumpAutomatic: pendingRestoreAfterSheathe -> restore (giveUp={})", giveUp);
+                    MAGIC_DEBUG_LOG(
+                        "[State] PumpAutomatic: pendingRestoreAfterSheathe -> restore (giveUp={} ws={})", giveUp,
+                        static_cast<int>(std::to_underlying(ws)));
 
                     _restore.pendingRestoreAfterSheathe = false;
                     _restore.sheatheAnimComplete = false;
@@ -712,10 +710,6 @@ namespace IntegratedMagic {
         mergePumpPhase(Left, PumpCastPhase(Left, dt));
         mergePumpPhase(Right, PumpCastPhase(Right, dt));
 
-        // Dual-cast sync: if one hand is releasing for a restart (timeout or interrupt handled
-        // inside PumpCastPhase), release the other hand too so both go DOWN on the same frame.
-        // Without this the behavior machine sees one hand alone while the other is UP, breaks
-        // dual-cast mode, and fires two individual casts.
         if (_session.isDualCasting) {
             auto syncForRestart = [&](bool thisReleasing, bool& otherReleasing, Hand other) {
                 if (!thisReleasing || otherReleasing) return;
@@ -856,8 +850,6 @@ namespace IntegratedMagic {
             else
                 result.releaseRight = true;
 
-            // Dual-cast sync: releasing one hand breaks dual-cast mode in the behavior machine.
-            // Release the other hand too so both restart DOWN on the same frame.
             if (_session.isDualCasting) {
                 const Hand other = IsLeft(hand) ? Hand::Right : Hand::Left;
                 auto& otherHm = ModeFor(other);
@@ -883,10 +875,6 @@ namespace IntegratedMagic {
         const bool isSpurious = (hm.castingElapsedSecs < kSpuriousInterruptWindow);
 
         if (isSpurious) {
-            // If the cast was confirmed externally (no synthetic hold), the interrupt is a
-            // side-effect of releasing the prior UP. The cast is progressing on its own —
-            // resetting to StartRequested here would add a full restart cycle and desync
-            // dual-cast timing.
             if (hm.needsManualFireInKReady) {
                 MAGIC_DEBUG_LOG("[State] OnCasterInterrupt: hand={} needsManualFire spurious → ignored",
                                 IsLeft(hand) ? "Left" : "Right");

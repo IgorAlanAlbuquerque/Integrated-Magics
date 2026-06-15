@@ -1,6 +1,7 @@
 #include <utility>
 #undef GetObject
 
+#include "Adapters/Outbound/MagicEquip.h"
 #include "Config/ConfigAdapter.h"
 #include "Domain/CasterUtil.h"
 #include "Domain/State.h"
@@ -284,8 +285,6 @@ namespace IntegratedMagic {
 #ifdef DEBUG
         const auto ws = pc->AsActorState()->GetWeaponState();
 #endif
-        // For a left-only cast started from a sheathed position, the right weapon stays
-        // sheathed throughout intentionally — suppress the sheathed-state check.
         const bool leftOnlyFromSheathed = _session.wasHandsDown && (_session.modeSpellRight == nullptr);
         if (!leftOnlyFromSheathed && !_restore.pendingRestoreAfterSheathe && _shout.modeShoutID == 0 &&
             PlayerIsSheathingOrSheathed(pc)) {
@@ -391,6 +390,8 @@ namespace IntegratedMagic {
         }
 
         if (_session.wasHandsDown && !player->IsInCombat()) {
+            MagicAction::ApplySkipEquipAnimReturn(player,
+                                                  Config::MagicConfigAdapter::Get().SkipEquipAnimationOnReturn());
             player->DrawWeaponMagicHands(false);
             _restore.pendingRestoreAfterSheathe = true;
             result.waitForSheatheRestore = true;
